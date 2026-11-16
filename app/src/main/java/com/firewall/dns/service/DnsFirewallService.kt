@@ -140,7 +140,7 @@ class DnsFirewallService : VpnService() {
     }
 
     private fun notificationText(): String = if (FirewallRepository.isNgfwEnabled()) {
-        "NGFW activo: reglas por app, IP, puerto y DNS"
+        "NGFW activo: filtrado DNS por dominio"
     } else if (FirewallRepository.isObservationModeEnabled()) {
         "Monitoreo + bloqueo por reglas DNS; DoH/DoT no se inspecciona"
     } else {
@@ -238,7 +238,7 @@ class DnsFirewallService : VpnService() {
         }.apply { start() }
     }
 
-    // Modo NGFW: todo el tráfico entra a la VPN y Firestack aplica las reglas vía NgfwBridge.
+    // Modo NGFW: todo el tráfico entra a la VPN y Firestack intercepta el DNS y consulta a NgfwBridge.
     private fun startNgfw(): Boolean {
         return try {
             // Sin IPv6 real en la red, enrutar ::/0 hace que las apps esperen timeouts (lentitud).

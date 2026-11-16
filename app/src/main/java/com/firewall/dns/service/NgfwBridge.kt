@@ -13,7 +13,6 @@ import com.celzero.firestack.intra.FlowSummary
 import com.celzero.firestack.intra.Mark
 import com.celzero.firestack.intra.PreMark
 import com.firewall.dns.data.repository.FirewallRepository
-import com.firewall.dns.domain.engine.NgfwRuleEngine
 import java.util.UUID
 
 /** Puente entre Firestack y las reglas NGFW (app, IP, puerto, protocolo) y de dominio. */
@@ -98,6 +97,14 @@ class NgfwBridge(
         return mark
     }
 
+    private fun splitHostPort(value: String?): Pair<String, Int>? {
+        if (value.isNullOrEmpty()) return null
+        val idx = value.lastIndexOf(':')
+        if (idx <= 0) return null
+        val port = value.substring(idx + 1).toIntOrNull() ?: return null
+        return value.substring(0, idx).removePrefix("[").removeSuffix("]") to port
+    }
+
     private fun decide(
         rawUid: Int, dst: String?
     ): Mark {
@@ -105,7 +112,7 @@ class NgfwBridge(
         mark.cid = UUID.randomUUID().toString().take(8)
         mark.pidcsv = Backend.Exit
 
-        val target = NgfwRuleEngine.splitHostPort(dst)
+        val target = splitHostPort(dst)
         // NGFW solo filtra DNS (onQuery); las conexiones pasan sin evaluarse ni registrarse.
         mark.uid = rawUid.toString()
         if (target != null && (target.second == 53 || target.first in VPN_DNS)) {

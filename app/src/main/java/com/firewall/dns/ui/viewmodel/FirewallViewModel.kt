@@ -4,7 +4,6 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.firewall.dns.data.repository.FirewallRepository
-import com.firewall.dns.domain.engine.NgfwRule
 import com.firewall.dns.domain.model.AppInfoItem
 import com.firewall.dns.domain.model.DnsLogEntry
 import com.firewall.dns.domain.model.FirewallStats
@@ -30,12 +29,6 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
     val observationModeEnabled: StateFlow<Boolean> = FirewallRepository.observationModeEnabled
 
     val ngfwEnabled: StateFlow<Boolean> = FirewallRepository.ngfwEnabled
-    val ngfwRules: StateFlow<List<NgfwRule>> = FirewallRepository.ngfwRules
-    val ngfwBlockedApps: StateFlow<Set<String>> = FirewallRepository.ngfwBlockedApps
-
-    val ngfwEnforce: StateFlow<Boolean> = FirewallRepository.ngfwEnforce
-    val ngfwDefaultDeny: StateFlow<Boolean> = FirewallRepository.ngfwDefaultDeny
-    val ngfwHits: StateFlow<Map<String, Long>> = FirewallRepository.ngfwHits
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
@@ -125,27 +118,10 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
     fun setNgfwEnabled(enabled: Boolean) {
         FirewallRepository.setNgfwEnabled(enabled)
         _toastMessage.tryEmit(
-            if (enabled) "NGFW activado: reglas por app, IP y puerto"
+            if (enabled) "NGFW activado: filtrado DNS con motor NGFW"
             else "NGFW desactivado: solo filtrado DNS"
         )
     }
-
-    fun addNgfwRule(text: String) {
-        if (!FirewallRepository.addNgfwRule(text)) {
-            _toastMessage.tryEmit("Un deny necesita app=paquete o una IP concreta. Formato: deny|accept tcp|udp|any IP[/prefijo]|any puerto|min-max|any [app=paquete] [name=nombre]")
-        }
-    }
-
-    fun setNgfwEnforce(enforce: Boolean) { FirewallRepository.setNgfwEnforce(enforce) }
-    fun setNgfwDefaultDeny(deny: Boolean) { FirewallRepository.setNgfwDefaultDeny(deny) }
-
-    fun moveNgfwRule(text: String, delta: Int) { FirewallRepository.moveNgfwRule(text, delta) }
-
-    fun resetNgfwHits() { FirewallRepository.resetNgfwHits() }
-
-    fun removeNgfwRule(text: String) { FirewallRepository.removeNgfwRule(text) }
-
-    fun toggleNgfwBlockedApp(packageName: String) { FirewallRepository.toggleNgfwBlockedApp(packageName) }
 
     fun addBlocklistUrl(url: String) {
         if (FirewallRepository.addBlocklistUrl(url)) {

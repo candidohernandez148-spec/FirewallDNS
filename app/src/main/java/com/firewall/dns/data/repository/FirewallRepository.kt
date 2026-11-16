@@ -7,9 +7,6 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.drawable.toBitmap
 import com.firewall.dns.data.local.BlocklistDataSource
 import com.firewall.dns.data.local.PreferencesDataSource
-import com.firewall.dns.domain.engine.NgfwAction
-import com.firewall.dns.domain.engine.NgfwRule
-import com.firewall.dns.domain.engine.NgfwRuleEngine
 import com.firewall.dns.domain.engine.RuleEvaluator
 import com.firewall.dns.domain.engine.SmartDomainAnalyzer
 import com.firewall.dns.domain.model.AppInfoItem
@@ -66,20 +63,6 @@ object FirewallRepository {
     private val _ngfwEnabled = MutableStateFlow(false)
     val ngfwEnabled: StateFlow<Boolean> = _ngfwEnabled.asStateFlow()
 
-    private val _ngfwRules = MutableStateFlow<List<NgfwRule>>(emptyList())
-    val ngfwRules: StateFlow<List<NgfwRule>> = _ngfwRules.asStateFlow()
-
-    private val _ngfwEnforce = MutableStateFlow(false)
-    val ngfwEnforce: StateFlow<Boolean> = _ngfwEnforce.asStateFlow()
-    private val _ngfwDefaultDeny = MutableStateFlow(false)
-    val ngfwDefaultDeny: StateFlow<Boolean> = _ngfwDefaultDeny.asStateFlow()
-
-    private val _ngfwHits = MutableStateFlow<Map<String, Long>>(emptyMap())
-    val ngfwHits: StateFlow<Map<String, Long>> = _ngfwHits.asStateFlow()
-
-    private val _ngfwBlockedApps = MutableStateFlow<Set<String>>(emptySet())
-    val ngfwBlockedApps: StateFlow<Set<String>> = _ngfwBlockedApps.asStateFlow()
-
     private val _cacheInvalidateEvent = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val cacheInvalidateEvent: SharedFlow<Unit> = _cacheInvalidateEvent.asSharedFlow()
 
@@ -123,10 +106,6 @@ object FirewallRepository {
             _smartModeEnabled.value = prefsDataSource.getSmartModeEnabled()
             _observationModeEnabled.value = prefsDataSource.getObservationModeEnabled()
             _ngfwEnabled.value = prefsDataSource.getNgfwEnabled()
-            _ngfwRules.value = prefsDataSource.getNgfwRules().mapNotNull { NgfwRule.parse(it) }
-            _ngfwBlockedApps.value = prefsDataSource.getNgfwBlockedApps()
-            _ngfwDefaultDeny.value = prefsDataSource.getNgfwDefaultDeny()
-            _ngfwEnforce.value = prefsDataSource.getNgfwEnforce()
             learnedTokens.clear()
             learnedTokens.putAll(prefsDataSource.getLearnedTokens())
 
@@ -206,71 +185,6 @@ object FirewallRepository {
         _rebuildVpnEvent.tryEmit(Unit)
     }
 
-    fun addNgfwRule(raw: String): Boolean {
-        val rule = NgfwRule.parse(raw) ?: return false
-        val updated = _ngfwRules.value.filter { it != rule } + rule
-        _ngfwRules.value = updated
-        prefsDataSource.saveNgfwRules(updated.map { it.text })
-        return true
-    }
-
-    fun removeNgfwRule(text: String) {
-        val updated = _ngfwRules.value.filter { it.text != text }
-        _ngfwHits.update { it - text }
-        _ngfwRules.value = updated
-        prefsDataSource.saveNgfwRules(updated.map { it.text })
-    }
-
-    fun toggleNgfwBlockedApp(pkg: String) {
-        val updated = _ngfwBlockedApps.value.toMutableSet()
-        if (!updated.add(pkg)) updated.remove(pkg)
-        _ngfwBlockedApps.value = updated
-        prefsDataSource.saveNgfwBlockedApps(updated)
-    }
-
-    fun isNgfwEnforce(): Boolean = _ngfwEnforce.value
-
-    fun setNgfwEnforce(enforce: Boolean) {
-        _ngfwEnforce.value = enforce
-        prefsDataSource.saveNgfwEnforce(enforce)
-    }
-
-    fun setNgfwDefaultDeny(deny: Boolean) {
-        _ngfwDefaultDeny.value = deny
-        prefsDataSource.saveNgfwDefaultDeny(deny)
-    }
-
-    fun moveNgfwRule(text: String, delta: Int) {
-        val list = _ngfwRules.value.toMutableList()
-        val from = list.indexOfFirst { it.text == text }
-        val to = from + delta
-        if (from < 0 || to !in list.indices) return
-        list.add(to, list.removeAt(from))
-        _ngfwRules.value = list
-        prefsDataSource.saveNgfwRules(list.map { it.text })
-    }
-
-    fun resetNgfwHits() {
-        _ngfwHits.value = emptyMap()
-    }
-
-    /** Devuelve el motivo del bloqueo o null si el flujo se permite. */
-    fun evaluateFlow(packages: List<String>, proto: Int, dstIp: String, dstPort: Int): String? {
-        val blockedApp = packages.firstOrNull { it in _ngfwBlockedApps.value }
-        if (blockedApp != null) return "NGFW: app sin red ($blockedApp)"
-        val rules = _ngfwRules.value
-        val rule = NgfwRuleEngine.firstMatch(rules, packages, proto, dstIp, dstPort)
-        if (rule == null) {
-            // La política implícita solo afecta a apps que tienen alguna política accept propia.
-            val scoped = rules.any { it.action == NgfwAction.ALLOW && it.app != null && it.app in packages }
-            return if (_ngfwDefaultDeny.value && scoped) "NGFW: política implícita (deny)" else null
-        }
-        _ngfwHits.update { it + (rule.text to ((it[rule.text] ?: 0L) + 1L)) }
-        val id = rules.indexOf(rule) + 1
-        val label = rule.name?.let { "#$id $it" } ?: "#$id ${rule.text}"
-        return if (rule.action == NgfwAction.BLOCK) "NGFW deny $label" else null
-    }
-
     suspend fun downloadBlocklist(): Result<String> {
         val urls = _blocklistUrls.value
         val result = blocklistDataSource.downloadMultipleAndSave(defaultDomains, urls)
@@ -340,17 +254,6 @@ object FirewallRepository {
 
     fun setRunning(running: Boolean) {
         _stats.update { it.copy(isRunning = running) }
-    }
-
-    fun hasNgfwPolicies(): Boolean =
-        _ngfwBlockedApps.value.isNotEmpty() || _ngfwRules.value.isNotEmpty()
-
-    /** Cuenta una conexión (L3/L4) sin crear entrada de log, para no ralentizar el tráfico. */
-    fun countFlow(blocked: Boolean) {
-        _stats.update {
-            if (blocked) it.copy(totalBlocked = it.totalBlocked + 1)
-            else it.copy(totalAllowed = it.totalAllowed + 1)
-        }
     }
 
     fun addLog(domain: String, qType: String, isBlocked: Boolean, reason: String, appName: String) {
