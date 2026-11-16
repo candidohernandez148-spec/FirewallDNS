@@ -24,7 +24,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -51,18 +50,10 @@ fun AppsSettingsScreen(
     onToggleBlockedApp: (AppInfoItem) -> Unit,
     appSearch: String,
     onAppSearchChange: (String) -> Unit,
-    onSelectUpstreamDns: (String) -> Unit,
     onToggleExcludedApp: (String) -> Unit,
     onOpenBatteryOpt: () -> Unit,
     onOpenVpnSettings: () -> Unit
 ) {
-    val dnsOptions = listOf(
-        Triple("9.9.9.9", "Quad9", "Seguridad y privacidad"),
-        Triple("1.1.1.1", "Cloudflare", "Rápido y privado"),
-        Triple("8.8.8.8", "Google DNS", "Resolución de Google"),
-        Triple("94.140.14.14", "AdGuard DNS", "Bloqueo DNS adicional")
-    )
-
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -70,7 +61,7 @@ fun AppsSettingsScreen(
         item {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Configuración", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Text("Personaliza tu protección DNS", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Ajustes de tu protección", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
 
@@ -81,24 +72,7 @@ fun AppsSettingsScreen(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Servidor DNS", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text(
-                        "Proveedor usado para resolver las consultas permitidas.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    dnsOptions.forEach { (ip, name, description) ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth().clickable { onSelectUpstreamDns(ip) }.padding(vertical = 3.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(selected = stats.upstreamDns == ip, onClick = { onSelectUpstreamDns(ip) })
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-                                Text("$description  ·  $ip", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    }
+                    Text("Servidor DNS: Cloudflare (DoH)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 }
             }
         }

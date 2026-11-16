@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
+import android.net.Network
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
@@ -37,6 +38,7 @@ class FirewallVpnService : VpnService() {
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var tunnel: Tunnel? = null
     private var vpnInterface: ParcelFileDescriptor? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -83,6 +85,10 @@ class FirewallVpnService : VpnService() {
         try {
             // Sin IPv6 real, enrutar ::/0 provoca timeouts y lentitud.
             val v6 = hasIpv6()
+            // Debe leerse antes de establish(): después la red activa pasa a ser la propia VPN.
+            val cm = getSystemService(ConnectivityManager::class.java)
+            val systemDnsIps = getSystemDnsIps()
+            val bootstrapIp = systemDnsIps.substringBefore(',').ifEmpty { "1.1.1.1" }
             val builder = Builder()
                 .setSession("FirewallDNS")
                 .setMtu(MTU)
@@ -100,29 +106,27 @@ class FirewallVpnService : VpnService() {
                 } catch (_: PackageManager.NameNotFoundException) {}
             }
 
+            cm.activeNetwork?.let { builder.setUnderlyingNetworks(arrayOf(it)) }
+
             val established = builder.establish() ?: return false
+            vpnInterface = established
             Log.d(TAG, "startTunnel: establish() ok")
             val bridge = FirestackBridge(this)
-            val defaultDns = Intra.newDefaultDNS(Backend.DNS53, "1.1.1.1", "")
-            // Firestack duplica el descriptor y cierra su copia al desconectar; el original se cierra aquí mismo.
-            // Entregar un fd propio hacía que quedara abierto y la VPN (llave) sobreviviera al apagado.
-            Settings.dupTunFd(true)
-            val t = established.use {
-                Intra.connect(
-                    it.fd.toLong(), MTU.toLong(), MTU.toLong(),
-                    if (v6) "$GATEWAY4/24,$GATEWAY6/120" else "$GATEWAY4/24",
-                    if (v6) "$DNS4:53,[$DNS6]:53" else "$DNS4:53",
-                    defaultDns, bridge
-                )
-            }
-            Log.d(TAG, "startTunnel: Intra.connect ok")
+            val defaultDns = Intra.newDefaultDNS(Backend.DNS53, bootstrapIp, "")
+            // vpnInterface se mantiene abierto y solo se cierra en closeResources(), después de disconnect().
+            Settings.dupTunFd(false)
             Settings.setTunMode(Settings.DNSModeIP, Settings.BlockModeFilter, Settings.PtModeAuto)
-            try {
-                Intra.addDoHTransport(t, Backend.Preferred, DOH_URL, DOH_IPS)
-                bridge.upstreamId = Backend.Preferred
-            } catch (_: Throwable) {
-                bridge.upstreamId = Backend.Default
-            }
+            val t = Intra.connect(
+                established.fd.toLong(), MTU.toLong(), MTU.toLong(),
+                if (v6) "$GATEWAY4/24,$GATEWAY6/120" else "$GATEWAY4/24",
+                if (v6) "$DNS4:53,[$DNS6]:53" else "$DNS4:53",
+                defaultDns, bridge
+            )
+            Log.d(TAG, "startTunnel: Intra.connect ok")
+            // Cloudflare es el único upstream; las IPs del sistema solo sirven para resolver su nombre.
+            Intra.addDoHTransport(t, Backend.Preferred, DOH_URL, systemDnsIps)
+            bridge.upstreamId = Backend.Preferred
+            registerNetworkMonitor()
             tunnel = t
             FirewallRepository.setShouldRun(true)
             FirewallRepository.setRunning(true, "Firestack")
@@ -132,6 +136,44 @@ class FirewallVpnService : VpnService() {
             Log.d(TAG, "startTunnel: falló", e)
             false
         }
+    }
+
+    private fun getSystemDnsIps(): String = try {
+        val cm = getSystemService(ConnectivityManager::class.java)
+        cm.getLinkProperties(cm.activeNetwork)?.dnsServers
+            ?.mapNotNull { it.hostAddress }
+            ?.joinToString(",")
+            .orEmpty()
+    } catch (_: Throwable) {
+        ""
+    }
+
+    private fun registerNetworkMonitor() {
+        if (networkCallback != null) return
+        val cm = getSystemService(ConnectivityManager::class.java)
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                setUnderlyingNetworks(arrayOf(network))
+            }
+
+            override fun onLost(network: Network) {
+                setUnderlyingNetworks(null)
+            }
+        }
+        try {
+            cm.registerDefaultNetworkCallback(callback)
+            networkCallback = callback
+        } catch (e: Throwable) {
+            Log.d(TAG, "registerNetworkMonitor falló", e)
+        }
+    }
+
+    private fun unregisterNetworkMonitor() {
+        val callback = networkCallback ?: return
+        networkCallback = null
+        try {
+            getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(callback)
+        } catch (_: Throwable) {}
     }
 
     private fun hasIpv6(): Boolean = try {
@@ -159,6 +201,7 @@ class FirewallVpnService : VpnService() {
     }
 
     private fun closeResources() = synchronized(lock) {
+        unregisterNetworkMonitor()
         try {
             Log.d(TAG, "tunnel.disconnect()")
             tunnel?.disconnect()
@@ -230,7 +273,6 @@ class FirewallVpnService : VpnService() {
         private const val GATEWAY6 = "fd66:f83a:c650::1"
         private const val DNS6 = "fd66:f83a:c650::3"
         private const val DOH_URL = "https://cloudflare-dns.com/dns-query"
-        private const val DOH_IPS = "1.1.1.1,1.0.0.1,2606:4700:4700::1111"
 
         fun start(context: Context) {
             context.startForegroundService(Intent(context, FirewallVpnService::class.java))

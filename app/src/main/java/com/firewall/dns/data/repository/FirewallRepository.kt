@@ -34,6 +34,7 @@ import java.util.concurrent.atomic.AtomicLong
 object FirewallRepository {
 
     private const val MAX_LOGS = 400
+    private const val CLOUDFLARE_IP = "1.1.1.1"
     private const val TRAFFIC_POINTS = 40
     private const val TRAFFIC_INTERVAL_MS = 2_000L
     private const val MAX_LEARNED_DOMAINS = 5000
@@ -134,8 +135,6 @@ object FirewallRepository {
             learnedTokens.putAll(prefsDataSource.getLearnedTokens())
             _stats.update { it.copy(learnedTokens = learnedTokens.size) }
 
-            _stats.update { it.copy(upstreamDns = prefsDataSource.getUpstreamDns()) }
-
             val (loadedBlocked, loadedExceptions) = blocklistDataSource.loadFromDisk(defaultDomains)
             hostBlockSet.clear()
             hostBlockSet.addAll(loadedBlocked)
@@ -153,14 +152,8 @@ object FirewallRepository {
         prefsDataSource.saveShouldRun(shouldRun)
     }
 
-    fun getUpstreamDns(): String = _stats.value.upstreamDns
-
-    fun setUpstreamDns(dnsIp: String) {
-        prefsDataSource.saveUpstreamDns(dnsIp)
-        _stats.update { it.copy(upstreamDns = dnsIp) }
-        _cacheInvalidateEvent.tryEmit(Unit)
-        _rebuildVpnEvent.tryEmit(Unit)
-    }
+    // Cloudflare es el único servidor DNS; el filtro clásico de respaldo usa su IP.
+    fun getUpstreamDns(): String = CLOUDFLARE_IP
 
     fun isObservationModeEnabled(): Boolean = _observationModeEnabled.value
 
