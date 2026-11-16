@@ -1,5 +1,7 @@
 # FirewallDNS
 
+[![Build Debug (Firestack desde fuentes)](https://github.com/candidohernandez148-spec/FirewallDNS/actions/workflows/build.yml/badge.svg)](https://github.com/candidohernandez148-spec/FirewallDNS/actions/workflows/build.yml)
+
 Firewall DNS local para Android, creado por Candido y Elizabeth.
 
 Esta app usa un servicio `VpnService` para interceptar y filtrar consultas DNS compatibles, así como aplicar reglas personalizadas, listas externas y exclusiones por aplicación.
