@@ -70,7 +70,6 @@ object FirewallRepository {
     private val learnedTokens = ConcurrentHashMap<String, Int>()
 
     private val logCounter = AtomicLong(0L)
-    private val timeFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
 
     @Volatile
     private var initialized = false
@@ -236,6 +235,20 @@ object FirewallRepository {
     fun setShouldRunAndNotify(enabled: Boolean) {
         setShouldRun(enabled)
         if (enabled) _rebuildVpnEvent.tryEmit(Unit) else _cacheInvalidateEvent.tryEmit(Unit)
+    }
+
+    fun setRunning(running: Boolean) {
+        _stats.update { it.copy(isRunning = running) }
+    }
+
+    fun addLog(domain: String, qType: String, isBlocked: Boolean, reason: String, appName: String) {
+        recordDnsDecision(
+            domain = domain,
+            allowed = !isBlocked,
+            appName = appName,
+            reason = reason,
+            queryType = qType
+        )
     }
 
     fun getInstalledUserApps(): List<AppInfoItem> = withContext(Dispatchers.Default) {
