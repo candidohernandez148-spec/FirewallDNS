@@ -11,6 +11,39 @@ import java.io.InputStream
 
 object DomainBlocker {
 
+    private val DEFAULT_DOMAINS = listOf(
+        "doubleclick.net",
+        "googlesyndication.com",
+        "googleadservices.com",
+        "google-analytics.com",
+        "adservice.google.com",
+        "adsrvr.org",
+        "adnxs.com",
+        "taboola.com",
+        "outbrain.com",
+        "criteo.com",
+        "scorecardresearch.com",
+        "quantserve.com",
+        "moatads.com",
+        "amazon-adsystem.com",
+        "ads.facebook.com",
+        "pixel.facebook.com",
+        "analytics.facebook.com",
+        "app-measurement.com",
+        "appsflyer.com",
+        "adjust.com",
+        "branch.io",
+        "mixpanel.com",
+        "hotjar.com",
+        "flurry.com",
+        "unity3d.com",
+        "applovin.com",
+        "ironsrc.com",
+        "mopub.com",
+        "inmobi.com",
+        "vungle.com"
+    )
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     // Se reemplaza el conjunto completo (copia inmutable por convención) para lecturas sin bloqueo.
@@ -79,37 +112,4 @@ object DomainBlocker {
         if (domain.isEmpty() || domain == "localhost" || !domain.contains('.')) return null
         return domain
     }
-
-    private val DEFAULT_DOMAINS = listOf(
-        "doubleclick.net",
-        "googlesyndication.com",
-        "googleadservices.com",
-        "google-analytics.com",
-        "adservice.google.com",
-        "adsrvr.org",
-        "adnxs.com",
-        "taboola.com",
-        "outbrain.com",
-        "criteo.com",
-        "scorecardresearch.com",
-        "quantserve.com",
-        "moatads.com",
-        "amazon-adsystem.com",
-        "ads.facebook.com",
-        "pixel.facebook.com",
-        "analytics.facebook.com",
-        "app-measurement.com",
-        "appsflyer.com",
-        "adjust.com",
-        "branch.io",
-        "mixpanel.com",
-        "hotjar.com",
-        "flurry.com",
-        "unity3d.com",
-        "applovin.com",
-        "ironsrc.com",
-        "mopub.com",
-        "inmobi.com",
-        "vungle.com"
-    )
 }
