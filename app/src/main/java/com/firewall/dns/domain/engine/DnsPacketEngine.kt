@@ -100,72 +100,120 @@ object DnsPacketEngine {
         return res
     }
 
-    private fun readU16(buf: ByteArray, offset: Int): Int {
-        return ((buf[offset].toInt() and 0xFF) shl 8) or (buf[offset + 1].toInt() and 0xFF)
+    fun buildTcpRstResponse(
+        req: ByteArray, isIpv6: Boolean, reqIhl: Int, srcIp: ByteArray, dstIp: ByteArray
+    ): ByteArray? {
+        val tcpFlags = req[reqIhl + 13].toInt() and 0xFF
+        if ((tcpFlags and 0x04) != 0) return null
+
+        val isSyn = (tcpFlags and 0x02) != 0
+        val hasAck = (tcpFlags and 0x10) != 0
+        val reqTcpDataOff = ((req[reqIhl + 12].toInt() ushr 4) and 0x0F) * 4
+        val reqPayloadLen = (req.size - reqIhl - reqTcpDataOff).coerceAtLeast(0)
+        val reqSeq = readU32(req, reqIhl + 4)
+        val reqAck = readU32(req, reqIhl + 8)
+
+        val ipLen = if (isIpv6) 40 else 20
+        val tcpLen = 20
+        val res = ByteArray(ipLen + tcpLen)
+
+        if (isIpv6) {
+            res[0] = 0x60.toByte()
+            writeU16(res, 4, tcpLen)
+            res[6] = 6.toByte()
+            res[7] = 64.toByte()
+            System.arraycopy(dstIp, 0, res, 8, 16)
+            System.arraycopy(srcIp, 0, res, 24, 16)
+        } else {
+            res[0] = 0x45.toByte()
+            writeU16(res, 2, ipLen + tcpLen)
+            res[6] = 0x40.toByte()
+            res[8] = 64.toByte()
+            res[9] = 6.toByte()
+            System.arraycopy(dstIp, 0, res, 12, 4)
+            System.arraycopy(srcIp, 0, res, 16, 4)
+            writeU16(res, 10, onesComplementSum(res, 0, ipLen))
+        }
+
+        res[ipLen] = req[reqIhl + 2]; res[ipLen + 1] = req[reqIhl + 3]
+        res[ipLen + 2] = req[reqIhl]; res[ipLen + 3] = req[reqIhl + 1]
+
+        if (hasAck) {
+            writeU32(res, ipLen + 4, reqAck)
+            writeU32(res, ipLen + 8, 0L)
+            res[ipLen + 13] = 0x04.toByte()
+        } else {
+            writeU32(res, ipLen + 4, 0L)
+            val ackVal = (reqSeq + reqPayloadLen + (if (isSyn) 1L else 0L)) and 0xFFFFFFFFL
+            writeU32(res, ipLen + 8, ackVal)
+            res[ipLen + 13] = 0x14.toByte()
+        }
+        res[ipLen + 12] = 0x50.toByte()
+
+        val tcpSum = if (isIpv6) {
+            ipv6TransportChecksum(dstIp, srcIp, 6, res, ipLen, tcpLen)
+        } else {
+            ipv4TransportChecksum(dstIp, srcIp, 6, res, ipLen, tcpLen)
+        }
+        writeU16(res, ipLen + 16, tcpSum)
+        return res
     }
 
-    private fun writeU16(buf: ByteArray, offset: Int, value: Int) {
-        buf[offset] = ((value ushr 8) and 0xFF).toByte()
-        buf[offset + 1] = (value and 0xFF).toByte()
+    fun readU16(b: ByteArray, i: Int): Int =
+        ((b[i].toInt() and 0xFF) shl 8) or (b[i + 1].toInt() and 0xFF)
+
+    private fun writeU16(b: ByteArray, i: Int, v: Int) {
+        b[i] = ((v ushr 8) and 0xFF).toByte()
+        b[i + 1] = (v and 0xFF).toByte()
     }
 
-    private fun onesComplementSum(buf: ByteArray, start: Int, length: Int): Int {
+    private fun readU32(b: ByteArray, i: Int): Long =
+        ((b[i].toLong() and 0xFF) shl 24) or ((b[i + 1].toLong() and 0xFF) shl 16) or
+            ((b[i + 2].toLong() and 0xFF) shl 8) or (b[i + 3].toLong() and 0xFF)
+
+    private fun writeU32(b: ByteArray, i: Int, v: Long) {
+        b[i] = ((v ushr 24) and 0xFF).toByte()
+        b[i + 1] = ((v ushr 16) and 0xFF).toByte()
+        b[i + 2] = ((v ushr 8) and 0xFF).toByte()
+        b[i + 3] = (v and 0xFF).toByte()
+    }
+
+    private fun ipv4TransportChecksum(
+        src: ByteArray, dst: ByteArray, proto: Int, buf: ByteArray, offset: Int, len: Int
+    ): Int {
         var sum = 0
-        var i = start
-        while (i + 1 < start + length) {
-            sum += ((buf[i].toInt() and 0xFF) shl 8) or (buf[i + 1].toInt() and 0xFF)
+        for (i in 0 until 4 step 2) sum += readU16(src, i) + readU16(dst, i)
+        sum += proto + len
+        return foldAndInvert(sum + rawWordSum(buf, offset, len))
+    }
+
+    private fun ipv6TransportChecksum(
+        src: ByteArray, dst: ByteArray, proto: Int, buf: ByteArray, offset: Int, len: Int
+    ): Int {
+        var sum = 0
+        for (i in 0 until 16 step 2) sum += readU16(src, i) + readU16(dst, i)
+        sum += (len ushr 16) + (len and 0xFFFF) + proto
+        return foldAndInvert(sum + rawWordSum(buf, offset, len))
+    }
+
+    private fun onesComplementSum(buf: ByteArray, offset: Int, len: Int): Int =
+        foldAndInvert(rawWordSum(buf, offset, len))
+
+    private fun rawWordSum(buf: ByteArray, offset: Int, len: Int): Int {
+        var sum = 0
+        var i = offset
+        val end = offset + len
+        while (i + 1 < end) {
+            sum += readU16(buf, i)
             i += 2
         }
-        if (i < start + length) sum += (buf[i].toInt() and 0xFF) shl 8
-        while (sum ushr 16 != 0) sum = (sum and 0xFFFF) + (sum ushr 16)
-        return sum and 0xFFFF
+        if (i < end) sum += (buf[i].toInt() and 0xFF) shl 8
+        return sum
     }
 
-    private fun ipv4TransportChecksum(srcIp: ByteArray, dstIp: ByteArray, protocol: Int, payload: ByteArray, offset: Int, length: Int): Int {
-        val pseudo = ByteArray(12)
-        System.arraycopy(srcIp, 0, pseudo, 0, 4)
-        System.arraycopy(dstIp, 0, pseudo, 4, 4)
-        pseudo[8] = 0
-        pseudo[9] = protocol.toByte()
-        pseudo[10] = ((length ushr 8) and 0xFF).toByte()
-        pseudo[11] = (length and 0xFF).toByte()
-
-        var sum = 0
-        for (i in pseudo.indices step 2) {
-            if (i + 1 < pseudo.size) sum += ((pseudo[i].toInt() and 0xFF) shl 8) or (pseudo[i + 1].toInt() and 0xFF)
-        }
-        for (i in offset until offset + length step 2) {
-            if (i + 1 < payload.size) {
-                sum += ((payload[i].toInt() and 0xFF) shl 8) or (payload[i + 1].toInt() and 0xFF)
-            }
-        }
-        while (sum ushr 16 != 0) sum = (sum and 0xFFFF) + (sum ushr 16)
-        return (sum.inv() and 0xFFFF)
-    }
-
-    private fun ipv6TransportChecksum(srcIp: ByteArray, dstIp: ByteArray, protocol: Int, payload: ByteArray, offset: Int, length: Int): Int {
-        val pseudo = ByteArray(40)
-        System.arraycopy(srcIp, 0, pseudo, 0, 16)
-        System.arraycopy(dstIp, 0, pseudo, 16, 16)
-        pseudo[32] = 0
-        pseudo[33] = 0
-        pseudo[34] = 0
-        pseudo[35] = 0
-        pseudo[36] = ((length ushr 24) and 0xFF).toByte()
-        pseudo[37] = ((length ushr 16) and 0xFF).toByte()
-        pseudo[38] = ((length ushr 8) and 0xFF).toByte()
-        pseudo[39] = (length and 0xFF).toByte()
-
-        var sum = 0
-        for (i in pseudo.indices step 2) {
-            if (i + 1 < pseudo.size) sum += ((pseudo[i].toInt() and 0xFF) shl 8) or (pseudo[i + 1].toInt() and 0xFF)
-        }
-        for (i in offset until offset + length step 2) {
-            if (i + 1 < payload.size) {
-                sum += ((payload[i].toInt() and 0xFF) shl 8) or (payload[i + 1].toInt() and 0xFF)
-            }
-        }
-        while (sum ushr 16 != 0) sum = (sum and 0xFFFF) + (sum ushr 16)
-        return (sum.inv() and 0xFFFF)
+    private fun foldAndInvert(initialSum: Int): Int {
+        var sum = initialSum
+        while ((sum ushr 16) != 0) sum = (sum and 0xFFFF) + (sum ushr 16)
+        return sum.inv() and 0xFFFF
     }
 }

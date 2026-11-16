@@ -251,40 +251,35 @@ object FirewallRepository {
         )
     }
 
-    fun getInstalledUserApps(): List<AppInfoItem> = withContext(Dispatchers.Default) {
+    suspend fun getInstalledUserApps(): List<AppInfoItem> = withContext(Dispatchers.IO) {
         val pm = appContext.packageManager
         pm.getInstalledApplications(PackageManager.GET_META_DATA)
-            .filter { it.flags and ApplicationInfo.FLAG_SYSTEM == 0 }
-            .map { app ->
-                AppInfoItem(
-                    label = pm.getApplicationLabel(app).toString(),
-                    packageName = app.packageName
-                )
-            }
+            .filter { it.packageName != appContext.packageName && (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 }
+            .map { AppInfoItem(pm.getApplicationLabel(it).toString(), it.packageName) }
             .sortedBy { it.label.lowercase() }
     }
 
-    fun updateRulesCount() {
-        _stats.update { it.copy(loadedRulesCount = hostBlockSet.size + hostExceptionSet.size) }
+    private fun updateRulesCount() {
+        _stats.update { it.copy(loadedRulesCount = hostBlockSet.size + customBlockSet.size) }
     }
 
-    fun recordDnsDecision(domain: String, allowed: Boolean, appName: String, reason: String, queryType: String) {
-        val now = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+    private fun recordDnsDecision(domain: String, allowed: Boolean, appName: String, reason: String, queryType: String) {
+        val timestamp = synchronized(SimpleDateFormat("HH:mm:ss", Locale.getDefault())) {
+            SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+        }
         val entry = DnsLogEntry(
             id = logCounter.incrementAndGet(),
-            timestamp = now,
+            timestamp = timestamp,
             domain = domain,
             queryType = queryType,
             isBlocked = !allowed,
             reason = reason,
             appName = appName
         )
-
-        val updated = (_logs.value + entry).takeLast(MAX_LOGS)
-        _logs.value = updated
-        _stats.update {
-            if (allowed) it.copy(totalAllowed = it.totalAllowed + 1)
-            else it.copy(totalBlocked = it.totalBlocked + 1)
+        _logs.update { (listOf(entry) + it).take(MAX_LOGS) }
+        _stats.update { stats ->
+            if (allowed) stats.copy(totalAllowed = stats.totalAllowed + 1)
+            else stats.copy(totalBlocked = stats.totalBlocked + 1)
         }
     }
 }
