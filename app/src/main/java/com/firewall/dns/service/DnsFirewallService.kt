@@ -240,15 +240,19 @@ class DnsFirewallService : VpnService() {
     // Modo NGFW: todo el tráfico entra a la VPN y Firestack aplica las reglas vía NgfwBridge.
     private fun startNgfw(): Boolean {
         return try {
+            // Sin IPv6 real en la red, enrutar ::/0 hace que las apps esperen timeouts (lentitud).
+            val v6 = hasIpv6()
             val builder = Builder()
                 .setSession("FirewallDNS NGFW")
                 .setMtu(NGFW_MTU)
                 .addAddress("10.10.10.2", 24)
-                .addAddress("fd00:10:10::2", 120)
                 .addDnsServer("10.10.10.1")
-                .addDnsServer("fd00:10:10::1")
                 .addRoute("0.0.0.0", 0)
-                .addRoute("::", 0)
+            if (v6) {
+                builder.addAddress("fd00:10:10::2", 120)
+                    .addDnsServer("fd00:10:10::1")
+                    .addRoute("::", 0)
+            }
             (FirewallRepository.excludedPackages.value + packageName).forEach { pkg ->
                 try {
                     builder.addDisallowedApplication(pkg)
@@ -260,13 +264,6 @@ class DnsFirewallService : VpnService() {
             val dns = Intra.newDefaultDNS(Backend.DNS53, FirewallRepository.getUpstreamDns(), "")
             val bridge = NgfwBridge(this, connectivityManager)
             val tunnel = Intra.connect2(tunFd, NGFW_MTU.toLong(), dns, bridge)
-            try {
-                val id = "FirewallUpstream"
-                Intra.addDNSProxy(tunnel, id, "${FirewallRepository.getUpstreamDns()}:53")
-                bridge.upstreamId = id
-            } catch (_: Throwable) {
-                // Se usa el transporte por defecto del túnel.
-            }
             ngfwTunnel = tunnel
             vpnInterface = established
             isRunning = true
@@ -276,6 +273,16 @@ class DnsFirewallService : VpnService() {
             closeInterface()
             false
         }
+    }
+
+    private fun hasIpv6(): Boolean = try {
+        val lp = connectivityManager.getLinkProperties(connectivityManager.activeNetwork)
+        lp?.linkAddresses?.any {
+            val a = it.address
+            a is java.net.Inet6Address && !a.isLinkLocalAddress && !a.isLoopbackAddress && !a.isSiteLocalAddress
+        } == true
+    } catch (_: Throwable) {
+        false
     }
 
     private fun handlePacket(req: ByteArray, output: FileOutputStream) {
@@ -435,10 +442,15 @@ class DnsFirewallService : VpnService() {
         FirewallRepository.setRunning(false)
         tunReaderThread?.interrupt()
         tunReaderThread = null
-        try { ngfwTunnel?.disconnect() } catch (_: Throwable) {}
+        val tunnel = ngfwTunnel
         ngfwTunnel = null
-        try { vpnInterface?.close() } catch (_: IOException) {}
+        val iface = vpnInterface
         vpnInterface = null
+        // disconnect() es nativo y puede bloquear; no debe congelar el botón de apagado.
+        Thread {
+            try { tunnel?.disconnect() } catch (_: Throwable) {}
+            try { iface?.close() } catch (_: IOException) {}
+        }.start()
     }
 
     private fun stopVpn() {
