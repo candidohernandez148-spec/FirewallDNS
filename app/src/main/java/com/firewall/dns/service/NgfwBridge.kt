@@ -26,7 +26,7 @@ class NgfwBridge(
     var upstreamId: String = Backend.Default
 
     private companion object {
-        val VPN_DNS = setOf("10.10.10.1", "fd00:10:10::1")
+        val VPN_DNS = setOf(DnsFirewallService.NGFW_DNS4, DnsFirewallService.NGFW_DNS6)
     }
 
     private val appLabels = HashMap<Int, Pair<List<String>, String>>()

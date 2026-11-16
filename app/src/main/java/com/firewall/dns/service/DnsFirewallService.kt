@@ -86,6 +86,10 @@ class DnsFirewallService : VpnService() {
         private const val NOTIFICATION_ID = 2001
         private const val CACHE_TTL_MS = 60_000L
         private const val NGFW_MTU = 1500
+        const val NGFW_GATEWAY4 = "10.10.10.1"
+        const val NGFW_DNS4 = "10.10.10.3"
+        const val NGFW_GATEWAY6 = "fd00:10:10::1"
+        const val NGFW_DNS6 = "fd00:10:10::3"
         private val TRAPPED_IPV4_DNS = listOf("8.8.8.8", "8.8.4.4", "1.1.1.1", "1.0.0.1")
         private val TRAPPED_IPV6_DNS = listOf(
             "2001:4860:4860::8888", "2001:4860:4860::8844",
@@ -246,12 +250,12 @@ class DnsFirewallService : VpnService() {
             val builder = Builder()
                 .setSession("FirewallDNS NGFW")
                 .setMtu(NGFW_MTU)
-                .addAddress("10.10.10.2", 24)
-                .addDnsServer("10.10.10.1")
+                .addAddress(NGFW_GATEWAY4, 24)
+                .addDnsServer(NGFW_DNS4)
                 .addRoute("0.0.0.0", 0)
             if (v6) {
-                builder.addAddress("fd00:10:10::2", 120)
-                    .addDnsServer("fd00:10:10::1")
+                builder.addAddress(NGFW_GATEWAY6, 120)
+                    .addDnsServer(NGFW_DNS6)
                     .addRoute("::", 0)
             }
             (FirewallRepository.excludedPackages.value + packageName).forEach { pkg ->
@@ -264,9 +268,13 @@ class DnsFirewallService : VpnService() {
             val tunFd = established.dup().detachFd().toLong()
             val dns = Intra.newDefaultDNS(Backend.DNS53, FirewallRepository.getUpstreamDns(), "")
             val bridge = NgfwBridge(this, connectivityManager)
-            // Sin DNSModeIP, Firestack no intercepta las consultas DNS y onQuery nunca se invoca.
+            // Firestack solo intercepta el DNS dirigido a estas direcciones (ip:puerto) y a las de la interfaz.
+            val ifaceAddrs = if (v6) "$NGFW_GATEWAY4/24,$NGFW_GATEWAY6/120" else "$NGFW_GATEWAY4/24"
+            val fakeDns = if (v6) "$NGFW_DNS4:53,[$NGFW_DNS6]:53" else "$NGFW_DNS4:53"
+            val tunnel = Intra.connect(
+                tunFd, NGFW_MTU.toLong(), NGFW_MTU.toLong(), ifaceAddrs, fakeDns, dns, bridge
+            )
             Settings.setTunMode(Settings.DNSModeIP, Settings.BlockModeFilter, Settings.PtModeAuto)
-            val tunnel = Intra.connect2(tunFd, NGFW_MTU.toLong(), dns, bridge)
             // Firestack solo resuelve ids registrados; Preferred es el que usan sus consultas normales.
             try {
                 Intra.addDNSProxy(tunnel, Backend.Preferred, "${FirewallRepository.getUpstreamDns()}:53")
