@@ -39,7 +39,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.firewall.dns.domain.engine.NgfwRule
 import com.firewall.dns.domain.model.AppInfoItem
 import com.firewall.dns.domain.model.FirewallStats
 
@@ -49,19 +48,7 @@ fun AppsSettingsScreen(
     apps: List<AppInfoItem>,
     excludedPackages: Set<String>,
     ngfwEnabled: Boolean,
-    ngfwRules: List<NgfwRule>,
-    ngfwBlockedApps: Set<String>,
-    ngfwEnforce: Boolean,
-    onNgfwEnforceChange: (Boolean) -> Unit,
-    ngfwDefaultDeny: Boolean,
-    ngfwHits: Map<String, Long>,
-    onNgfwDefaultDenyChange: (Boolean) -> Unit,
-    onMoveNgfwRule: (String, Int) -> Unit,
-    onResetNgfwHits: () -> Unit,
     onNgfwEnabledChange: (Boolean) -> Unit,
-    onAddNgfwRule: (String) -> Unit,
-    onRemoveNgfwRule: (String) -> Unit,
-    onToggleNgfwBlockedApp: (String) -> Unit,
     appSearch: String,
     onAppSearchChange: (String) -> Unit,
     onSelectUpstreamDns: (String) -> Unit,
@@ -117,7 +104,6 @@ fun AppsSettingsScreen(
         }
 
         item {
-            var ruleText by remember { mutableStateOf("") }
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(22.dp),
@@ -135,67 +121,6 @@ fun AppsSettingsScreen(
                         }
                         Switch(checked = ngfwEnabled, onCheckedChange = onNgfwEnabledChange)
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                if (ngfwEnforce) "Modo bloqueo: las políticas deny cortan conexiones" else "Modo observador: solo registra; el DNS sí se bloquea",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                "Activa el bloqueo de conexiones solo cuando tus políticas estén probadas.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(checked = ngfwEnforce, onCheckedChange = onNgfwEnforceChange)
-                    }
-                    OutlinedTextField(
-                        value = ruleText,
-                        onValueChange = { ruleText = it },
-                        label = { Text("Política: deny tcp 1.2.3.0/24 443 name=mi_regla") },
-                        singleLine = true,
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Button(
-                        onClick = {
-                            onAddNgfwRule(ruleText)
-                            ruleText = ""
-                        },
-                        enabled = ruleText.isNotBlank()
-                    ) { Text("Agregar regla") }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "Denegar lo no coincidente en apps con política accept propia",
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Switch(checked = ngfwDefaultDeny, onCheckedChange = onNgfwDefaultDenyChange)
-                    }
-                    ngfwRules.forEachIndexed { index, rule ->
-                        Column {
-                            Text(
-                                "#${index + 1} ${rule.name ?: ""}  ·  ${ngfwHits[rule.text] ?: 0} coincidencias",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(rule.text, style = MaterialTheme.typography.bodySmall)
-                            Row {
-                                TextButton(onClick = { onMoveNgfwRule(rule.text, -1) }, enabled = index > 0) { Text("Subir") }
-                                TextButton(onClick = { onMoveNgfwRule(rule.text, 1) }, enabled = index < ngfwRules.lastIndex) { Text("Bajar") }
-                                TextButton(onClick = { onRemoveNgfwRule(rule.text) }) { Text("Quitar") }
-                            }
-                        }
-                    }
-                    if (ngfwHits.isNotEmpty()) {
-                        TextButton(onClick = onResetNgfwHits) { Text("Reiniciar contadores") }
-                    }
-                    Text(
-                        "Se evalúan en orden (como las políticas de FortiGate); gana la primera coincidencia. Opcionales: app=<paquete>, name=<nombre>. Las apps excluidas no pasan por el NGFW.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
             }
         }
@@ -265,7 +190,6 @@ fun AppsSettingsScreen(
         } else {
             items(apps, key = { it.packageName }) { app ->
                 val excluded = excludedPackages.contains(app.packageName)
-                val netBlocked = ngfwBlockedApps.contains(app.packageName)
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
@@ -286,21 +210,13 @@ fun AppsSettingsScreen(
                                 )
                             }
                             StatusChip(
-                                text = when {
-                                    netBlocked -> "Sin red"
-                                    excluded -> "Excluida"
-                                    else -> "Protegida"
-                                },
-                                color = if (netBlocked || excluded) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary
+                                text = if (excluded) "Excluida" else "Protegida",
+                                color = if (excluded) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary
                             )
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("Excluir del filtrado", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                             Switch(checked = excluded, onCheckedChange = { onToggleExcludedApp(app.packageName) })
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("NGFW: bloquear toda la red", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                            Switch(checked = netBlocked, onCheckedChange = { onToggleNgfwBlockedApp(app.packageName) })
                         }
                     }
                 }
