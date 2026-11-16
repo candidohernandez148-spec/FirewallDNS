@@ -1,5 +1,7 @@
 package com.firewall.dns.domain.model
 
+import androidx.compose.ui.graphics.ImageBitmap
+
 data class DnsLogEntry(
     val id: Long,
     val timestamp: String,
@@ -27,5 +29,6 @@ data class DnsQueryInfo(
 
 data class AppInfoItem(
     val label: String,
-    val packageName: String
+    val packageName: String,
+    val icon: ImageBitmap? = null
 )

@@ -3,6 +3,8 @@ package com.firewall.dns.data.repository
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.core.graphics.drawable.toBitmap
 import com.firewall.dns.data.local.BlocklistDataSource
 import com.firewall.dns.data.local.PreferencesDataSource
 import com.firewall.dns.domain.engine.NgfwAction
@@ -31,6 +33,7 @@ import java.util.concurrent.atomic.AtomicLong
 object FirewallRepository {
 
     private const val MAX_LOGS = 400
+    private const val ICON_SIZE_PX = 96
 
     private lateinit var appContext: Context
     private lateinit var prefsDataSource: PreferencesDataSource
@@ -341,7 +344,14 @@ object FirewallRepository {
         val pm = appContext.packageManager
         pm.getInstalledApplications(PackageManager.GET_META_DATA)
             .filter { it.packageName != appContext.packageName && (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 }
-            .map { AppInfoItem(pm.getApplicationLabel(it).toString(), it.packageName) }
+            .map {
+                val icon = try {
+                    pm.getApplicationIcon(it).toBitmap(ICON_SIZE_PX, ICON_SIZE_PX).asImageBitmap()
+                } catch (_: Exception) {
+                    null
+                }
+                AppInfoItem(pm.getApplicationLabel(it).toString(), it.packageName, icon)
+            }
             .sortedBy { it.label.lowercase() }
     }
 

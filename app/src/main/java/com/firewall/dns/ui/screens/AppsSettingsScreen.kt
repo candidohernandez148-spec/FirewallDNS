@@ -1,6 +1,15 @@
 package com.firewall.dns.ui.screens
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -239,45 +248,43 @@ fun AppsSettingsScreen(
         } else {
             items(apps, key = { it.packageName }) { app ->
                 val excluded = excludedPackages.contains(app.packageName)
+                val netBlocked = ngfwBlockedApps.contains(app.packageName)
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(18.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clickable { onToggleExcludedApp(app.packageName) }.padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(app.label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-                            Text(
-                                app.packageName,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                if (excluded) "Excluida del filtrado" else "Protegida por el filtrado",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = if (excluded) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary
+                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            AppIcon(app)
+                            Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
+                                Text(app.label, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(
+                                    app.packageName,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            StatusChip(
+                                text = when {
+                                    netBlocked -> "Sin red"
+                                    excluded -> "Excluida"
+                                    else -> "Protegida"
+                                },
+                                color = if (netBlocked || excluded) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary
                             )
                         }
-                        Switch(checked = excluded, onCheckedChange = { onToggleExcludedApp(app.packageName) })
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "NGFW: bloquear toda la red de esta app",
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.labelMedium
-                        )
-                        Switch(
-                            checked = ngfwBlockedApps.contains(app.packageName),
-                            onCheckedChange = { onToggleNgfwBlockedApp(app.packageName) }
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Excluir del filtrado", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                            Switch(checked = excluded, onCheckedChange = { onToggleExcludedApp(app.packageName) })
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("NGFW: bloquear toda la red", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                            Switch(checked = netBlocked, onCheckedChange = { onToggleNgfwBlockedApp(app.packageName) })
+                        }
                     }
                 }
             }
@@ -296,5 +303,35 @@ fun AppsSettingsScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun AppIcon(app: AppInfoItem) {
+    val shape = RoundedCornerShape(12.dp)
+    val modifier = Modifier.size(46.dp).clip(shape)
+    if (app.icon != null) {
+        Image(bitmap = app.icon, contentDescription = app.label, modifier = modifier)
+    } else {
+        Box(modifier = modifier.background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
+            Text(
+                app.label.take(1).uppercase(),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Composable
+private fun StatusChip(text: String, color: Color) {
+    Surface(shape = CircleShape, color = color.copy(alpha = 0.14f)) {
+        Text(
+            text,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+            style = MaterialTheme.typography.labelMedium,
+            color = color
+        )
     }
 }

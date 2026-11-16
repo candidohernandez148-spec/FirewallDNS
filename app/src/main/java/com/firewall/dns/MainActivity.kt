@@ -281,14 +281,14 @@ fun FirewallApp(
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                        actionIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        titleContentColor = MaterialTheme.colorScheme.onSurface,
+                        actionIconContentColor = MaterialTheme.colorScheme.onSurface
                     ),
                     actions = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = if (observationModeEnabled) "Obs" else "Bloq",
+                                text = if (observationModeEnabled) "Monitoreo" else "Bloqueo",
                                 fontSize = 12.sp,
                                 modifier = Modifier.padding(end = 4.dp)
                             )
