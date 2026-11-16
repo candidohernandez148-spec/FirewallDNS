@@ -108,6 +108,16 @@ class NgfwBridge(
         mark.pidcsv = Backend.Exit
 
         val target = NgfwRuleEngine.splitHostPort(dst)
+        // Sin políticas no hay nada que evaluar: camino rápido, solo se cuenta.
+        if (!FirewallRepository.hasNgfwPolicies()) {
+            mark.uid = rawUid.toString()
+            if (target != null && (target.second == 53 || target.first in VPN_DNS)) {
+                mark.pidcsv = Backend.Base
+            } else {
+                FirewallRepository.countFlow(false)
+            }
+            return mark
+        }
         val uid = if (rawUid >= 0) rawUid else lookupUid(protocol, src, dst)
         mark.uid = uid.toString()
         if (target == null) return mark
@@ -139,6 +149,7 @@ class NgfwBridge(
                 appName = label
             )
         }
+        else FirewallRepository.countFlow(false)
         return mark
     }
 

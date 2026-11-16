@@ -332,6 +332,17 @@ object FirewallRepository {
         _stats.update { it.copy(isRunning = running) }
     }
 
+    fun hasNgfwPolicies(): Boolean =
+        _ngfwBlockedApps.value.isNotEmpty() || _ngfwRules.value.isNotEmpty()
+
+    /** Cuenta una conexión (L3/L4) sin crear entrada de log, para no ralentizar el tráfico. */
+    fun countFlow(blocked: Boolean) {
+        _stats.update {
+            if (blocked) it.copy(totalBlocked = it.totalBlocked + 1)
+            else it.copy(totalAllowed = it.totalAllowed + 1)
+        }
+    }
+
     fun addLog(domain: String, qType: String, isBlocked: Boolean, reason: String, appName: String) {
         recordDnsDecision(
             domain = domain,
