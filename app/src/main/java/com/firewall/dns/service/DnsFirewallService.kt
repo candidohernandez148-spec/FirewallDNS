@@ -19,6 +19,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.celzero.firestack.backend.Backend
 import com.celzero.firestack.intra.Intra
+import com.celzero.firestack.settings.Settings
 import com.celzero.firestack.intra.Tunnel
 import com.firewall.dns.MainActivity
 import com.firewall.dns.data.repository.FirewallRepository
@@ -263,6 +264,8 @@ class DnsFirewallService : VpnService() {
             val tunFd = established.dup().detachFd().toLong()
             val dns = Intra.newDefaultDNS(Backend.DNS53, FirewallRepository.getUpstreamDns(), "")
             val bridge = NgfwBridge(this, connectivityManager)
+            // Sin DNSModeIP, Firestack no intercepta las consultas DNS y onQuery nunca se invoca.
+            Settings.setTunMode(Settings.DNSModeIP, Settings.BlockModeFilter, Settings.PtModeAuto)
             val tunnel = Intra.connect2(tunFd, NGFW_MTU.toLong(), dns, bridge)
             ngfwTunnel = tunnel
             vpnInterface = established
