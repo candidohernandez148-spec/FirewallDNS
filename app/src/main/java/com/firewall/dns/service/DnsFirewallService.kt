@@ -1,6 +1,7 @@
 package com.firewall.dns.service
 
 import android.app.NotificationChannel
+import com.firewall.dns.R
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
@@ -143,7 +144,9 @@ class DnsFirewallService : VpnService() {
     private fun buildNotification() = NotificationCompat.Builder(this, CHANNEL_ID)
         .setContentTitle("Firewall DNS activo")
         .setContentText(notificationText())
-        .setSmallIcon(android.R.drawable.ic_lock_lock)
+        .setSmallIcon(R.drawable.ic_stat_firewall)
+            .setNumber(0)
+            .setBadgeIconType(NotificationCompat.BADGE_ICON_NONE)
         .setContentIntent(
             PendingIntent.getActivity(
                 this, 0, Intent(this, MainActivity::class.java),
