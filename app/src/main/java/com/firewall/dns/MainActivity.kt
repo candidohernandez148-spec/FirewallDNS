@@ -90,6 +90,7 @@ class MainActivity : ComponentActivity() {
                             onToggleVpn = { enable ->
                                 if (enable) checkPermissionsAndStart() else stopFirewallService()
                             },
+                            onToggleObservationMode = firewallViewModel::setObservationModeEnabled,
                             onOpenBatteryOpt = { requestIgnoreBatteryOptimization() },
                             onOpenVpnSettings = { startActivity(Intent(Settings.ACTION_VPN_SETTINGS)) }
                         )
@@ -203,91 +204,121 @@ private fun FirewallShieldIcon(modifier: Modifier = Modifier) {
             lineTo(size.width * 0.1f, size.height * 0.2f)
             close()
         }
-        drawPath(path = shield, color = shieldColor)
-        drawPath(
-            path = Path().apply {
-                moveTo(size.width * 0.46f, size.height * 0.3f)
-                lineTo(size.width * 0.54f, size.height * 0.3f)
-                lineTo(size.width * 0.54f, size.height * 0.58f)
-                lineTo(size.width * 0.46f, size.height * 0.58f)
-                close()
-                moveTo(size.width * 0.4f, size.height * 0.62f)
-                lineTo(size.width * 0.6f, size.height * 0.62f)
-            },
+        drawPath(shield, shieldColor)
+        drawLine(
             color = markColor,
-            style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
+            start = androidx.compose.ui.geometry.Offset(size.width * 0.3f, size.height * 0.51f),
+            end = androidx.compose.ui.geometry.Offset(size.width * 0.45f, size.height * 0.66f),
+            strokeWidth = size.width * 0.08f,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = markColor,
+            start = androidx.compose.ui.geometry.Offset(size.width * 0.45f, size.height * 0.66f),
+            end = androidx.compose.ui.geometry.Offset(size.width * 0.72f, size.height * 0.37f),
+            strokeWidth = size.width * 0.08f,
+            cap = StrokeCap.Round
         )
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FirewallApp(
+fun FirewallApp(
     viewModel: FirewallViewModel,
     onToggleVpn: (Boolean) -> Unit,
     onToggleObservationMode: (Boolean) -> Unit,
     onOpenBatteryOpt: () -> Unit,
     onOpenVpnSettings: () -> Unit
 ) {
-    var tab by remember { mutableStateOf(0) }
+    val context = LocalContext.current
     val stats by viewModel.stats.collectAsState()
     val logs by viewModel.filteredLogs.collectAsState()
-    val blocklistUrls by viewModel.blocklistUrls.collectAsState()
-    val smartMode by viewModel.smartModeEnabled.collectAsState()
-    val isDownloading by viewModel.isDownloading.collectAsState()
-    val customBlock by viewModel.customBlockList.collectAsState()
-    val customAllow by viewModel.customAllowList.collectAsState()
-    val excludedPackages by viewModel.excludedPackages.collectAsState()
-    val appSearch by viewModel.appSearch.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val onlyBlocked by viewModel.onlyBlocked.collectAsState()
+    val customBlock by viewModel.customBlockList.collectAsState()
+    val customAllow by viewModel.customAllowList.collectAsState()
+    val blocklistUrls by viewModel.blocklistUrls.collectAsState()
+    val smartModeEnabled by viewModel.smartModeEnabled.collectAsState()
+    val observationModeEnabled by viewModel.observationModeEnabled.collectAsState()
+    val isDownloading by viewModel.isDownloading.collectAsState()
     val apps by viewModel.filteredApps.collectAsState()
-    val observationMode by viewModel.observationModeEnabled.collectAsState()
+    val excludedPackages by viewModel.excludedPackages.collectAsState()
+    val appSearch by viewModel.appSearch.collectAsState()
 
-    val context = LocalContext.current
+    var selectedTab by remember { mutableIntStateOf(0) }
+    val tabs = listOf("Actividad", "Reglas", "Apps")
+
     LaunchedEffect(Unit) {
-        viewModel.toastMessage.collect { message ->
-            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        viewModel.toastMessage.collect { msg ->
+            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
         }
     }
 
     Scaffold(
         topBar = {
-            Surface(shadowElevation = 1.dp) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    FirewallShieldIcon(modifier = Modifier.padding(end = 10.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Firewall DNS", fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                        Text("Protección DNS local", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+            Column {
+                TopAppBar(
+                    title = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FirewallShieldIcon()
+                            Column {
+                                Text("Firewall DNS", fontWeight = FontWeight.Bold)
+                                Text(
+                                    text = "Protección DNS • Candido y Elizabeth",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        actionIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    ),
+                    actions = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = if (observationModeEnabled) "Obs" else "Bloq",
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(end = 4.dp)
+                            )
+                            Switch(
+                                checked = observationModeEnabled,
+                                onCheckedChange = onToggleObservationMode,
+                                modifier = Modifier.padding(end = 8.dp)
+                            )
+                            Switch(
+                                checked = stats.isRunning,
+                                onCheckedChange = onToggleVpn,
+                                modifier = Modifier.padding(end = 12.dp)
+                            )
+                        }
                     }
-                    if (tab == 0) {
-                        Switch(
-                            checked = observationMode,
-                            onCheckedChange = onToggleObservationMode,
-                            modifier = Modifier.padding(start = 8.dp)
+                )
+                TabRow(
+                    selectedTabIndex = selectedTab,
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.primary
+                ) {
+                    tabs.forEachIndexed { index, title ->
+                        Tab(
+                            selected = selectedTab == index,
+                            onClick = { selectedTab = index },
+                            text = { Text(title) }
                         )
                     }
                 }
             }
         }
-    ) { inner ->
-        Column(modifier = Modifier.fillMaxSize().padding(inner)) {
-            TabRow(selectedTabIndex = tab) {
-                Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Dashboard") })
-                Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Actividad") })
-                Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("Reglas") })
-                Tab(selected = tab == 3, onClick = { tab = 3 }, text = { Text("Configuración") })
-            }
-            when (tab) {
-                0 -> DashboardScreen(
-                    stats = stats,
-                    onToggleProtection = onToggleVpn,
-                    onOpenLogs = { tab = 1 },
-                    onOpenRules = { tab = 2 }
-                )
-                1 -> LogsScreen(
+    ) { padding ->
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+            when (selectedTab) {
+                0 -> LogsScreen(
                     stats = stats,
                     logs = logs,
                     searchQuery = searchQuery,
@@ -296,16 +327,15 @@ private fun FirewallApp(
                     onToggleOnlyBlocked = viewModel::onToggleOnlyBlocked,
                     onClearLogs = viewModel::clearLogs,
                     onToggleRule = { entry ->
-                        val nextBlocked = !entry.isBlocked
-                        viewModel.setCustomRule(entry.domain, nextBlocked)
+                        viewModel.setCustomRule(entry.domain, block = !entry.isBlocked)
                     }
                 )
-                2 -> RulesScreen(
+                1 -> RulesScreen(
                     stats = stats,
                     customBlock = customBlock,
                     customAllow = customAllow,
                     blocklistUrls = blocklistUrls,
-                    smartModeEnabled = smartMode,
+                    smartModeEnabled = smartModeEnabled,
                     isDownloading = isDownloading,
                     onToggleSmartMode = viewModel::toggleSmartMode,
                     onAddBlocklistUrl = viewModel::addBlocklistUrl,
@@ -314,7 +344,7 @@ private fun FirewallApp(
                     onAddCustomRule = viewModel::setCustomRule,
                     onRemoveCustomRule = viewModel::removeCustomRule
                 )
-                3 -> AppsSettingsScreen(
+                2 -> AppsSettingsScreen(
                     stats = stats,
                     apps = apps,
                     excludedPackages = excludedPackages,
