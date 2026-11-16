@@ -15,6 +15,7 @@ import com.firewall.dns.domain.model.AppInfoItem
 import com.firewall.dns.domain.model.DnsLogEntry
 import com.firewall.dns.domain.model.FirewallStats
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -32,6 +33,7 @@ import java.util.concurrent.atomic.AtomicLong
 object FirewallRepository {
 
     private const val MAX_LOGS = 400
+    private const val MAX_LEARNED_DOMAINS = 5000
     private const val ICON_SIZE_PX = 96
 
     private lateinit var appContext: Context
@@ -73,6 +75,9 @@ object FirewallRepository {
     private val customBlockSet = ConcurrentHashMap.newKeySet<String>()
     private val customAllowSet = ConcurrentHashMap.newKeySet<String>()
     private val learnedTokens = ConcurrentHashMap<String, Int>()
+    private val learnedDomains = ConcurrentHashMap.newKeySet<String>()
+    private val learningSaveScheduled = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val learningScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
 
     private val logCounter = AtomicLong(0L)
 
@@ -108,6 +113,7 @@ object FirewallRepository {
             _observationModeEnabled.value = prefsDataSource.getObservationModeEnabled()
             learnedTokens.clear()
             learnedTokens.putAll(prefsDataSource.getLearnedTokens())
+            _stats.update { it.copy(learnedTokens = learnedTokens.size) }
 
             _stats.update { it.copy(upstreamDns = prefsDataSource.getUpstreamDns()) }
 
@@ -221,12 +227,52 @@ object FirewallRepository {
             hostExceptions = hostExceptionSet,
             hostBlock = hostBlockSet
         )
-        if (baseEval.first || baseEval.second != "Permitido") return baseEval
-        if (DomainBlocker.isBlocked(domain)) return true to "Lista de anuncios y rastreo"
+        if (!baseEval.first && baseEval.second != "Permitido") {
+            // Excepción o lista blanca: el usuario o la lista confía en este dominio.
+            learnFromActivity(domain, blocked = false, step = 1)
+            return baseEval
+        }
+        if (baseEval.first) {
+            if (baseEval.second.startsWith("Adblock")) learnFromActivity(domain, blocked = true, step = 1)
+            return baseEval
+        }
+        if (DomainBlocker.isBlocked(domain)) {
+            learnFromActivity(domain, blocked = true, step = 1)
+            return true to "Lista de anuncios y rastreo"
+        }
         if (_smartModeEnabled.value) {
             SmartDomainAnalyzer.evaluate(domain, learnedTokens)?.let { return it }
         }
         return baseEval
+    }
+
+    // Aprende de la actividad real: cada dominio distinto bloqueado por la lista refuerza sus subdominios típicos
+    // (p. ej. "metrics", "adservice"), así dominios nuevos con el mismo patrón se detectan aunque no estén en la lista.
+    private fun learnFromActivity(domain: String, blocked: Boolean, step: Int) {
+        if (!_smartModeEnabled.value) return
+        val key = (if (blocked) "b:" else "a:") + domain
+        if (learnedDomains.size > MAX_LEARNED_DOMAINS) learnedDomains.clear()
+        if (!learnedDomains.add(key)) return
+        // Solo las excepciones explícitas restan peso; el tráfico permitido normal no se interpreta como señal.
+        if (SmartDomainAnalyzer.updateLearning(domain, blocked, learnedTokens, step)) scheduleLearningSave()
+    }
+
+    private fun scheduleLearningSave() {
+        _stats.update { it.copy(learnedTokens = learnedTokens.size) }
+        if (!learningSaveScheduled.compareAndSet(false, true)) return
+        learningScope.launch {
+            kotlinx.coroutines.delay(5_000)
+            learningSaveScheduled.set(false)
+            prefsDataSource.saveLearnedTokens(learnedTokens)
+        }
+    }
+
+    fun resetLearning() {
+        learnedTokens.clear()
+        learnedDomains.clear()
+        prefsDataSource.saveLearnedTokens(learnedTokens)
+        _stats.update { it.copy(learnedTokens = 0) }
+        _cacheInvalidateEvent.tryEmit(Unit)
     }
 
     fun setCustomRule(domain: String, block: Boolean) {
@@ -235,6 +281,9 @@ object FirewallRepository {
         val other = if (block) customAllowSet else customBlockSet
         set.add(clean)
         other.remove(clean)
+        if (_smartModeEnabled.value && SmartDomainAnalyzer.updateLearning(clean, block, learnedTokens, step = 3)) {
+            scheduleLearningSave()
+        }
         prefsDataSource.saveCustomBlockSet(customBlockSet)
         prefsDataSource.saveCustomAllowSet(customAllowSet)
         _customBlockList.value = customBlockSet.sorted()

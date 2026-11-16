@@ -17,7 +17,10 @@ object SmartDomainAnalyzer {
     private val GENERIC_TOKENS = setOf(
         "www", "api", "cdn", "m", "app", "static", "img", "image", "video",
         "media", "mobile", "edge", "gateway", "auth", "login", "account",
-        "accounts", "mail", "play", "web", "v1", "v2", "v3", "s1", "s2", "com", "net", "org"
+        "accounts", "mail", "play", "web", "v1", "v2", "v3", "s1", "s2", "com", "net", "org",
+        "update", "updates", "download", "dl", "store", "shop", "cloud", "push", "sync",
+        "config", "data", "service", "services", "time", "ntp", "dns", "cache", "content",
+        "secure", "assets", "files", "downloads", "live", "chat", "search", "maps", "photos"
     )
 
     private val HIGH_CONFIDENCE_TOKENS = setOf(
@@ -53,12 +56,13 @@ object SmartDomainAnalyzer {
         val labels = clean.split('.')
         if (labels.size < 2) return null
 
-        val leftmost = labels.first()
         val parts = labels.dropLast(1).flatMap { it.split('-', '_') }
+        val tokens = learnableTokens(clean)
 
-        val learnedScore = learnedWeights[leftmost] ?: 0
-        if (learnedScore <= -2) return null
-        if (learnedScore >= 2) return true to "IA Aprendido ($leftmost)"
+        if (tokens.any { (learnedWeights[it] ?: 0) <= -2 }) return null
+        val strongest = tokens.maxByOrNull { learnedWeights[it] ?: 0 }
+        val learnedMax = strongest?.let { learnedWeights[it] } ?: 0
+        if (learnedMax >= 3) return true to "IA aprendido ($strongest)"
 
         var score = 0
         var category = "Heurística"
@@ -90,13 +94,14 @@ object SmartDomainAnalyzer {
         if (labels.size >= 4 && score > 0) {
             score += 1
         }
+        val leftmost = labels.first()
         if (leftmost.length >= 10 && leftmost.count { it.isDigit() } >= 4 &&
             !leftmost.startsWith("cdn") && !leftmost.startsWith("img")
         ) {
             score += 1
         }
 
-        score += learnedScore.coerceIn(-2, 2)
+        if (learnedMax >= 1) score += 1
 
         return if (score >= 3) {
             true to "IA [${score}pts] $category"
@@ -105,23 +110,37 @@ object SmartDomainAnalyzer {
         }
     }
 
+    // Subdominios sin el dominio registrable (aprox. las dos últimas etiquetas), sin números finales y sin términos genéricos.
+    fun learnableTokens(domain: String): List<String> {
+        val labels = domain.lowercase().trimEnd('.').split('.')
+        if (labels.size < 3) return emptyList()
+        return labels.dropLast(2)
+            .flatMap { it.split('-', '_') }
+            .map { it.trimEnd { c -> c.isDigit() } }
+            .filter { it.length >= 2 && it !in GENERIC_TOKENS }
+            .distinct()
+    }
+
+    fun isCoreSafe(domain: String): Boolean = matchesDomainOrParent(domain.lowercase(), CORE_SAFE_HOSTS)
+
+    // Devuelve true si cambió algún peso. Bloqueo: +1 (aprendizaje automático) o +3 (decisión del usuario); permitir: -3.
     fun updateLearning(
         domain: String,
-        blockedByUser: Boolean,
-        weights: MutableMap<String, Int>
-    ) {
-        val clean = domain.lowercase()
-        val firstDot = clean.indexOf('.')
-        if (firstDot <= 0) return
-        val token = clean.substring(0, firstDot)
-        if (token in GENERIC_TOKENS || token.length < 2) return
-
-        val current = weights[token] ?: 0
-        weights[token] = if (blockedByUser) {
-            (current + 1).coerceAtMost(5)
-        } else {
-            (current - 3).coerceAtLeast(-5)
+        blocked: Boolean,
+        weights: MutableMap<String, Int>,
+        step: Int = 1
+    ): Boolean {
+        if (blocked && isCoreSafe(domain)) return false
+        var changed = false
+        for (token in learnableTokens(domain)) {
+            val current = weights[token] ?: 0
+            val next = if (blocked) (current + step).coerceAtMost(5) else (current - 3).coerceAtLeast(-5)
+            if (next != current) {
+                if (next == 0) weights.remove(token) else weights[token] = next
+                changed = true
+            }
         }
+        return changed
     }
 
     private fun matchesDomainOrParent(domain: String, set: Set<String>): Boolean {

@@ -107,6 +107,8 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
 
     fun toggleExcludedApp(packageName: String) { FirewallRepository.toggleExcludedApp(packageName) }
 
+    fun resetLearning() { FirewallRepository.resetLearning() }
+
     fun toggleSmartMode(enabled: Boolean) { FirewallRepository.setSmartModeEnabled(enabled) }
 
     fun setObservationModeEnabled(enabled: Boolean) {

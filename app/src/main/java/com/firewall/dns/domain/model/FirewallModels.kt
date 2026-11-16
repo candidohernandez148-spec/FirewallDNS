@@ -19,7 +19,8 @@ data class FirewallStats(
     val totalBlocked: Long = 0,
     val loadedRulesCount: Int = 0,
     val networkType: String = "Sin red",
-    val upstreamDns: String = "9.9.9.9"
+    val upstreamDns: String = "9.9.9.9",
+    val learnedTokens: Int = 0
 )
 
 data class DnsQueryInfo(

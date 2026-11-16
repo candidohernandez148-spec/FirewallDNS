@@ -335,6 +335,7 @@ fun FirewallApp(
                     smartModeEnabled = smartModeEnabled,
                     isDownloading = isDownloading,
                     onToggleSmartMode = viewModel::toggleSmartMode,
+                    onResetLearning = viewModel::resetLearning,
                     onAddBlocklistUrl = viewModel::addBlocklistUrl,
                     onRemoveBlocklistUrl = viewModel::removeBlocklistUrl,
                     onDownloadBlocklist = viewModel::downloadBlocklist,
