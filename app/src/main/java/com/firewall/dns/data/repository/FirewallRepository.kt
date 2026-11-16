@@ -61,9 +61,6 @@ object FirewallRepository {
     private val _observationModeEnabled = MutableStateFlow(true)
     val observationModeEnabled: StateFlow<Boolean> = _observationModeEnabled.asStateFlow()
 
-    private val _ngfwEnabled = MutableStateFlow(false)
-    val ngfwEnabled: StateFlow<Boolean> = _ngfwEnabled.asStateFlow()
-
     private val _cacheInvalidateEvent = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val cacheInvalidateEvent: SharedFlow<Unit> = _cacheInvalidateEvent.asSharedFlow()
 
@@ -108,7 +105,6 @@ object FirewallRepository {
             _blocklistUrls.value = prefsDataSource.getBlocklistUrls()
             _smartModeEnabled.value = prefsDataSource.getSmartModeEnabled()
             _observationModeEnabled.value = prefsDataSource.getObservationModeEnabled()
-            _ngfwEnabled.value = prefsDataSource.getNgfwEnabled()
             learnedTokens.clear()
             learnedTokens.putAll(prefsDataSource.getLearnedTokens())
 
@@ -200,14 +196,6 @@ object FirewallRepository {
                 AppFirewallManager.setBlocked(appContext.packageManager.getApplicationInfo(pkg, 0).uid, true)
             } catch (_: PackageManager.NameNotFoundException) {}
         }
-    }
-
-    fun isNgfwEnabled(): Boolean = _ngfwEnabled.value
-
-    fun setNgfwEnabled(enabled: Boolean) {
-        _ngfwEnabled.value = enabled
-        prefsDataSource.saveNgfwEnabled(enabled)
-        _rebuildVpnEvent.tryEmit(Unit)
     }
 
     suspend fun downloadBlocklist(): Result<String> {

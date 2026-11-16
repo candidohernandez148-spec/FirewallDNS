@@ -28,7 +28,6 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
     val smartModeEnabled: StateFlow<Boolean> = FirewallRepository.smartModeEnabled
     val observationModeEnabled: StateFlow<Boolean> = FirewallRepository.observationModeEnabled
 
-    val ngfwEnabled: StateFlow<Boolean> = FirewallRepository.ngfwEnabled
     val blockedApps: StateFlow<Set<String>> = FirewallRepository.blockedApps
 
     private val _searchQuery = MutableStateFlow("")
@@ -115,14 +114,6 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
         _toastMessage.tryEmit(
             if (enabled) "Monitoreo activo: se registran consultas y las reglas de bloqueo se aplican"
             else "Bloqueo DNS activo"
-        )
-    }
-
-    fun setNgfwEnabled(enabled: Boolean) {
-        FirewallRepository.setNgfwEnabled(enabled)
-        _toastMessage.tryEmit(
-            if (enabled) "NGFW activado: filtrado DNS con motor NGFW"
-            else "NGFW desactivado: solo filtrado DNS"
         )
     }
 

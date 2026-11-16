@@ -36,7 +36,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
-import com.firewall.dns.data.repository.FirewallRepository
 import com.firewall.dns.service.DnsFirewallService
 import com.firewall.dns.service.FirewallVpnService
 import com.firewall.dns.ui.screens.AppsSettingsScreen
@@ -91,10 +90,6 @@ class MainActivity : ComponentActivity() {
                             viewModel = firewallViewModel,
                             onToggleVpn = { enable ->
                                 if (enable) checkPermissionsAndStart() else stopFirewallService()
-                            },
-                            onNgfwChanged = { enabled ->
-                                firewallViewModel.setNgfwEnabled(enabled)
-                                if (firewallViewModel.stats.value.isRunning) restartFirewall()
                             },
                             onToggleObservationMode = firewallViewModel::setObservationModeEnabled,
                             onOpenBatteryOpt = { requestIgnoreBatteryOptimization() },
@@ -171,19 +166,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startFirewallService() {
-        if (FirewallRepository.isNgfwEnabled()) {
-            FirewallVpnService.start(this)
-        } else {
-            ContextCompat.startForegroundService(this, Intent(this, DnsFirewallService::class.java).apply {
-                action = DnsFirewallService.ACTION_START
-            })
-        }
-    }
-
-    // Cambia de motor (NGFW/DNS) con el servicio activo: se detiene y se vuelve a iniciar.
-    private fun restartFirewall() {
-        stopFirewallService()
-        window.decorView.postDelayed({ startFirewallService() }, 800)
+        FirewallVpnService.start(this)
     }
 
     private fun stopFirewallService() {
@@ -243,7 +226,6 @@ private fun FirewallShieldIcon(modifier: Modifier = Modifier) {
 fun FirewallApp(
     viewModel: FirewallViewModel,
     onToggleVpn: (Boolean) -> Unit,
-    onNgfwChanged: (Boolean) -> Unit,
     onToggleObservationMode: (Boolean) -> Unit,
     onOpenBatteryOpt: () -> Unit,
     onOpenVpnSettings: () -> Unit
@@ -262,7 +244,6 @@ fun FirewallApp(
     val apps by viewModel.filteredApps.collectAsState()
     val excludedPackages by viewModel.excludedPackages.collectAsState()
     val blockedApps by viewModel.blockedApps.collectAsState()
-    val ngfwEnabled by viewModel.ngfwEnabled.collectAsState()
     val appSearch by viewModel.appSearch.collectAsState()
 
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -369,8 +350,6 @@ fun FirewallApp(
                     excludedPackages = excludedPackages,
                     blockedApps = blockedApps,
                     onToggleBlockedApp = viewModel::toggleBlockedApp,
-                    ngfwEnabled = ngfwEnabled,
-                    onNgfwEnabledChange = onNgfwChanged,
                     appSearch = appSearch,
                     onAppSearchChange = viewModel::onAppSearchChange,
                     onSelectUpstreamDns = viewModel::setUpstreamDns,

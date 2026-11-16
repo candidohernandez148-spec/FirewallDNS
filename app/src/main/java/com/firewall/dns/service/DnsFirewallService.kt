@@ -17,10 +17,6 @@ import android.os.Process
 import android.system.OsConstants
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
-import com.celzero.firestack.backend.Backend
-import com.celzero.firestack.intra.Intra
-import com.celzero.firestack.settings.Settings
-import com.celzero.firestack.intra.Tunnel
 import com.firewall.dns.MainActivity
 import com.firewall.dns.data.repository.FirewallRepository
 import com.firewall.dns.domain.engine.DnsPacketEngine
@@ -45,7 +41,6 @@ class DnsFirewallService : VpnService() {
 
     private var vpnInterface: ParcelFileDescriptor? = null
     private var tunReaderThread: Thread? = null
-    private var ngfwTunnel: Tunnel? = null
     private val executor = ThreadPoolExecutor(
         4, 4, 0L, TimeUnit.MILLISECONDS,
         ArrayBlockingQueue(256),
@@ -85,11 +80,6 @@ class DnsFirewallService : VpnService() {
         private const val CHANNEL_ID = "dns_firewall_channel"
         private const val NOTIFICATION_ID = 2001
         private const val CACHE_TTL_MS = 60_000L
-        private const val NGFW_MTU = 1500
-        const val NGFW_GATEWAY4 = "10.10.10.1"
-        const val NGFW_DNS4 = "10.10.10.3"
-        const val NGFW_GATEWAY6 = "fd00:10:10::1"
-        const val NGFW_DNS6 = "fd00:10:10::3"
         private val TRAPPED_IPV4_DNS = listOf("8.8.8.8", "8.8.4.4", "1.1.1.1", "1.0.0.1")
         private val TRAPPED_IPV6_DNS = listOf(
             "2001:4860:4860::8888", "2001:4860:4860::8844",
@@ -143,9 +133,7 @@ class DnsFirewallService : VpnService() {
         return START_STICKY
     }
 
-    private fun notificationText(): String = if (FirewallRepository.isNgfwEnabled()) {
-        "NGFW activo: filtrado DNS por dominio"
-    } else if (FirewallRepository.isObservationModeEnabled()) {
+    private fun notificationText(): String = if (FirewallRepository.isObservationModeEnabled()) {
         "Monitoreo + bloqueo por reglas DNS; DoH/DoT no se inspecciona"
     } else {
         "Bloqueo DNS activo; DoH/DoT no se inspecciona"
@@ -191,7 +179,6 @@ class DnsFirewallService : VpnService() {
     @Synchronized
     private fun startVpn() {
         closeInterface()
-        if (FirewallRepository.isNgfwEnabled() && startNgfw()) return
         val upstream = FirewallRepository.getUpstreamDns()
         val builder = Builder()
             .setSession("FirewallDNS")
@@ -240,71 +227,6 @@ class DnsFirewallService : VpnService() {
                 }
             } catch (_: IOException) {}
         }.apply { start() }
-    }
-
-    // Modo NGFW: todo el tráfico entra a la VPN y Firestack intercepta el DNS y consulta a NgfwBridge.
-    private fun startNgfw(): Boolean {
-        return try {
-            // Sin IPv6 real en la red, enrutar ::/0 hace que las apps esperen timeouts (lentitud).
-            val v6 = hasIpv6()
-            val builder = Builder()
-                .setSession("FirewallDNS NGFW")
-                .setMtu(NGFW_MTU)
-                .addAddress(NGFW_GATEWAY4, 24)
-                .addDnsServer(NGFW_DNS4)
-                .addRoute("0.0.0.0", 0)
-            if (v6) {
-                builder.addAddress(NGFW_GATEWAY6, 120)
-                    .addDnsServer(NGFW_DNS6)
-                    .addRoute("::", 0)
-            }
-            (FirewallRepository.excludedPackages.value + packageName).forEach { pkg ->
-                try {
-                    builder.addDisallowedApplication(pkg)
-                } catch (_: PackageManager.NameNotFoundException) {}
-            }
-
-            val established = builder.establish() ?: return false
-            vpnInterface = established
-            val tunFd = established.dup().detachFd().toLong()
-            val dns = Intra.newDefaultDNS(Backend.DNS53, FirewallRepository.getUpstreamDns(), "")
-            val bridge = NgfwBridge(this, connectivityManager)
-            // Firestack solo intercepta el DNS dirigido a estas direcciones (ip:puerto) y a las de la interfaz.
-            val ifaceAddrs = if (v6) "$NGFW_GATEWAY4/24,$NGFW_GATEWAY6/120" else "$NGFW_GATEWAY4/24"
-            val fakeDns = if (v6) "$NGFW_DNS4:53,[$NGFW_DNS6]:53" else "$NGFW_DNS4:53"
-            val tunnel = try {
-                Intra.connect(tunFd, NGFW_MTU.toLong(), NGFW_MTU.toLong(), ifaceAddrs, fakeDns, dns, bridge)
-            } catch (e: Throwable) {
-                // Firestack no tomó el descriptor; se cierra para no dejar la VPN colgada.
-                try { ParcelFileDescriptor.adoptFd(tunFd.toInt()).close() } catch (_: Throwable) {}
-                throw e
-            }
-            Settings.setTunMode(Settings.DNSModeIP, Settings.BlockModeFilter, Settings.PtModeAuto)
-            // Firestack solo resuelve ids registrados; Preferred es el que usan sus consultas normales.
-            try {
-                Intra.addDNSProxy(tunnel, Backend.Preferred, "${FirewallRepository.getUpstreamDns()}:53")
-                bridge.upstreamId = Backend.Preferred
-            } catch (_: Throwable) {
-                bridge.upstreamId = Backend.Default
-            }
-            ngfwTunnel = tunnel
-            isRunning = true
-            FirewallRepository.setRunning(true)
-            true
-        } catch (_: Throwable) {
-            closeInterface()
-            false
-        }
-    }
-
-    private fun hasIpv6(): Boolean = try {
-        val lp = connectivityManager.getLinkProperties(connectivityManager.activeNetwork)
-        lp?.linkAddresses?.any {
-            val a = it.address
-            a is java.net.Inet6Address && !a.isLinkLocalAddress && !a.isLoopbackAddress && !a.isSiteLocalAddress
-        } == true
-    } catch (_: Throwable) {
-        false
     }
 
     private fun handlePacket(req: ByteArray, output: FileOutputStream) {
@@ -464,13 +386,10 @@ class DnsFirewallService : VpnService() {
         FirewallRepository.setRunning(false)
         tunReaderThread?.interrupt()
         tunReaderThread = null
-        val tunnel = ngfwTunnel
-        ngfwTunnel = null
         val iface = vpnInterface
         vpnInterface = null
-        // disconnect() es nativo y puede bloquear; no debe congelar el botón de apagado.
+        // Se cierra fuera del hilo principal para no congelar el botón de apagado.
         Thread {
-            try { tunnel?.disconnect() } catch (_: Throwable) {}
             try { iface?.close() } catch (_: IOException) {}
         }.start()
     }

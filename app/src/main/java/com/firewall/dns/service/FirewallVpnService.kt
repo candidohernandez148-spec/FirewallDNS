@@ -13,6 +13,7 @@ import android.os.Build
 import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
 import com.celzero.firestack.backend.Backend
 import com.celzero.firestack.intra.Intra
 import com.celzero.firestack.intra.Tunnel
@@ -43,7 +44,12 @@ class FirewallVpnService : VpnService() {
             // Firestack puede tardar en conectar; se hace fuera del hilo principal para no congelar la app.
             Thread {
                 if (!startTunnel()) {
+                    // Si Firestack no arranca, se usa el filtro DNS clásico para no dejar al usuario sin protección.
                     stopTunnel()
+                    ContextCompat.startForegroundService(
+                        this,
+                        Intent(this, DnsFirewallService::class.java).apply { action = DnsFirewallService.ACTION_START }
+                    )
                     stopSelf()
                 }
             }.start()
