@@ -42,6 +42,11 @@ fun AppsSettingsScreen(
     ngfwEnabled: Boolean,
     ngfwRules: List<NgfwRule>,
     ngfwBlockedApps: Set<String>,
+    ngfwDefaultDeny: Boolean,
+    ngfwHits: Map<String, Long>,
+    onNgfwDefaultDenyChange: (Boolean) -> Unit,
+    onMoveNgfwRule: (String, Int) -> Unit,
+    onResetNgfwHits: () -> Unit,
     onNgfwEnabledChange: (Boolean) -> Unit,
     onAddNgfwRule: (String) -> Unit,
     onRemoveNgfwRule: (String) -> Unit,
@@ -122,7 +127,7 @@ fun AppsSettingsScreen(
                     OutlinedTextField(
                         value = ruleText,
                         onValueChange = { ruleText = it },
-                        label = { Text("Regla: block tcp 1.2.3.0/24 443") },
+                        label = { Text("Política: deny tcp 1.2.3.0/24 443 name=mi_regla") },
                         singleLine = true,
                         shape = RoundedCornerShape(16.dp),
                         modifier = Modifier.fillMaxWidth()
@@ -134,14 +139,34 @@ fun AppsSettingsScreen(
                         },
                         enabled = ruleText.isNotBlank()
                     ) { Text("Agregar regla") }
-                    ngfwRules.forEach { rule ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(rule.text, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                            TextButton(onClick = { onRemoveNgfwRule(rule.text) }) { Text("Quitar") }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Política implícita: denegar todo lo no coincidente",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Switch(checked = ngfwDefaultDeny, onCheckedChange = onNgfwDefaultDenyChange)
+                    }
+                    ngfwRules.forEachIndexed { index, rule ->
+                        Column {
+                            Text(
+                                "#${index + 1} ${rule.name ?: ""}  ·  ${ngfwHits[rule.text] ?: 0} coincidencias",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(rule.text, style = MaterialTheme.typography.bodySmall)
+                            Row {
+                                TextButton(onClick = { onMoveNgfwRule(rule.text, -1) }, enabled = index > 0) { Text("Subir") }
+                                TextButton(onClick = { onMoveNgfwRule(rule.text, 1) }, enabled = index < ngfwRules.lastIndex) { Text("Bajar") }
+                                TextButton(onClick = { onRemoveNgfwRule(rule.text) }) { Text("Quitar") }
+                            }
                         }
                     }
+                    if (ngfwHits.isNotEmpty()) {
+                        TextButton(onClick = onResetNgfwHits) { Text("Reiniciar contadores") }
+                    }
                     Text(
-                        "Se evalúan en orden; la primera coincidencia gana y lo demás se permite. Las apps excluidas no pasan por el NGFW.",
+                        "Se evalúan en orden (como las políticas de FortiGate); gana la primera coincidencia. Opcionales: app=<paquete>, name=<nombre>. Las apps excluidas no pasan por el NGFW.",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

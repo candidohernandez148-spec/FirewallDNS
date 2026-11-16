@@ -11,7 +11,9 @@ enum class NgfwProtocol(val label: String, val number: Int?) {
 }
 
 /**
- * Regla de capa 3/4. Formato de texto: `<block|allow> <tcp|udp|any> <ip[/prefijo]|any> <puerto|min-max|any>`.
+ * Política estilo FortiGate (capa 3/4 + app de origen).
+ * Texto: `<deny|accept> <tcp|udp|any> <ip[/prefijo]|any> <puerto|min-max|any> [app=<paquete>] [name=<nombre>]`.
+ * `block`/`allow` se aceptan como sinónimos de `deny`/`accept`.
  */
 data class NgfwRule(
     val action: NgfwAction,
@@ -20,9 +22,12 @@ data class NgfwRule(
     val prefixLength: Int,
     val portStart: Int,
     val portEnd: Int,
+    val app: String?,
+    val name: String?,
     val text: String
 ) {
-    fun matches(proto: Int, dstIp: ByteArray, dstPort: Int): Boolean {
+    fun matches(packages: List<String>, proto: Int, dstIp: ByteArray, dstPort: Int): Boolean {
+        if (app != null && app !in packages) return false
         protocol.number?.let { if (it != proto) return false }
         if (portStart != 0 || portEnd != 65535) {
             if (dstPort !in portStart..portEnd) return false
@@ -38,11 +43,11 @@ data class NgfwRule(
     companion object {
         fun parse(raw: String): NgfwRule? {
             val parts = raw.trim().lowercase().split(Regex("\\s+"))
-            if (parts.size != 4) return null
+            if (parts.size < 4) return null
 
             val action = when (parts[0]) {
-                "block" -> NgfwAction.BLOCK
-                "allow" -> NgfwAction.ALLOW
+                "block", "deny" -> NgfwAction.BLOCK
+                "allow", "accept" -> NgfwAction.ALLOW
                 else -> return null
             }
             val protocol = NgfwProtocol.values().firstOrNull { it.label == parts[1] } ?: return null
@@ -74,8 +79,19 @@ data class NgfwRule(
                 end = hi
             }
 
+            var app: String? = null
+            var name: String? = null
+            for (extra in parts.drop(4)) {
+                val value = extra.substringAfter('=', "")
+                when {
+                    extra.startsWith("app=") && value.isNotEmpty() -> app = value
+                    extra.startsWith("name=") && value.isNotEmpty() -> name = value
+                    else -> return null
+                }
+            }
+
             val canonical = parts.joinToString(" ")
-            return NgfwRule(action, protocol, network, prefix, start, end, canonical)
+            return NgfwRule(action, protocol, network, prefix, start, end, app, name, canonical)
         }
 
         // Evita resolver nombres de host: solo se aceptan IPv4/IPv6 literales.
@@ -99,9 +115,11 @@ data class NgfwRule(
 object NgfwRuleEngine {
 
     /** Devuelve la primera regla que coincide; null si ninguna aplica (se permite). */
-    fun firstMatch(rules: List<NgfwRule>, proto: Int, dstIp: String, dstPort: Int): NgfwRule? {
+    fun firstMatch(
+        rules: List<NgfwRule>, packages: List<String>, proto: Int, dstIp: String, dstPort: Int
+    ): NgfwRule? {
         val bytes = parseIp(dstIp) ?: return null
-        return rules.firstOrNull { it.matches(proto, bytes, dstPort) }
+        return rules.firstOrNull { it.matches(packages, proto, bytes, dstPort) }
     }
 
     fun parseIp(value: String): ByteArray? {

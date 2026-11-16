@@ -247,6 +247,8 @@ fun FirewallApp(
     val ngfwEnabled by viewModel.ngfwEnabled.collectAsState()
     val ngfwRules by viewModel.ngfwRules.collectAsState()
     val ngfwBlockedApps by viewModel.ngfwBlockedApps.collectAsState()
+    val ngfwDefaultDeny by viewModel.ngfwDefaultDeny.collectAsState()
+    val ngfwHits by viewModel.ngfwHits.collectAsState()
     val appSearch by viewModel.appSearch.collectAsState()
 
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -354,6 +356,11 @@ fun FirewallApp(
                     ngfwEnabled = ngfwEnabled,
                     ngfwRules = ngfwRules,
                     ngfwBlockedApps = ngfwBlockedApps,
+                    ngfwDefaultDeny = ngfwDefaultDeny,
+                    ngfwHits = ngfwHits,
+                    onNgfwDefaultDenyChange = viewModel::setNgfwDefaultDeny,
+                    onMoveNgfwRule = viewModel::moveNgfwRule,
+                    onResetNgfwHits = viewModel::resetNgfwHits,
                     onNgfwEnabledChange = viewModel::setNgfwEnabled,
                     onAddNgfwRule = viewModel::addNgfwRule,
                     onRemoveNgfwRule = viewModel::removeNgfwRule,

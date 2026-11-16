@@ -33,6 +33,9 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
     val ngfwRules: StateFlow<List<NgfwRule>> = FirewallRepository.ngfwRules
     val ngfwBlockedApps: StateFlow<Set<String>> = FirewallRepository.ngfwBlockedApps
 
+    val ngfwDefaultDeny: StateFlow<Boolean> = FirewallRepository.ngfwDefaultDeny
+    val ngfwHits: StateFlow<Map<String, Long>> = FirewallRepository.ngfwHits
+
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
@@ -128,9 +131,15 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
 
     fun addNgfwRule(text: String) {
         if (!FirewallRepository.addNgfwRule(text)) {
-            _toastMessage.tryEmit("Formato: block|allow tcp|udp|any IP[/prefijo]|any puerto|min-max|any")
+            _toastMessage.tryEmit("Formato: deny|accept tcp|udp|any IP[/prefijo]|any puerto|min-max|any [app=paquete] [name=nombre]")
         }
     }
+
+    fun setNgfwDefaultDeny(deny: Boolean) { FirewallRepository.setNgfwDefaultDeny(deny) }
+
+    fun moveNgfwRule(text: String, delta: Int) { FirewallRepository.moveNgfwRule(text, delta) }
+
+    fun resetNgfwHits() { FirewallRepository.resetNgfwHits() }
 
     fun removeNgfwRule(text: String) { FirewallRepository.removeNgfwRule(text) }
 

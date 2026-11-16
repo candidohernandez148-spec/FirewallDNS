@@ -21,6 +21,7 @@ class PreferencesDataSource(context: Context) {
         private const val KEY_OBSERVATION_MODE = "observation_mode_enabled"
         private const val KEY_NGFW_ENABLED = "ngfw_enabled"
         private const val KEY_NGFW_RULES = "ngfw_rules"
+        private const val KEY_NGFW_DEFAULT_DENY = "ngfw_default_deny"
         private const val KEY_NGFW_BLOCKED_APPS = "ngfw_blocked_apps"
 
         const val DEFAULT_ADBLOCK_URL =
@@ -97,6 +98,12 @@ class PreferencesDataSource(context: Context) {
 
     fun saveNgfwEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_NGFW_ENABLED, enabled).apply()
+    }
+
+    fun getNgfwDefaultDeny(): Boolean = prefs.getBoolean(KEY_NGFW_DEFAULT_DENY, false)
+
+    fun saveNgfwDefaultDeny(deny: Boolean) {
+        prefs.edit().putBoolean(KEY_NGFW_DEFAULT_DENY, deny).apply()
     }
 
     fun getNgfwRules(): List<String> =
