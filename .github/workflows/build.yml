@@ -32,12 +32,13 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/app/libs"
           cp build/intra/tun2socks.aar "$GITHUB_WORKSPACE/app/libs/firestack.aar"
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "8.14"
 
       - name: Compilar APK debug
         run: |
-          chmod +x ./gradlew
-          ./gradlew assembleDebug --stacktrace
+          gradle assembleDebug --no-daemon --stacktrace
 
       - uses: actions/upload-artifact@v4
         with:
