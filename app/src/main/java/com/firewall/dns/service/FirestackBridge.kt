@@ -31,6 +31,12 @@ class FirestackBridge(
     var upstreamId: String = Backend.Default
 
     private val appLabels = HashMap<Int, String>()
+    private val recentConnections = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    private companion object {
+        const val CONNECTION_DEDUP_MS = 4000L
+        val VPN_DNS = setOf("10.111.222.3", "fd66:f83a:c650::3")
+    }
 
     override fun bind4(who: String?, addrPort: String?, fd: Long) = protect(who, fd)
 
@@ -50,14 +56,7 @@ class FirestackBridge(
             opts.tidcsv = upstreamId
             return opts
         }
-        val (repoBlocked, repoReason) = try {
-            FirewallRepository.evaluateDomain(qname)
-        } catch (_: Throwable) {
-            false to "Permitido"
-        }
-        // Una regla propia (p. ej. permitir) tiene prioridad sobre la lista integrada.
-        val listed = !repoBlocked && repoReason == "Permitido" && DomainBlocker.isBlocked(qname)
-        val blocked = repoBlocked || listed
+        val (blocked, reason) = evaluate(qname)
         opts.tidcsv = if (blocked) Backend.BlockAll else upstreamId
         FirewallRepository.addLog(
             domain = qname,
@@ -67,7 +66,7 @@ class FirestackBridge(
                 else -> "T$qtype"
             },
             isBlocked = blocked,
-            reason = if (listed) "Lista de anuncios y rastreo" else repoReason,
+            reason = reason,
             appName = uid?.toIntOrNull()?.let { appLabel(it) } ?: "Sistema / DNS"
         )
         return opts
@@ -100,12 +99,47 @@ class FirestackBridge(
         mark.cid = UUID.randomUUID().toString().take(8)
         val owner = resolveUid(protocol, uid, src, dst)
         mark.uid = owner.toString()
-        mark.pidcsv = if (owner != Process.INVALID_UID && AppFirewallManager.isUidBlocked(owner)) {
-            Backend.Block
-        } else {
-            Backend.Exit
+        val target = splitHostPort(dst)
+        val isDns = target != null && (target.second == 53 || target.first in VPN_DNS)
+        if (isDns) {
+            mark.pidcsv = Backend.Base
+            return mark
         }
+        val appBlocked = owner != Process.INVALID_UID && AppFirewallManager.isUidBlocked(owner)
+        val names = domains.orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
+        val blockedName = if (appBlocked) null else names.firstOrNull { evaluate(it).first }
+        val blocked = appBlocked || blockedName != null
+        mark.pidcsv = if (blocked) Backend.Block else Backend.Exit
+        logConnection(
+            owner, protocol, target, names.firstOrNull() ?: target?.first ?: dst.orEmpty(),
+            blocked, if (appBlocked) "Internet bloqueado para la app" else if (blockedName != null) "Dominio bloqueado" else "Conexión permitida"
+        )
         return mark
+    }
+
+    private fun evaluate(domain: String): Pair<Boolean, String> = try {
+        FirewallRepository.evaluateDomain(DomainBlocker.normalize(domain))
+    } catch (_: Throwable) {
+        false to "Permitido"
+    }
+
+    // Registra conexiones de cada app; se evita repetir la misma app y destino en una ventana corta.
+    private fun logConnection(
+        uid: Int, protocol: Int, target: Pair<String, Int>?, label: String, blocked: Boolean, reason: String
+    ) {
+        val key = "$uid|$label|${target?.second}|$blocked"
+        val now = System.currentTimeMillis()
+        val last = recentConnections[key]
+        if (last != null && now - last < CONNECTION_DEDUP_MS) return
+        if (recentConnections.size > 500) recentConnections.entries.removeIf { now - it.value > CONNECTION_DEDUP_MS }
+        recentConnections[key] = now
+        FirewallRepository.addLog(
+            domain = label,
+            qType = (if (protocol == 17) "UDP" else "TCP") + (target?.let { ":${it.second}" } ?: ""),
+            isBlocked = blocked,
+            reason = reason,
+            appName = if (uid >= 0) appLabel(uid) else "Sistema"
+        )
     }
 
     override fun inflow(protocol: Int, uid: Int, src: String?, dst: String?): Mark {

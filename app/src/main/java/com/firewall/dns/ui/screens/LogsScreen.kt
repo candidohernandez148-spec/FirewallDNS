@@ -51,6 +51,25 @@ fun LogsScreen(
         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(22.dp),
+            color = if (stats.isRunning) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+        ) {
+            Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    if (stats.isRunning) "Firewall activo" else "Firewall apagado",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    if (stats.isRunning) "Motor ${stats.engine} · ${stats.networkType} · filtrando dominios y conexiones por app"
+                    else "Enciende el interruptor de la barra superior para proteger tu dispositivo.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             ActivityMetric("Bloqueados", stats.totalBlocked.toString(), MaterialTheme.colorScheme.error, Modifier.weight(1f))
             ActivityMetric("Permitidos", stats.totalAllowed.toString(), MaterialTheme.colorScheme.secondary, Modifier.weight(1f))
@@ -82,7 +101,7 @@ fun LogsScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Actividad DNS", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("Actividad de red", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text("${logs.size} eventos", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
@@ -91,7 +110,7 @@ fun LogsScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Sin actividad todavía", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text(
-                        text = if (stats.isRunning) "Las consultas DNS aparecerán aquí." else "Activa la protección para empezar a registrar consultas.",
+                        text = if (stats.isRunning) "Las consultas DNS y conexiones de cada app aparecerán aquí." else "Activa la protección para empezar a registrar consultas.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

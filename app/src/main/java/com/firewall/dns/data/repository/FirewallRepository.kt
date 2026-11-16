@@ -1,6 +1,7 @@
 package com.firewall.dns.data.repository
 
 import com.firewall.dns.domain.engine.AppFirewallManager
+import com.firewall.dns.domain.engine.DomainBlocker
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
@@ -221,6 +222,7 @@ object FirewallRepository {
             hostBlock = hostBlockSet
         )
         if (baseEval.first || baseEval.second != "Permitido") return baseEval
+        if (DomainBlocker.isBlocked(domain)) return true to "Lista de anuncios y rastreo"
         if (_smartModeEnabled.value) {
             SmartDomainAnalyzer.evaluate(domain, learnedTokens)?.let { return it }
         }
@@ -265,8 +267,8 @@ object FirewallRepository {
         if (enabled) _rebuildVpnEvent.tryEmit(Unit) else _cacheInvalidateEvent.tryEmit(Unit)
     }
 
-    fun setRunning(running: Boolean) {
-        _stats.update { it.copy(isRunning = running) }
+    fun setRunning(running: Boolean, engine: String = "") {
+        _stats.update { it.copy(isRunning = running, engine = if (running) engine else "") }
     }
 
     fun addLog(domain: String, qType: String, isBlocked: Boolean, reason: String, appName: String) {

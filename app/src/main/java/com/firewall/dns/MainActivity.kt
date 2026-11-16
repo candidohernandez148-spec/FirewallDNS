@@ -171,9 +171,7 @@ class MainActivity : ComponentActivity() {
 
     private fun stopFirewallService() {
         FirewallVpnService.stop(this)
-        startService(Intent(this, DnsFirewallService::class.java).apply {
-            action = DnsFirewallService.ACTION_STOP
-        })
+        stopService(Intent(this, DnsFirewallService::class.java))
     }
 
     @SuppressLint("BatteryLife")
@@ -247,7 +245,7 @@ fun FirewallApp(
     val appSearch by viewModel.appSearch.collectAsState()
 
     var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Actividad", "Reglas", "Apps")
+    val tabs = listOf("Actividad", "Listas", "Apps")
 
     LaunchedEffect(Unit) {
         viewModel.toastMessage.collect { msg ->
@@ -268,9 +266,10 @@ fun FirewallApp(
                             Column {
                                 Text("Firewall DNS", fontWeight = FontWeight.Bold)
                                 Text(
-                                    text = "Protección DNS • Candido y Elizabeth",
+                                    text = if (stats.isRunning) "Protegido · ${stats.engine}" else "Protección desactivada",
                                     fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = if (stats.isRunning) MaterialTheme.colorScheme.secondary
+                                    else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -283,14 +282,10 @@ fun FirewallApp(
                     actions = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = if (observationModeEnabled) "Monitoreo" else "Bloqueo",
+                                text = if (stats.isRunning) "ON" else "OFF",
                                 fontSize = 12.sp,
-                                modifier = Modifier.padding(end = 4.dp)
-                            )
-                            Switch(
-                                checked = observationModeEnabled,
-                                onCheckedChange = onToggleObservationMode,
-                                modifier = Modifier.padding(end = 8.dp)
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(end = 6.dp)
                             )
                             Switch(
                                 checked = stats.isRunning,

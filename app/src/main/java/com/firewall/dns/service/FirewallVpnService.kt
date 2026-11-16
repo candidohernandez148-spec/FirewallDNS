@@ -24,6 +24,8 @@ import com.firewall.dns.data.repository.FirewallRepository
 /** VPN basada en Firestack: filtra DNS con DomainBlocker y conexiones por UID con AppFirewallManager. */
 class FirewallVpnService : VpnService() {
 
+    @Volatile
+    private var stopRequested = false
     private var tunnel: Tunnel? = null
     private var vpnInterface: ParcelFileDescriptor? = null
 
@@ -36,14 +38,18 @@ class FirewallVpnService : VpnService() {
         if (intent?.action == ACTION_STOP) {
             FirewallRepository.setShouldRun(false)
             stopTunnel()
+            stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return START_NOT_STICKY
         }
+        stopRequested = false
         startForegroundNotification()
         if (tunnel == null) {
             // Firestack puede tardar en conectar; se hace fuera del hilo principal para no congelar la app.
             Thread {
-                if (!startTunnel()) {
+                if (startTunnel()) {
+                    if (stopRequested) stopTunnel()
+                } else if (!stopRequested) {
                     // Si Firestack no arranca, se usa el filtro DNS clásico para no dejar al usuario sin protección.
                     stopTunnel()
                     ContextCompat.startForegroundService(
@@ -51,6 +57,8 @@ class FirewallVpnService : VpnService() {
                         Intent(this, DnsFirewallService::class.java).apply { action = DnsFirewallService.ACTION_START }
                     )
                     stopSelf()
+                } else {
+                    stopTunnel()
                 }
             }.start()
         }
@@ -105,7 +113,7 @@ class FirewallVpnService : VpnService() {
             }
             tunnel = t
             FirewallRepository.setShouldRun(true)
-            FirewallRepository.setRunning(true)
+            FirewallRepository.setRunning(true, "Firestack")
             true
         } catch (_: Throwable) {
             false
@@ -129,8 +137,11 @@ class FirewallVpnService : VpnService() {
         tunnel = null
         vpnInterface = null
         FirewallRepository.setRunning(false)
-        try { t?.disconnect() } catch (_: Throwable) {}
-        try { fd?.close() } catch (_: Throwable) {}
+        // disconnect() es nativo y puede bloquear; no debe congelar el apagado desde la interfaz.
+        Thread {
+            try { t?.disconnect() } catch (_: Throwable) {}
+            try { fd?.close() } catch (_: Throwable) {}
+        }.start()
     }
 
     override fun onRevoke() {
@@ -140,6 +151,7 @@ class FirewallVpnService : VpnService() {
     }
 
     override fun onDestroy() {
+        stopRequested = true
         stopTunnel()
         super.onDestroy()
     }
@@ -185,9 +197,9 @@ class FirewallVpnService : VpnService() {
         }
 
         fun stop(context: Context) {
-            context.startService(
-                Intent(context, FirewallVpnService::class.java).apply { action = ACTION_STOP }
-            )
+            FirewallRepository.setShouldRun(false)
+            FirewallRepository.setRunning(false)
+            context.stopService(Intent(context, FirewallVpnService::class.java))
         }
     }
 }

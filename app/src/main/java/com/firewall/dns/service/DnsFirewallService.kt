@@ -204,7 +204,7 @@ class DnsFirewallService : VpnService() {
         }
         vpnInterface = established
         isRunning = true
-        FirewallRepository.setRunning(true)
+        FirewallRepository.setRunning(true, "DNS clásico")
         val input = FileInputStream(established.fileDescriptor)
         val output = FileOutputStream(established.fileDescriptor)
 

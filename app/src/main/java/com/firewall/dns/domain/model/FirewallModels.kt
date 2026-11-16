@@ -14,6 +14,7 @@ data class DnsLogEntry(
 
 data class FirewallStats(
     val isRunning: Boolean = false,
+    val engine: String = "",
     val totalAllowed: Long = 0,
     val totalBlocked: Long = 0,
     val loadedRulesCount: Int = 0,
