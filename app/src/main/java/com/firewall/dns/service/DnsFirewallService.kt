@@ -267,6 +267,13 @@ class DnsFirewallService : VpnService() {
             // Sin DNSModeIP, Firestack no intercepta las consultas DNS y onQuery nunca se invoca.
             Settings.setTunMode(Settings.DNSModeIP, Settings.BlockModeFilter, Settings.PtModeAuto)
             val tunnel = Intra.connect2(tunFd, NGFW_MTU.toLong(), dns, bridge)
+            // Firestack solo resuelve ids registrados; Preferred es el que usan sus consultas normales.
+            try {
+                Intra.addDNSProxy(tunnel, Backend.Preferred, "${FirewallRepository.getUpstreamDns()}:53")
+                bridge.upstreamId = Backend.Preferred
+            } catch (_: Throwable) {
+                bridge.upstreamId = Backend.Default
+            }
             ngfwTunnel = tunnel
             vpnInterface = established
             isRunning = true
