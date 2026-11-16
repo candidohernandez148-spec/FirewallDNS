@@ -1,36 +1,93 @@
-# This is a basic workflow to help you get started with Actions
+name: Compilar APK
 
-name: CI
-
-# Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the "main" branch
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-
-  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
+  push:
+    branches: [ main ]
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "build"
   build:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      # Runs a single command using the runners shell
-      - name: Run a one-line script
-        run: echo Hello, world!
+      - name: Configurar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
 
-      # Runs a set of commands using the runners shell
-      - name: Run a multi-line script
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14"
+
+      - name: Compilar Debug APK
+        run: gradle assembleDebug --no-daemon
+
+      - name: Inspeccionar firmas de Firestack (opcional)
+        if: success()
+        shell: bash
         run: |
-          echo Add other actions to build,
-          echo test, and deploy your project.
+          set -Eeuo pipefail
+
+          GRADLE_CACHE="${GRADLE_USER_HOME:-$HOME/.gradle}"
+          AAR="$(find "$GRADLE_CACHE" -type f -iname '*firestack*.aar' -print -quit 2>/dev/null || true)"
+
+          if [[ -z "$AAR" ]]; then
+            echo "No se encontró el AAR en la caché; se omite solo la inspección."
+            exit 0
+          fi
+
+          JAR="/tmp/firestack-classes.jar"
+          if ! unzip -p "$AAR" classes.jar > "$JAR" 2>/dev/null; then
+            echo "No se pudo extraer classes.jar; se omite solo la inspección."
+            exit 0
+          fi
+
+          if [[ ! -s "$JAR" ]] || ! jar tf "$JAR" >/dev/null 2>&1; then
+            echo "classes.jar está vacío o no es válido; se omite solo la inspección."
+            exit 0
+          fi
+
+          ALL_CLASSES="$(jar tf "$JAR" |
+            grep '\.class$' |
+            grep -v '\$' |
+            sed 's/\.class$//;s#/#.#g' || true)"
+
+          if [[ -z "$ALL_CLASSES" ]]; then
+            echo "No se encontraron clases para inspeccionar."
+            exit 0
+          fi
+
+          inspect_classes() {
+            local label="$1"
+            local pattern="$2"
+            local classes
+
+            classes="$(printf '%s\n' "$ALL_CLASSES" | grep -E "$pattern" || true)"
+            if [[ -z "$classes" ]]; then
+              echo "No hay clases coincidentes para: $label"
+              return 0
+            fi
+
+            echo "Firmas Firestack: $label"
+            while IFS= read -r class_name; do
+              [[ -z "$class_name" ]] && continue
+              javap -classpath "$JAR" "$class_name" || \
+                echo "No se pudo inspeccionar: $class_name"
+            done <<< "$classes"
+          }
+
+          inspect_classes "Bridge/Tunnel" 'Bridge|ServerListener|FlowListener|Intra|Tunnel'
+          inspect_classes "Mark/Flow/DNS" 'Mark|FlowSummary|DNSOpts|DNSSummary'
+          inspect_classes "Backend" 'Backend$'
+
+      - name: Subir APK Debug
+        uses: actions/upload-artifact@v4
+        with:
+          name: FirewallDNS-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
