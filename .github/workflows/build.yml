@@ -16,7 +16,9 @@ jobs:
           java-version: 17
 
       - name: Clonar Firestack
-        run: git clone --depth 1 https://github.com/celzero/firestack.git "$RUNNER_TEMP/firestack"
+        run: |
+          git clone https://github.com/celzero/firestack.git "$RUNNER_TEMP/firestack"
+          git -C "$RUNNER_TEMP/firestack" checkout ca3f6d42e5
 
       - uses: actions/setup-go@v5
         with:
