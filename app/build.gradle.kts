@@ -63,5 +63,10 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-core")
-    implementation("com.celzero:firestack:ca3f6d42e5@aar")
+    // AAR compilado desde fuentes (workflow build.yml); si no existe se usa la publicada.
+    if (file("libs/firestack.aar").exists()) {
+        implementation(files("libs/firestack.aar"))
+    } else {
+        implementation("com.celzero:firestack:ca3f6d42e5@aar")
+    }
 }
