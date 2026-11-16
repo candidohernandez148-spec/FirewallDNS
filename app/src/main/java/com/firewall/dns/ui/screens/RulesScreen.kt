@@ -1,4 +1,4 @@
-package com.firewall.dns.ui/screens
+package com.firewall.dns.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
