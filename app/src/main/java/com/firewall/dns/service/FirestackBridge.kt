@@ -26,9 +26,7 @@ class FirestackBridge(
     private val context: Context = vpn.applicationContext
 ) : Bridge {
 
-    /** Transporte DoH registrado en el túnel; los dominios permitidos se resuelven por aquí. */
-    @Volatile
-    // Transportes DoH registrados en Firestack; el proveedor elegido se lee en cada consulta.
+    /** Transportes DoH registrados en Firestack; el proveedor elegido se lee en cada consulta. */
     @Volatile
     var registeredTransports: Set<String> = emptySet()
 
