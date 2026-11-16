@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.net.ConnectivityManager
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
@@ -38,10 +39,14 @@ class FirewallVpnService : VpnService() {
             return START_NOT_STICKY
         }
         startForegroundNotification()
-        if (tunnel == null && !startTunnel()) {
-            stopTunnel()
-            stopSelf()
-            return START_NOT_STICKY
+        if (tunnel == null) {
+            // Firestack puede tardar en conectar; se hace fuera del hilo principal para no congelar la app.
+            Thread {
+                if (!startTunnel()) {
+                    stopTunnel()
+                    stopSelf()
+                }
+            }.start()
         }
         return START_STICKY
     }
@@ -49,15 +54,19 @@ class FirewallVpnService : VpnService() {
     @Synchronized
     private fun startTunnel(): Boolean {
         return try {
+            // Sin IPv6 real, enrutar ::/0 provoca timeouts y lentitud.
+            val v6 = hasIpv6()
             val builder = Builder()
                 .setSession("FirewallDNS")
                 .setMtu(MTU)
                 .addAddress(GATEWAY4, 24)
-                .addAddress(GATEWAY6, 120)
                 .addDnsServer(DNS4)
-                .addDnsServer(DNS6)
                 .addRoute("0.0.0.0", 0)
-                .addRoute("::", 0)
+            if (v6) {
+                builder.addAddress(GATEWAY6, 120)
+                    .addDnsServer(DNS6)
+                    .addRoute("::", 0)
+            }
             (FirewallRepository.excludedPackages.value + packageName).forEach { pkg ->
                 try {
                     builder.addDisallowedApplication(pkg)
@@ -73,7 +82,8 @@ class FirewallVpnService : VpnService() {
             val t = try {
                 Intra.connect(
                     tunFd, MTU.toLong(), MTU.toLong(),
-                    "$GATEWAY4/24,$GATEWAY6/120", "$DNS4:53,[$DNS6]:53",
+                    if (v6) "$GATEWAY4/24,$GATEWAY6/120" else "$GATEWAY4/24",
+                    if (v6) "$DNS4:53,[$DNS6]:53" else "$DNS4:53",
                     defaultDns, bridge
                 )
             } catch (e: Throwable) {
@@ -94,6 +104,16 @@ class FirewallVpnService : VpnService() {
         } catch (_: Throwable) {
             false
         }
+    }
+
+    private fun hasIpv6(): Boolean = try {
+        val cm = getSystemService(ConnectivityManager::class.java)
+        cm.getLinkProperties(cm.activeNetwork)?.linkAddresses?.any {
+            val a = it.address
+            a is java.net.Inet6Address && !a.isLinkLocalAddress && !a.isLoopbackAddress && !a.isSiteLocalAddress
+        } == true
+    } catch (_: Throwable) {
+        false
     }
 
     @Synchronized

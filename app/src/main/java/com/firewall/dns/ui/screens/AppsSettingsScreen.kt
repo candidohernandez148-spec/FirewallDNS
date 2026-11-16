@@ -116,7 +116,7 @@ fun AppsSettingsScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text("NGFW", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                             Text(
-                                "Motor NGFW (Firestack): filtrado DNS por dominio con registro por app. Las conexiones no se bloquean.",
+                                "Motor NGFW (Firestack): filtrado DNS, lista de anuncios y bloqueo de Internet por app. Desactivado usa solo el filtro DNS clásico.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -221,7 +221,7 @@ fun AppsSettingsScreen(
                             Text("Excluir del filtrado", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                             Switch(checked = excluded, onCheckedChange = { onToggleExcludedApp(app.packageName) })
                         }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (ngfwEnabled) Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 if (internetBlocked) "Internet bloqueado" else "Internet permitido",
                                 modifier = Modifier.weight(1f),

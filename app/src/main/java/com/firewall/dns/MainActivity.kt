@@ -36,6 +36,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
+import com.firewall.dns.data.repository.FirewallRepository
+import com.firewall.dns.service.DnsFirewallService
 import com.firewall.dns.service.FirewallVpnService
 import com.firewall.dns.ui.screens.AppsSettingsScreen
 import com.firewall.dns.ui.screens.LogsScreen
@@ -89,6 +91,10 @@ class MainActivity : ComponentActivity() {
                             viewModel = firewallViewModel,
                             onToggleVpn = { enable ->
                                 if (enable) checkPermissionsAndStart() else stopFirewallService()
+                            },
+                            onNgfwChanged = { enabled ->
+                                firewallViewModel.setNgfwEnabled(enabled)
+                                if (firewallViewModel.stats.value.isRunning) restartFirewall()
                             },
                             onToggleObservationMode = firewallViewModel::setObservationModeEnabled,
                             onOpenBatteryOpt = { requestIgnoreBatteryOptimization() },
@@ -165,11 +171,26 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startFirewallService() {
-        FirewallVpnService.start(this)
+        if (FirewallRepository.isNgfwEnabled()) {
+            FirewallVpnService.start(this)
+        } else {
+            ContextCompat.startForegroundService(this, Intent(this, DnsFirewallService::class.java).apply {
+                action = DnsFirewallService.ACTION_START
+            })
+        }
+    }
+
+    // Cambia de motor (NGFW/DNS) con el servicio activo: se detiene y se vuelve a iniciar.
+    private fun restartFirewall() {
+        stopFirewallService()
+        window.decorView.postDelayed({ startFirewallService() }, 800)
     }
 
     private fun stopFirewallService() {
         FirewallVpnService.stop(this)
+        startService(Intent(this, DnsFirewallService::class.java).apply {
+            action = DnsFirewallService.ACTION_STOP
+        })
     }
 
     @SuppressLint("BatteryLife")
@@ -222,6 +243,7 @@ private fun FirewallShieldIcon(modifier: Modifier = Modifier) {
 fun FirewallApp(
     viewModel: FirewallViewModel,
     onToggleVpn: (Boolean) -> Unit,
+    onNgfwChanged: (Boolean) -> Unit,
     onToggleObservationMode: (Boolean) -> Unit,
     onOpenBatteryOpt: () -> Unit,
     onOpenVpnSettings: () -> Unit
@@ -348,7 +370,7 @@ fun FirewallApp(
                     blockedApps = blockedApps,
                     onToggleBlockedApp = viewModel::toggleBlockedApp,
                     ngfwEnabled = ngfwEnabled,
-                    onNgfwEnabledChange = viewModel::setNgfwEnabled,
+                    onNgfwEnabledChange = onNgfwChanged,
                     appSearch = appSearch,
                     onAppSearchChange = viewModel::onAppSearchChange,
                     onSelectUpstreamDns = viewModel::setUpstreamDns,
