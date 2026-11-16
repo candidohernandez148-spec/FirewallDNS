@@ -91,7 +91,7 @@ class NgfwBridge(
         probableDomains: String?,
         blocklists: String?,
         isAlg: Boolean
-    ): Mark = decide(protocol, uid, src, dst, realIps)
+    ): Mark = decide(protocol, uid, src, dst, realIps, domains ?: probableDomains)
 
     // El tráfico entrante pertenece a conexiones ya aceptadas en flow(); no se vuelve a filtrar.
     override fun inflow(protocol: Int, uid: Int, src: String?, dst: String?): Mark {
@@ -102,7 +102,9 @@ class NgfwBridge(
         return mark
     }
 
-    private fun decide(protocol: Int, rawUid: Int, src: String?, dst: String?, realIps: String?): Mark {
+    private fun decide(
+        protocol: Int, rawUid: Int, src: String?, dst: String?, realIps: String?, domains: String? = null
+    ): Mark {
         val mark = Mark()
         mark.cid = UUID.randomUUID().toString().take(8)
         mark.pidcsv = Backend.Exit
@@ -113,8 +115,9 @@ class NgfwBridge(
             mark.uid = rawUid.toString()
             if (target != null && (target.second == 53 || target.first in VPN_DNS)) {
                 mark.pidcsv = Backend.Base
-            } else {
-                FirewallRepository.countFlow(false)
+            } else if (target != null) {
+                val uid = if (rawUid >= 0) rawUid else lookupUid(protocol, src, dst)
+                logAllowed(uid, protocol, target, domains)
             }
             return mark
         }
@@ -149,8 +152,32 @@ class NgfwBridge(
                 appName = label
             )
         }
-        else FirewallRepository.countFlow(false)
+        else logAllowed(uid, protocol, target, domains)
         return mark
+    }
+
+    private val recentAllowed = HashMap<String, Long>()
+
+    // Registra la conexión permitida; evita repetir la misma app/destino durante 3 s.
+    private fun logAllowed(uid: Int, protocol: Int, target: Pair<String, Int>, domains: String?) {
+        val name = domains?.split(',')?.firstOrNull { it.isNotBlank() }?.trim()?.trimEnd('.')
+        val host = name ?: "${target.first}:${target.second}"
+        val label = if (uid > 0) appFor(uid).second else "Sistema"
+        val key = "$uid|$host"
+        val now = System.currentTimeMillis()
+        synchronized(recentAllowed) {
+            val last = recentAllowed[key]
+            if (last != null && now - last < 3000) return
+            if (recentAllowed.size > 500) recentAllowed.clear()
+            recentAllowed[key] = now
+        }
+        FirewallRepository.addLog(
+            domain = host,
+            qType = protoName(protocol),
+            isBlocked = false,
+            reason = "Permitido",
+            appName = label
+        )
     }
 
     private fun lookupUid(protocol: Int, src: String?, dst: String?): Int {

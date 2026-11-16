@@ -373,9 +373,7 @@ object FirewallRepository {
     }
 
     private fun recordDnsDecision(domain: String, allowed: Boolean, appName: String, reason: String, queryType: String) {
-        val timestamp = synchronized(SimpleDateFormat("HH:mm:ss", Locale.getDefault())) {
-            SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-        }
+        val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
         val entry = DnsLogEntry(
             id = logCounter.incrementAndGet(),
             timestamp = timestamp,
