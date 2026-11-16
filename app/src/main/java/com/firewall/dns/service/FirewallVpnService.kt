@@ -20,12 +20,19 @@ import com.celzero.firestack.intra.Tunnel
 import com.celzero.firestack.settings.Settings
 import com.firewall.dns.MainActivity
 import com.firewall.dns.data.repository.FirewallRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /** VPN basada en Firestack: filtra DNS con DomainBlocker y conexiones por UID con AppFirewallManager. */
 class FirewallVpnService : VpnService() {
 
     @Volatile
     private var stopRequested = false
+    private val lock = Any()
+    // Alcance propio, no cancelado en onDestroy, para que el cierre nativo termine aunque el servicio muera.
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var tunnel: Tunnel? = null
     private var vpnInterface: ParcelFileDescriptor? = null
 
@@ -37,9 +44,7 @@ class FirewallVpnService : VpnService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
             FirewallRepository.setShouldRun(false)
-            stopTunnel()
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf()
+            shutdown()
             return START_NOT_STICKY
         }
         stopRequested = false
@@ -47,27 +52,22 @@ class FirewallVpnService : VpnService() {
         if (tunnel == null) {
             // Firestack puede tardar en conectar; se hace fuera del hilo principal para no congelar la app.
             Thread {
-                if (startTunnel()) {
-                    if (stopRequested) stopTunnel()
-                } else if (!stopRequested) {
+                if (!startTunnel() && !stopRequested) {
                     // Si Firestack no arranca, se usa el filtro DNS clásico para no dejar al usuario sin protección.
-                    stopTunnel()
+                    shutdown()
                     ContextCompat.startForegroundService(
                         this,
                         Intent(this, DnsFirewallService::class.java).apply { action = DnsFirewallService.ACTION_START }
                     )
-                    stopSelf()
-                } else {
-                    stopTunnel()
                 }
             }.start()
         }
         return START_STICKY
     }
 
-    @Synchronized
-    private fun startTunnel(): Boolean {
-        return try {
+    private fun startTunnel(): Boolean = synchronized(lock) {
+        if (stopRequested) return false
+        try {
             // Sin IPv6 real, enrutar ::/0 provoca timeouts y lentitud.
             val v6 = hasIpv6()
             val builder = Builder()
@@ -130,29 +130,34 @@ class FirewallVpnService : VpnService() {
         false
     }
 
-    @Synchronized
-    private fun stopTunnel() {
-        val t = tunnel
-        val fd = vpnInterface
-        tunnel = null
-        vpnInterface = null
+    // Cierre ordenado: Firestack primero, después el descriptor de la VPN, y por último el servicio.
+    private fun shutdown() {
+        stopRequested = true
         FirewallRepository.setRunning(false)
-        // disconnect() es nativo y puede bloquear; no debe congelar el apagado desde la interfaz.
-        Thread {
-            try { t?.disconnect() } catch (_: Throwable) {}
-            try { fd?.close() } catch (_: Throwable) {}
-        }.start()
+        ioScope.launch {
+            synchronized(lock) {
+                try {
+                    tunnel?.disconnect()
+                    vpnInterface?.close()
+                } catch (_: Throwable) {
+                } finally {
+                    tunnel = null
+                    vpnInterface = null
+                }
+            }
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
     }
 
     override fun onRevoke() {
-        stopTunnel()
-        stopSelf()
+        FirewallRepository.setShouldRun(false)
+        shutdown()
         super.onRevoke()
     }
 
     override fun onDestroy() {
-        stopRequested = true
-        stopTunnel()
+        shutdown()
         super.onDestroy()
     }
 
@@ -197,9 +202,9 @@ class FirewallVpnService : VpnService() {
         }
 
         fun stop(context: Context) {
-            FirewallRepository.setShouldRun(false)
-            FirewallRepository.setRunning(false)
-            context.stopService(Intent(context, FirewallVpnService::class.java))
+            context.startService(
+                Intent(context, FirewallVpnService::class.java).apply { action = ACTION_STOP }
+            )
         }
     }
 }
