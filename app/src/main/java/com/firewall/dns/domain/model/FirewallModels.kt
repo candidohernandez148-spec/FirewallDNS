@@ -30,5 +30,6 @@ data class DnsQueryInfo(
 data class AppInfoItem(
     val label: String,
     val packageName: String,
-    val icon: ImageBitmap? = null
+    val icon: ImageBitmap? = null,
+    val uid: Int = -1
 )

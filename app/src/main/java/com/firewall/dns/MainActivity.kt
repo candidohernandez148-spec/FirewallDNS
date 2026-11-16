@@ -36,7 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
-import com.firewall.dns.service.DnsFirewallService
+import com.firewall.dns.service.FirewallVpnService
 import com.firewall.dns.ui.screens.AppsSettingsScreen
 import com.firewall.dns.ui.screens.LogsScreen
 import com.firewall.dns.ui.screens.RulesScreen
@@ -165,16 +165,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startFirewallService() {
-        val intent = Intent(this, DnsFirewallService::class.java).apply {
-            action = DnsFirewallService.ACTION_START
-        }
-        ContextCompat.startForegroundService(this, intent)
+        FirewallVpnService.start(this)
     }
 
     private fun stopFirewallService() {
-        startService(Intent(this, DnsFirewallService::class.java).apply {
-            action = DnsFirewallService.ACTION_STOP
-        })
+        FirewallVpnService.stop(this)
     }
 
     @SuppressLint("BatteryLife")
@@ -244,6 +239,7 @@ fun FirewallApp(
     val isDownloading by viewModel.isDownloading.collectAsState()
     val apps by viewModel.filteredApps.collectAsState()
     val excludedPackages by viewModel.excludedPackages.collectAsState()
+    val blockedApps by viewModel.blockedApps.collectAsState()
     val ngfwEnabled by viewModel.ngfwEnabled.collectAsState()
     val appSearch by viewModel.appSearch.collectAsState()
 
@@ -349,6 +345,8 @@ fun FirewallApp(
                     stats = stats,
                     apps = apps,
                     excludedPackages = excludedPackages,
+                    blockedApps = blockedApps,
+                    onToggleBlockedApp = viewModel::toggleBlockedApp,
                     ngfwEnabled = ngfwEnabled,
                     onNgfwEnabledChange = viewModel::setNgfwEnabled,
                     appSearch = appSearch,

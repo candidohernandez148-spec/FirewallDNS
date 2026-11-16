@@ -50,7 +50,14 @@ class FirestackBridge(
             opts.tidcsv = upstreamId
             return opts
         }
-        val blocked = DomainBlocker.isBlocked(qname)
+        val (repoBlocked, repoReason) = try {
+            FirewallRepository.evaluateDomain(qname)
+        } catch (_: Throwable) {
+            false to "Permitido"
+        }
+        // Una regla propia (p. ej. permitir) tiene prioridad sobre la lista integrada.
+        val listed = !repoBlocked && repoReason == "Permitido" && DomainBlocker.isBlocked(qname)
+        val blocked = repoBlocked || listed
         opts.tidcsv = if (blocked) Backend.BlockAll else upstreamId
         FirewallRepository.addLog(
             domain = qname,
@@ -60,7 +67,7 @@ class FirestackBridge(
                 else -> "T$qtype"
             },
             isBlocked = blocked,
-            reason = if (blocked) "Dominio bloqueado (NXDOMAIN)" else "Permitido",
+            reason = if (listed) "Lista de anuncios y rastreo" else repoReason,
             appName = uid?.toIntOrNull()?.let { appLabel(it) } ?: "Sistema / DNS"
         )
         return opts

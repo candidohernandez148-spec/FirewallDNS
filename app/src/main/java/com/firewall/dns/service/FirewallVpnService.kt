@@ -17,6 +17,7 @@ import com.celzero.firestack.intra.Intra
 import com.celzero.firestack.intra.Tunnel
 import com.celzero.firestack.settings.Settings
 import com.firewall.dns.MainActivity
+import com.firewall.dns.data.repository.FirewallRepository
 
 /** VPN basada en Firestack: filtra DNS con DomainBlocker y conexiones por UID con AppFirewallManager. */
 class FirewallVpnService : VpnService() {
@@ -24,8 +25,14 @@ class FirewallVpnService : VpnService() {
     private var tunnel: Tunnel? = null
     private var vpnInterface: ParcelFileDescriptor? = null
 
+    override fun onCreate() {
+        super.onCreate()
+        FirewallRepository.init(applicationContext)
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            FirewallRepository.setShouldRun(false)
             stopTunnel()
             stopSelf()
             return START_NOT_STICKY
@@ -51,9 +58,11 @@ class FirewallVpnService : VpnService() {
                 .addDnsServer(DNS6)
                 .addRoute("0.0.0.0", 0)
                 .addRoute("::", 0)
-            try {
-                builder.addDisallowedApplication(packageName)
-            } catch (_: PackageManager.NameNotFoundException) {}
+            (FirewallRepository.excludedPackages.value + packageName).forEach { pkg ->
+                try {
+                    builder.addDisallowedApplication(pkg)
+                } catch (_: PackageManager.NameNotFoundException) {}
+            }
 
             val established = builder.establish() ?: return false
             vpnInterface = established
@@ -79,6 +88,8 @@ class FirewallVpnService : VpnService() {
                 bridge.upstreamId = Backend.Default
             }
             tunnel = t
+            FirewallRepository.setShouldRun(true)
+            FirewallRepository.setRunning(true)
             true
         } catch (_: Throwable) {
             false
@@ -91,6 +102,7 @@ class FirewallVpnService : VpnService() {
         val fd = vpnInterface
         tunnel = null
         vpnInterface = null
+        FirewallRepository.setRunning(false)
         try { t?.disconnect() } catch (_: Throwable) {}
         try { fd?.close() } catch (_: Throwable) {}
     }

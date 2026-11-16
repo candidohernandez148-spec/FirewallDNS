@@ -29,6 +29,7 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
     val observationModeEnabled: StateFlow<Boolean> = FirewallRepository.observationModeEnabled
 
     val ngfwEnabled: StateFlow<Boolean> = FirewallRepository.ngfwEnabled
+    val blockedApps: StateFlow<Set<String>> = FirewallRepository.blockedApps
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
@@ -102,6 +103,8 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
     fun clearLogs() { FirewallRepository.clearLogs() }
 
     fun setUpstreamDns(dnsIp: String) { FirewallRepository.setUpstreamDns(dnsIp) }
+
+    fun toggleBlockedApp(app: AppInfoItem) { FirewallRepository.toggleBlockedApp(app.packageName, app.uid) }
 
     fun toggleExcludedApp(packageName: String) { FirewallRepository.toggleExcludedApp(packageName) }
 

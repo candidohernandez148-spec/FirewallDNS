@@ -1,5 +1,6 @@
 package com.firewall.dns.data.repository
 
+import com.firewall.dns.domain.engine.AppFirewallManager
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
@@ -102,6 +103,8 @@ object FirewallRepository {
             _customAllowList.value = customAllowSet.sorted()
 
             _excludedPackages.value = prefsDataSource.getExcludedPackages()
+            _blockedApps.value = prefsDataSource.getBlockedApps()
+            syncBlockedUids()
             _blocklistUrls.value = prefsDataSource.getBlocklistUrls()
             _smartModeEnabled.value = prefsDataSource.getSmartModeEnabled()
             _observationModeEnabled.value = prefsDataSource.getObservationModeEnabled()
@@ -175,6 +178,28 @@ object FirewallRepository {
         _excludedPackages.value = updated
         prefsDataSource.saveExcludedPackages(updated)
         _rebuildVpnEvent.tryEmit(Unit)
+    }
+
+    private val _blockedApps = MutableStateFlow<Set<String>>(emptySet())
+    val blockedApps: StateFlow<Set<String>> = _blockedApps.asStateFlow()
+
+    // Bloquea o permite todo el acceso a Internet de una app (por UID) en AppFirewallManager.
+    fun toggleBlockedApp(pkg: String, uid: Int) {
+        val updated = _blockedApps.value.toMutableSet()
+        val nowBlocked = updated.add(pkg)
+        if (!nowBlocked) updated.remove(pkg)
+        _blockedApps.value = updated
+        prefsDataSource.saveBlockedApps(updated)
+        if (uid >= 0) AppFirewallManager.setBlocked(uid, nowBlocked)
+    }
+
+    private fun syncBlockedUids() {
+        AppFirewallManager.clear()
+        _blockedApps.value.forEach { pkg ->
+            try {
+                AppFirewallManager.setBlocked(appContext.packageManager.getApplicationInfo(pkg, 0).uid, true)
+            } catch (_: PackageManager.NameNotFoundException) {}
+        }
     }
 
     fun isNgfwEnabled(): Boolean = _ngfwEnabled.value
@@ -276,7 +301,7 @@ object FirewallRepository {
                 } catch (_: Exception) {
                     null
                 }
-                AppInfoItem(pm.getApplicationLabel(it).toString(), it.packageName, icon)
+                AppInfoItem(pm.getApplicationLabel(it).toString(), it.packageName, icon, it.uid)
             }
             .sortedBy { it.label.lowercase() }
     }

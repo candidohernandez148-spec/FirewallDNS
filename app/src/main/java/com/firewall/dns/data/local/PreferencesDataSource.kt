@@ -12,6 +12,7 @@ class PreferencesDataSource(context: Context) {
         private const val KEY_CUSTOM_BLOCK = "custom_block"
         private const val KEY_CUSTOM_ALLOW = "custom_allow"
         private const val KEY_EXCLUDED_APPS = "excluded_apps"
+        private const val KEY_BLOCKED_APPS = "blocked_apps"
         private const val KEY_UPSTREAM_DNS = "upstream_dns"
         private const val KEY_SHOULD_RUN = "should_run"
         private const val KEY_BLOCKLIST_URLS = "blocklist_urls"
@@ -53,6 +54,13 @@ class PreferencesDataSource(context: Context) {
 
     fun saveExcludedPackages(set: Set<String>) {
         prefs.edit().putStringSet(KEY_EXCLUDED_APPS, set).apply()
+    }
+
+    fun getBlockedApps(): Set<String> =
+        prefs.getStringSet(KEY_BLOCKED_APPS, emptySet())?.toSet() ?: emptySet()
+
+    fun saveBlockedApps(set: Set<String>) {
+        prefs.edit().putStringSet(KEY_BLOCKED_APPS, set).apply()
     }
 
     fun getUpstreamDns(): String =

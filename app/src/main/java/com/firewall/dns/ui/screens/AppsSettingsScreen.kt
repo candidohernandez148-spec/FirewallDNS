@@ -47,6 +47,8 @@ fun AppsSettingsScreen(
     stats: FirewallStats,
     apps: List<AppInfoItem>,
     excludedPackages: Set<String>,
+    blockedApps: Set<String>,
+    onToggleBlockedApp: (AppInfoItem) -> Unit,
     ngfwEnabled: Boolean,
     onNgfwEnabledChange: (Boolean) -> Unit,
     appSearch: String,
@@ -161,7 +163,7 @@ fun AppsSettingsScreen(
         item {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Aplicaciones", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text("Elige qué apps quedan fuera del filtrado DNS.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Excluye apps del filtrado o bloquea su acceso a Internet.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedTextField(
                     value = appSearch,
                     onValueChange = onAppSearchChange,
@@ -190,6 +192,7 @@ fun AppsSettingsScreen(
         } else {
             items(apps, key = { it.packageName }) { app ->
                 val excluded = excludedPackages.contains(app.packageName)
+                val internetBlocked = blockedApps.contains(app.packageName)
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
@@ -202,7 +205,7 @@ fun AppsSettingsScreen(
                             Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
                                 Text(app.label, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Text(
-                                    app.packageName,
+                                    "UID ${app.uid} · ${app.packageName}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,
@@ -217,6 +220,14 @@ fun AppsSettingsScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("Excluir del filtrado", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                             Switch(checked = excluded, onCheckedChange = { onToggleExcludedApp(app.packageName) })
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                if (internetBlocked) "Internet bloqueado" else "Internet permitido",
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Switch(checked = internetBlocked, onCheckedChange = { onToggleBlockedApp(app) })
                         }
                     }
                 }
