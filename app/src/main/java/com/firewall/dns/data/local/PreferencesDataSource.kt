@@ -19,6 +19,9 @@ class PreferencesDataSource(context: Context) {
         private const val KEY_LEARNED_TOKENS = "learned_tokens"
         private const val KEY_ADBLOCK_MIGRATED = "adblock_syntax_migrated_v1"
         private const val KEY_OBSERVATION_MODE = "observation_mode_enabled"
+        private const val KEY_NGFW_ENABLED = "ngfw_enabled"
+        private const val KEY_NGFW_RULES = "ngfw_rules"
+        private const val KEY_NGFW_BLOCKED_APPS = "ngfw_blocked_apps"
 
         const val DEFAULT_ADBLOCK_URL =
             "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/light.txt"
@@ -88,6 +91,26 @@ class PreferencesDataSource(context: Context) {
 
     fun saveObservationModeEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_OBSERVATION_MODE, enabled).apply()
+    }
+
+    fun getNgfwEnabled(): Boolean = prefs.getBoolean(KEY_NGFW_ENABLED, false)
+
+    fun saveNgfwEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_NGFW_ENABLED, enabled).apply()
+    }
+
+    fun getNgfwRules(): List<String> =
+        (prefs.getString(KEY_NGFW_RULES, "") ?: "").lines().filter { it.isNotBlank() }
+
+    fun saveNgfwRules(rules: List<String>) {
+        prefs.edit().putString(KEY_NGFW_RULES, rules.joinToString("\n")).apply()
+    }
+
+    fun getNgfwBlockedApps(): Set<String> =
+        prefs.getStringSet(KEY_NGFW_BLOCKED_APPS, emptySet())?.toSet() ?: emptySet()
+
+    fun saveNgfwBlockedApps(set: Set<String>) {
+        prefs.edit().putStringSet(KEY_NGFW_BLOCKED_APPS, set).apply()
     }
 
     fun getLearnedTokens(): MutableMap<String, Int> {

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -18,12 +19,18 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.firewall.dns.domain.engine.NgfwRule
 import com.firewall.dns.domain.model.AppInfoItem
 import com.firewall.dns.domain.model.FirewallStats
 
@@ -32,6 +39,13 @@ fun AppsSettingsScreen(
     stats: FirewallStats,
     apps: List<AppInfoItem>,
     excludedPackages: Set<String>,
+    ngfwEnabled: Boolean,
+    ngfwRules: List<NgfwRule>,
+    ngfwBlockedApps: Set<String>,
+    onNgfwEnabledChange: (Boolean) -> Unit,
+    onAddNgfwRule: (String) -> Unit,
+    onRemoveNgfwRule: (String) -> Unit,
+    onToggleNgfwBlockedApp: (String) -> Unit,
     appSearch: String,
     onAppSearchChange: (String) -> Unit,
     onSelectUpstreamDns: (String) -> Unit,
@@ -82,6 +96,55 @@ fun AppsSettingsScreen(
                             }
                         }
                     }
+                }
+            }
+        }
+
+        item {
+            var ruleText by remember { mutableStateOf("") }
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("NGFW", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Text(
+                                "Firewall de nueva generación: reglas por app, IP, puerto y protocolo además del filtrado DNS.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(checked = ngfwEnabled, onCheckedChange = onNgfwEnabledChange)
+                    }
+                    OutlinedTextField(
+                        value = ruleText,
+                        onValueChange = { ruleText = it },
+                        label = { Text("Regla: block tcp 1.2.3.0/24 443") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Button(
+                        onClick = {
+                            onAddNgfwRule(ruleText)
+                            ruleText = ""
+                        },
+                        enabled = ruleText.isNotBlank()
+                    ) { Text("Agregar regla") }
+                    ngfwRules.forEach { rule ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(rule.text, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                            TextButton(onClick = { onRemoveNgfwRule(rule.text) }) { Text("Quitar") }
+                        }
+                    }
+                    Text(
+                        "Se evalúan en orden; la primera coincidencia gana y lo demás se permite. Las apps excluidas no pasan por el NGFW.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }
@@ -176,6 +239,20 @@ fun AppsSettingsScreen(
                             )
                         }
                         Switch(checked = excluded, onCheckedChange = { onToggleExcludedApp(app.packageName) })
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "NGFW: bloquear toda la red de esta app",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                        Switch(
+                            checked = ngfwBlockedApps.contains(app.packageName),
+                            onCheckedChange = { onToggleNgfwBlockedApp(app.packageName) }
+                        )
                     }
                 }
             }

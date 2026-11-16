@@ -244,6 +244,9 @@ fun FirewallApp(
     val isDownloading by viewModel.isDownloading.collectAsState()
     val apps by viewModel.filteredApps.collectAsState()
     val excludedPackages by viewModel.excludedPackages.collectAsState()
+    val ngfwEnabled by viewModel.ngfwEnabled.collectAsState()
+    val ngfwRules by viewModel.ngfwRules.collectAsState()
+    val ngfwBlockedApps by viewModel.ngfwBlockedApps.collectAsState()
     val appSearch by viewModel.appSearch.collectAsState()
 
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -348,6 +351,13 @@ fun FirewallApp(
                     stats = stats,
                     apps = apps,
                     excludedPackages = excludedPackages,
+                    ngfwEnabled = ngfwEnabled,
+                    ngfwRules = ngfwRules,
+                    ngfwBlockedApps = ngfwBlockedApps,
+                    onNgfwEnabledChange = viewModel::setNgfwEnabled,
+                    onAddNgfwRule = viewModel::addNgfwRule,
+                    onRemoveNgfwRule = viewModel::removeNgfwRule,
+                    onToggleNgfwBlockedApp = viewModel::toggleNgfwBlockedApp,
                     appSearch = appSearch,
                     onAppSearchChange = viewModel::onAppSearchChange,
                     onSelectUpstreamDns = viewModel::setUpstreamDns,

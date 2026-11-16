@@ -17,6 +17,9 @@ import android.os.Process
 import android.system.OsConstants
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
+import com.celzero.firestack.backend.Backend
+import com.celzero.firestack.intra.Intra
+import com.celzero.firestack.intra.Tunnel
 import com.firewall.dns.MainActivity
 import com.firewall.dns.data.repository.FirewallRepository
 import com.firewall.dns.domain.engine.DnsPacketEngine
@@ -41,6 +44,7 @@ class DnsFirewallService : VpnService() {
 
     private var vpnInterface: ParcelFileDescriptor? = null
     private var tunReaderThread: Thread? = null
+    private var ngfwTunnel: Tunnel? = null
     private val executor = ThreadPoolExecutor(
         4, 4, 0L, TimeUnit.MILLISECONDS,
         ArrayBlockingQueue(256),
@@ -80,6 +84,7 @@ class DnsFirewallService : VpnService() {
         private const val CHANNEL_ID = "dns_firewall_channel"
         private const val NOTIFICATION_ID = 2001
         private const val CACHE_TTL_MS = 60_000L
+        private const val NGFW_MTU = 1500
         private val TRAPPED_IPV4_DNS = listOf("8.8.8.8", "8.8.4.4", "1.1.1.1", "1.0.0.1")
         private val TRAPPED_IPV6_DNS = listOf(
             "2001:4860:4860::8888", "2001:4860:4860::8844",
@@ -133,7 +138,9 @@ class DnsFirewallService : VpnService() {
         return START_STICKY
     }
 
-    private fun notificationText(): String = if (FirewallRepository.isObservationModeEnabled()) {
+    private fun notificationText(): String = if (FirewallRepository.isNgfwEnabled()) {
+        "NGFW activo: reglas por app, IP, puerto y DNS"
+    } else if (FirewallRepository.isObservationModeEnabled()) {
         "Monitoreo + bloqueo por reglas DNS; DoH/DoT no se inspecciona"
     } else {
         "Bloqueo DNS activo; DoH/DoT no se inspecciona"
@@ -179,6 +186,7 @@ class DnsFirewallService : VpnService() {
     @Synchronized
     private fun startVpn() {
         closeInterface()
+        if (FirewallRepository.isNgfwEnabled() && startNgfw()) return
         val upstream = FirewallRepository.getUpstreamDns()
         val builder = Builder()
             .setSession("FirewallDNS")
@@ -227,6 +235,39 @@ class DnsFirewallService : VpnService() {
                 }
             } catch (_: IOException) {}
         }.apply { start() }
+    }
+
+    // Modo NGFW: todo el tráfico entra a la VPN y Firestack aplica las reglas vía NgfwBridge.
+    private fun startNgfw(): Boolean {
+        return try {
+            val builder = Builder()
+                .setSession("FirewallDNS NGFW")
+                .setMtu(NGFW_MTU)
+                .addAddress("10.10.10.2", 24)
+                .addAddress("fd00:10:10::2", 120)
+                .addDnsServer("10.10.10.1")
+                .addDnsServer("fd00:10:10::1")
+                .addRoute("0.0.0.0", 0)
+                .addRoute("::", 0)
+            (FirewallRepository.excludedPackages.value + packageName).forEach { pkg ->
+                try {
+                    builder.addDisallowedApplication(pkg)
+                } catch (_: PackageManager.NameNotFoundException) {}
+            }
+
+            val established = builder.establish() ?: return false
+            val tunFd = established.dup().detachFd().toLong()
+            val dns = Intra.newDefaultDNS(Backend.DNS53, FirewallRepository.getUpstreamDns(), "")
+            val bridge = NgfwBridge(this, connectivityManager)
+            ngfwTunnel = Intra.connect2(tunFd, NGFW_MTU.toLong(), dns, bridge)
+            vpnInterface = established
+            isRunning = true
+            FirewallRepository.setRunning(true)
+            true
+        } catch (_: Throwable) {
+            closeInterface()
+            false
+        }
     }
 
     private fun handlePacket(req: ByteArray, output: FileOutputStream) {
@@ -386,6 +427,8 @@ class DnsFirewallService : VpnService() {
         FirewallRepository.setRunning(false)
         tunReaderThread?.interrupt()
         tunReaderThread = null
+        try { ngfwTunnel?.disconnect() } catch (_: Throwable) {}
+        ngfwTunnel = null
         try { vpnInterface?.close() } catch (_: IOException) {}
         vpnInterface = null
     }

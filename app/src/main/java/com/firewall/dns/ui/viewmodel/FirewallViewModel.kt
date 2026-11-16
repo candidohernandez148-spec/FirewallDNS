@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.firewall.dns.data.repository.FirewallRepository
+import com.firewall.dns.domain.engine.NgfwRule
 import com.firewall.dns.domain.model.AppInfoItem
 import com.firewall.dns.domain.model.DnsLogEntry
 import com.firewall.dns.domain.model.FirewallStats
@@ -27,6 +28,10 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
     val blocklistUrls: StateFlow<List<String>> = FirewallRepository.blocklistUrls
     val smartModeEnabled: StateFlow<Boolean> = FirewallRepository.smartModeEnabled
     val observationModeEnabled: StateFlow<Boolean> = FirewallRepository.observationModeEnabled
+
+    val ngfwEnabled: StateFlow<Boolean> = FirewallRepository.ngfwEnabled
+    val ngfwRules: StateFlow<List<NgfwRule>> = FirewallRepository.ngfwRules
+    val ngfwBlockedApps: StateFlow<Set<String>> = FirewallRepository.ngfwBlockedApps
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
@@ -112,6 +117,24 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
             else "Bloqueo DNS activo"
         )
     }
+
+    fun setNgfwEnabled(enabled: Boolean) {
+        FirewallRepository.setNgfwEnabled(enabled)
+        _toastMessage.tryEmit(
+            if (enabled) "NGFW activado: reglas por app, IP y puerto"
+            else "NGFW desactivado: solo filtrado DNS"
+        )
+    }
+
+    fun addNgfwRule(text: String) {
+        if (!FirewallRepository.addNgfwRule(text)) {
+            _toastMessage.tryEmit("Formato: block|allow tcp|udp|any IP[/prefijo]|any puerto|min-max|any")
+        }
+    }
+
+    fun removeNgfwRule(text: String) { FirewallRepository.removeNgfwRule(text) }
+
+    fun toggleNgfwBlockedApp(packageName: String) { FirewallRepository.toggleNgfwBlockedApp(packageName) }
 
     fun addBlocklistUrl(url: String) {
         if (FirewallRepository.addBlocklistUrl(url)) {
