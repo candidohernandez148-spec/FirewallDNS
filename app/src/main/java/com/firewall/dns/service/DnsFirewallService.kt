@@ -265,15 +265,20 @@ class DnsFirewallService : VpnService() {
             }
 
             val established = builder.establish() ?: return false
+            vpnInterface = established
             val tunFd = established.dup().detachFd().toLong()
             val dns = Intra.newDefaultDNS(Backend.DNS53, FirewallRepository.getUpstreamDns(), "")
             val bridge = NgfwBridge(this, connectivityManager)
             // Firestack solo intercepta el DNS dirigido a estas direcciones (ip:puerto) y a las de la interfaz.
             val ifaceAddrs = if (v6) "$NGFW_GATEWAY4/24,$NGFW_GATEWAY6/120" else "$NGFW_GATEWAY4/24"
             val fakeDns = if (v6) "$NGFW_DNS4:53,[$NGFW_DNS6]:53" else "$NGFW_DNS4:53"
-            val tunnel = Intra.connect(
-                tunFd, NGFW_MTU.toLong(), NGFW_MTU.toLong(), ifaceAddrs, fakeDns, dns, bridge
-            )
+            val tunnel = try {
+                Intra.connect(tunFd, NGFW_MTU.toLong(), NGFW_MTU.toLong(), ifaceAddrs, fakeDns, dns, bridge)
+            } catch (e: Throwable) {
+                // Firestack no tomó el descriptor; se cierra para no dejar la VPN colgada.
+                try { ParcelFileDescriptor.adoptFd(tunFd.toInt()).close() } catch (_: Throwable) {}
+                throw e
+            }
             Settings.setTunMode(Settings.DNSModeIP, Settings.BlockModeFilter, Settings.PtModeAuto)
             // Firestack solo resuelve ids registrados; Preferred es el que usan sus consultas normales.
             try {
@@ -283,7 +288,6 @@ class DnsFirewallService : VpnService() {
                 bridge.upstreamId = Backend.Default
             }
             ngfwTunnel = tunnel
-            vpnInterface = established
             isRunning = true
             FirewallRepository.setRunning(true)
             true
