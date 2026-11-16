@@ -101,21 +101,18 @@ class FirewallVpnService : VpnService() {
 
             val established = builder.establish() ?: return false
             Log.d(TAG, "startTunnel: establish() ok")
-            vpnInterface = established
-            // Firestack se queda con el descriptor y lo cierra al desconectar.
-            val tunFd = established.dup().detachFd().toLong()
             val bridge = FirestackBridge(this)
             val defaultDns = Intra.newDefaultDNS(Backend.DNS53, "1.1.1.1", "")
-            val t = try {
+            // Firestack duplica el descriptor y cierra su copia al desconectar; el original se cierra aquí mismo.
+            // Entregar un fd propio hacía que quedara abierto y la VPN (llave) sobreviviera al apagado.
+            Settings.dupTunFd(true)
+            val t = established.use {
                 Intra.connect(
-                    tunFd, MTU.toLong(), MTU.toLong(),
+                    it.fd.toLong(), MTU.toLong(), MTU.toLong(),
                     if (v6) "$GATEWAY4/24,$GATEWAY6/120" else "$GATEWAY4/24",
                     if (v6) "$DNS4:53,[$DNS6]:53" else "$DNS4:53",
                     defaultDns, bridge
                 )
-            } catch (e: Throwable) {
-                try { ParcelFileDescriptor.adoptFd(tunFd.toInt()).close() } catch (_: Throwable) {}
-                throw e
             }
             Log.d(TAG, "startTunnel: Intra.connect ok")
             Settings.setTunMode(Settings.DNSModeIP, Settings.BlockModeFilter, Settings.PtModeAuto)
