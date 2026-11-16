@@ -13,6 +13,7 @@ import com.firewall.dns.domain.engine.RuleEvaluator
 import com.firewall.dns.domain.engine.SmartDomainAnalyzer
 import com.firewall.dns.domain.model.AppInfoItem
 import com.firewall.dns.domain.model.DnsLogEntry
+import com.firewall.dns.domain.model.DnsProvider
 import com.firewall.dns.domain.model.TrafficPoint
 import com.firewall.dns.domain.model.FirewallStats
 import kotlinx.coroutines.Dispatchers
@@ -34,7 +35,6 @@ import java.util.concurrent.atomic.AtomicLong
 object FirewallRepository {
 
     private const val MAX_LOGS = 400
-    private const val CLOUDFLARE_IP = "1.1.1.1"
     private const val TRAFFIC_POINTS = 40
     private const val TRAFFIC_INTERVAL_MS = 2_000L
     private const val MAX_LEARNED_DOMAINS = 5000
@@ -133,7 +133,7 @@ object FirewallRepository {
             _observationModeEnabled.value = prefsDataSource.getObservationModeEnabled()
             learnedTokens.clear()
             learnedTokens.putAll(prefsDataSource.getLearnedTokens())
-            _stats.update { it.copy(learnedTokens = learnedTokens.size) }
+            _stats.update { it.copy(learnedTokens = learnedTokens.size, dnsProvider = DnsProvider.fromId(prefsDataSource.getDnsProvider())) }
 
             val (loadedBlocked, loadedExceptions) = blocklistDataSource.loadFromDisk(defaultDomains)
             hostBlockSet.clear()
@@ -152,8 +152,17 @@ object FirewallRepository {
         prefsDataSource.saveShouldRun(shouldRun)
     }
 
-    // Cloudflare es el único servidor DNS; el filtro clásico de respaldo usa su IP.
-    fun getUpstreamDns(): String = CLOUDFLARE_IP
+    // IP del proveedor elegido; la usa también el filtro DNS clásico de respaldo.
+    fun getUpstreamDns(): String = _stats.value.dnsProvider.ip
+
+    fun dnsProvider(): DnsProvider = _stats.value.dnsProvider
+
+    // FirestackBridge lee el proveedor en cada consulta, así que el cambio se aplica sin reiniciar el túnel.
+    fun setDnsProvider(provider: DnsProvider) {
+        prefsDataSource.saveDnsProvider(provider.id)
+        _stats.update { it.copy(dnsProvider = provider) }
+        _cacheInvalidateEvent.tryEmit(Unit)
+    }
 
     fun isObservationModeEnabled(): Boolean = _observationModeEnabled.value
 

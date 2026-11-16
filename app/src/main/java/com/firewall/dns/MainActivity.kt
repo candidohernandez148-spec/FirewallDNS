@@ -360,6 +360,7 @@ fun FirewallApp(
                     onToggleBlockedApp = viewModel::toggleBlockedApp,
                     appSearch = appSearch,
                     onAppSearchChange = viewModel::onAppSearchChange,
+                    onSelectDnsProvider = viewModel::setDnsProvider,
                     onToggleExcludedApp = viewModel::toggleExcludedApp,
                     onOpenBatteryOpt = onOpenBatteryOpt,
                     onOpenVpnSettings = onOpenVpnSettings

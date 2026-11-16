@@ -102,6 +102,8 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
 
     fun clearLogs() { FirewallRepository.clearLogs() }
 
+    fun setDnsProvider(provider: com.firewall.dns.domain.model.DnsProvider) { FirewallRepository.setDnsProvider(provider) }
+
     fun toggleBlockedApp(app: AppInfoItem) { FirewallRepository.toggleBlockedApp(app.packageName, app.uid) }
 
     fun toggleExcludedApp(packageName: String) { FirewallRepository.toggleExcludedApp(packageName) }

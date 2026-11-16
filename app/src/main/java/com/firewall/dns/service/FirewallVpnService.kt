@@ -23,6 +23,7 @@ import com.celzero.firestack.intra.Tunnel
 import com.celzero.firestack.settings.Settings
 import com.firewall.dns.MainActivity
 import com.firewall.dns.data.repository.FirewallRepository
+import com.firewall.dns.domain.model.DnsProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -125,9 +126,20 @@ class FirewallVpnService : VpnService() {
                 defaultDns, bridge
             )
             Log.d(TAG, "startTunnel: Intra.connect ok")
-            // Cloudflare es el único upstream; las IPs del sistema solo sirven para resolver su nombre.
-            Intra.addDoHTransport(t, Backend.Preferred, DOH_URL, systemDnsIps)
-            bridge.upstreamId = Backend.Preferred
+            // Se registran todos los proveedores; las IPs del sistema solo ayudan a resolver sus nombres.
+            val registered = mutableSetOf<String>()
+            DnsProvider.entries.forEach { p ->
+                try {
+                    Intra.addDoHTransport(t, p.transportId, p.dohUrl, listOf(p.bootstrapIps, systemDnsIps).filter { it.isNotEmpty() }.joinToString(","))
+                    registered += p.transportId
+                } catch (e: Throwable) {
+                    Log.w(TAG, "DoH ${p.label} no registrado", e)
+                }
+            }
+            if (registered.isEmpty()) throw IllegalStateException("Ningún servidor DoH pudo registrarse")
+            // Backend.Preferred queda como respaldo del selector.
+            Intra.addDoHTransport(t, Backend.Preferred, DnsProvider.CLOUDFLARE.dohUrl, listOf(DnsProvider.CLOUDFLARE.bootstrapIps, systemDnsIps).filter { it.isNotEmpty() }.joinToString(","))
+            bridge.registeredTransports = registered
             registerNetworkMonitor()
             tunnel = t
             FirewallRepository.setShouldRun(true)
@@ -135,7 +147,9 @@ class FirewallVpnService : VpnService() {
             Log.d(TAG, "startTunnel: protección activa")
             true
         } catch (e: Throwable) {
-            Log.d(TAG, "startTunnel: falló", e)
+            Log.e(TAG, "startTunnel: falló", e)
+            FirewallRepository.addLog("firestack", "-", false, "Firestack falló (${e.javaClass.simpleName}: ${e.message}); se usa el respaldo DNS", "Sistema")
+            closeResources()
             false
         }
     }
@@ -274,7 +288,6 @@ class FirewallVpnService : VpnService() {
         private const val DNS4 = "10.111.222.3"
         private const val GATEWAY6 = "fd66:f83a:c650::1"
         private const val DNS6 = "fd66:f83a:c650::3"
-        private const val DOH_URL = "https://cloudflare-dns.com/dns-query"
 
         fun start(context: Context) {
             context.startForegroundService(Intent(context, FirewallVpnService::class.java))

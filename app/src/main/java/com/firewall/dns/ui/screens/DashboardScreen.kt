@@ -113,7 +113,7 @@ fun DashboardScreen(
             ) {
                 Text("Conexión", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 ConnectionRow("Red", stats.networkType)
-                ConnectionRow("Servidor DNS", "Cloudflare (DoH)")
+                ConnectionRow("Servidor DNS", "${stats.dnsProvider.label} (DoH)")
                 ConnectionRow("Reglas activas", stats.loadedRulesCount.toString())
             }
         }

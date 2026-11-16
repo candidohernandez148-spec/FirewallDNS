@@ -28,7 +28,12 @@ class FirestackBridge(
 
     /** Transporte DoH registrado en el túnel; los dominios permitidos se resuelven por aquí. */
     @Volatile
-    var upstreamId: String = Backend.Default
+    // Transportes DoH registrados en Firestack; el proveedor elegido se lee en cada consulta.
+    @Volatile
+    var registeredTransports: Set<String> = emptySet()
+
+    private val upstreamId: String
+        get() = FirewallRepository.dnsProvider().transportId.takeIf { it in registeredTransports } ?: Backend.Preferred
 
     private val appLabels = HashMap<Int, String>()
     private val recentConnections = java.util.concurrent.ConcurrentHashMap<String, Long>()
