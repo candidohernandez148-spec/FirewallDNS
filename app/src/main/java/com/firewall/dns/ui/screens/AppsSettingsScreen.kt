@@ -128,7 +128,7 @@ fun AppsSettingsScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text("NGFW", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                             Text(
-                                "Firewall de nueva generación: reglas por app, IP, puerto y protocolo además del filtrado DNS.",
+                                "Motor NGFW (Firestack): filtrado DNS por dominio con registro por app. Las conexiones no se bloquean.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

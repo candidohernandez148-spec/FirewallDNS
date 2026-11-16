@@ -110,17 +110,22 @@ class NgfwBridge(
         mark.pidcsv = Backend.Exit
 
         val target = NgfwRuleEngine.splitHostPort(dst)
-        // Sin políticas no hay nada que evaluar: camino rápido, solo se cuenta.
-        if (!FirewallRepository.hasNgfwPolicies()) {
-            mark.uid = rawUid.toString()
-            if (target != null && (target.second == 53 || target.first in VPN_DNS)) {
-                mark.pidcsv = Backend.Base
-            } else if (target != null) {
-                val uid = if (rawUid >= 0) rawUid else lookupUid(protocol, src, dst)
-                logAllowed(uid, protocol, target, domains)
-            }
-            return mark
+        // NGFW solo filtra DNS (onQuery); las conexiones pasan sin evaluarse ni registrarse.
+        mark.uid = rawUid.toString()
+        if (target != null && (target.second == 53 || target.first in VPN_DNS)) {
+            mark.pidcsv = Backend.Base
         }
+        return mark
+    }
+
+    @Suppress("unused")
+    private fun decideWithPolicies(
+        protocol: Int, rawUid: Int, src: String?, dst: String?, realIps: String?, domains: String?
+    ): Mark {
+        val mark = Mark()
+        mark.cid = UUID.randomUUID().toString().take(8)
+        mark.pidcsv = Backend.Exit
+        val target = NgfwRuleEngine.splitHostPort(dst)
         val uid = if (rawUid >= 0) rawUid else lookupUid(protocol, src, dst)
         mark.uid = uid.toString()
         if (target == null) return mark
