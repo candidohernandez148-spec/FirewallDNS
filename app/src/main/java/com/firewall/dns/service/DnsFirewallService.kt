@@ -259,7 +259,15 @@ class DnsFirewallService : VpnService() {
             val tunFd = established.dup().detachFd().toLong()
             val dns = Intra.newDefaultDNS(Backend.DNS53, FirewallRepository.getUpstreamDns(), "")
             val bridge = NgfwBridge(this, connectivityManager)
-            ngfwTunnel = Intra.connect2(tunFd, NGFW_MTU.toLong(), dns, bridge)
+            val tunnel = Intra.connect2(tunFd, NGFW_MTU.toLong(), dns, bridge)
+            try {
+                val id = "FirewallUpstream"
+                Intra.addDNSProxy(tunnel, id, "${FirewallRepository.getUpstreamDns()}:53")
+                bridge.upstreamId = id
+            } catch (_: Throwable) {
+                // Se usa el transporte por defecto del túnel.
+            }
+            ngfwTunnel = tunnel
             vpnInterface = established
             isRunning = true
             FirewallRepository.setRunning(true)

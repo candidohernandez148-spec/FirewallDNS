@@ -150,7 +150,7 @@ fun AppsSettingsScreen(
                     ) { Text("Agregar regla") }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            "Política implícita: denegar todo lo no coincidente",
+                            "Denegar lo no coincidente en apps con política accept propia",
                             modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.bodyMedium
                         )

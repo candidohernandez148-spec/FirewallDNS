@@ -14,6 +14,7 @@ enum class NgfwProtocol(val label: String, val number: Int?) {
  * Política estilo FortiGate (capa 3/4 + app de origen).
  * Texto: `<deny|accept> <tcp|udp|any> <ip[/prefijo]|any> <puerto|min-max|any> [app=<paquete>] [name=<nombre>]`.
  * `block`/`allow` se aceptan como sinónimos de `deny`/`accept`.
+ * Un deny debe indicar `app=` o una IP/red concreta para no afectar a todo el tráfico.
  */
 data class NgfwRule(
     val action: NgfwAction,
@@ -89,6 +90,9 @@ data class NgfwRule(
                     else -> return null
                 }
             }
+
+            // Un deny sin app ni IP (p. ej. "deny tcp any 443") cortaría a todas las apps.
+            if (action == NgfwAction.BLOCK && app == null && network == null) return null
 
             val canonical = parts.joinToString(" ")
             return NgfwRule(action, protocol, network, prefix, start, end, app, name, canonical)

@@ -26,6 +26,14 @@ class NgfwBridge(
     private val connectivityManager: ConnectivityManager
 ) : Bridge {
 
+    /** Id del transporte DNS ascendente registrado en el túnel. */
+    @Volatile
+    var upstreamId: String = Backend.Default
+
+    private companion object {
+        val VPN_DNS = setOf("10.10.10.1", "fd00:10:10::1")
+    }
+
     private val appLabels = HashMap<Int, Pair<List<String>, String>>()
 
     override fun bind4(who: String?, addrPort: String?, fd: Long) = protect(who, fd)
@@ -42,7 +50,7 @@ class NgfwBridge(
         opts.ipcsv = ""
         val domain = fqdn?.trim()?.trimEnd('.')?.lowercase().orEmpty()
         if (domain.isEmpty()) {
-            opts.tidcsv = Backend.Default
+            opts.tidcsv = upstreamId
             return opts
         }
         val (blocked, reason) = try {
@@ -50,7 +58,7 @@ class NgfwBridge(
         } catch (_: Throwable) {
             false to "Permitido"
         }
-        opts.tidcsv = if (blocked) Backend.BlockAll else Backend.Default
+        opts.tidcsv = if (blocked) Backend.BlockAll else upstreamId
         val appName = uid?.toIntOrNull()?.let { appFor(it).second } ?: "Sistema / DNS"
         FirewallRepository.addLog(
             domain = domain,
@@ -85,8 +93,14 @@ class NgfwBridge(
         isAlg: Boolean
     ): Mark = decide(protocol, uid, src, dst, realIps)
 
-    override fun inflow(protocol: Int, uid: Int, src: String?, dst: String?): Mark =
-        decide(protocol, uid, dst, src, null)
+    // El tráfico entrante pertenece a conexiones ya aceptadas en flow(); no se vuelve a filtrar.
+    override fun inflow(protocol: Int, uid: Int, src: String?, dst: String?): Mark {
+        val mark = Mark()
+        mark.cid = UUID.randomUUID().toString().take(8)
+        mark.pidcsv = Backend.Exit
+        mark.uid = uid.toString()
+        return mark
+    }
 
     private fun decide(protocol: Int, rawUid: Int, src: String?, dst: String?, realIps: String?): Mark {
         val mark = Mark()
@@ -98,8 +112,8 @@ class NgfwBridge(
         mark.uid = uid.toString()
         if (target == null) return mark
 
-        // El DNS lo resuelve Firestack con el transporte por defecto y se filtra en onQuery.
-        if (target.second == 53) {
+        // El DNS lo resuelve Firestack y se filtra en onQuery; nunca pasa por las políticas.
+        if (target.second == 53 || target.first in VPN_DNS) {
             mark.pidcsv = Backend.Base
             return mark
         }

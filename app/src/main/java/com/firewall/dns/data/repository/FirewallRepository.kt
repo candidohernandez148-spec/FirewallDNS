@@ -251,7 +251,9 @@ object FirewallRepository {
         val rules = _ngfwRules.value
         val rule = NgfwRuleEngine.firstMatch(rules, packages, proto, dstIp, dstPort)
         if (rule == null) {
-            return if (_ngfwDefaultDeny.value) "NGFW: política implícita (deny)" else null
+            // La política implícita solo afecta a apps que tienen alguna política accept propia.
+            val scoped = rules.any { it.action == NgfwAction.ALLOW && it.app != null && it.app in packages }
+            return if (_ngfwDefaultDeny.value && scoped) "NGFW: política implícita (deny)" else null
         }
         _ngfwHits.update { it + (rule.text to ((it[rule.text] ?: 0L) + 1L)) }
         val id = rules.indexOf(rule) + 1

@@ -131,7 +131,7 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
 
     fun addNgfwRule(text: String) {
         if (!FirewallRepository.addNgfwRule(text)) {
-            _toastMessage.tryEmit("Formato: deny|accept tcp|udp|any IP[/prefijo]|any puerto|min-max|any [app=paquete] [name=nombre]")
+            _toastMessage.tryEmit("Un deny necesita app=paquete o una IP concreta. Formato: deny|accept tcp|udp|any IP[/prefijo]|any puerto|min-max|any [app=paquete] [name=nombre]")
         }
     }
 
