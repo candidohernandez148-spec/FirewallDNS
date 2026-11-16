@@ -166,10 +166,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startFirewallService() {
+        android.util.Log.d("MainActivity", "Encendiendo VPN")
         FirewallVpnService.start(this)
     }
 
     private fun stopFirewallService() {
+        android.util.Log.d("MainActivity", "Apagando VPN: enviando ACTION_STOP")
         FirewallVpnService.stop(this)
         stopService(Intent(this, DnsFirewallService::class.java))
     }

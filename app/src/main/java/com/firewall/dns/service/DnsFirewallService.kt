@@ -126,11 +126,12 @@ class DnsFirewallService : VpnService() {
                 startVpn()
             }
             null -> {
-                startForegroundNotification()
-                startVpn()
+                // Reinicio del sistema sin intent: no se vuelve a encender la VPN.
+                stopSelf()
+                return START_NOT_STICKY
             }
         }
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     private fun notificationText(): String = if (FirewallRepository.isObservationModeEnabled()) {

@@ -11,6 +11,7 @@ import android.net.ConnectivityManager
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
@@ -38,13 +39,23 @@ class FirewallVpnService : VpnService() {
 
     override fun onCreate() {
         super.onCreate()
+        Log.d(TAG, "onCreate")
         FirewallRepository.init(applicationContext)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.d(TAG, "onStartCommand action=${intent?.action} intent=${intent != null}")
         if (intent?.action == ACTION_STOP) {
+            Log.d(TAG, "ACTION_STOP recibido")
             FirewallRepository.setShouldRun(false)
             shutdown()
+            return START_NOT_STICKY
+        }
+        if (intent == null) {
+            // Reinicio del sistema sin intent: no se vuelve a encender la VPN.
+            Log.d(TAG, "intent == null, no se reinicia la VPN")
+            FirewallRepository.setShouldRun(false)
+            stopSelf()
             return START_NOT_STICKY
         }
         stopRequested = false
@@ -62,11 +73,12 @@ class FirewallVpnService : VpnService() {
                 }
             }.start()
         }
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     private fun startTunnel(): Boolean = synchronized(lock) {
         if (stopRequested) return false
+        Log.d(TAG, "startTunnel: inicio")
         try {
             // Sin IPv6 real, enrutar ::/0 provoca timeouts y lentitud.
             val v6 = hasIpv6()
@@ -88,6 +100,7 @@ class FirewallVpnService : VpnService() {
             }
 
             val established = builder.establish() ?: return false
+            Log.d(TAG, "startTunnel: establish() ok")
             vpnInterface = established
             // Firestack se queda con el descriptor y lo cierra al desconectar.
             val tunFd = established.dup().detachFd().toLong()
@@ -104,6 +117,7 @@ class FirewallVpnService : VpnService() {
                 try { ParcelFileDescriptor.adoptFd(tunFd.toInt()).close() } catch (_: Throwable) {}
                 throw e
             }
+            Log.d(TAG, "startTunnel: Intra.connect ok")
             Settings.setTunMode(Settings.DNSModeIP, Settings.BlockModeFilter, Settings.PtModeAuto)
             try {
                 Intra.addDoHTransport(t, Backend.Preferred, DOH_URL, DOH_IPS)
@@ -114,8 +128,10 @@ class FirewallVpnService : VpnService() {
             tunnel = t
             FirewallRepository.setShouldRun(true)
             FirewallRepository.setRunning(true, "Firestack")
+            Log.d(TAG, "startTunnel: protección activa")
             true
-        } catch (_: Throwable) {
+        } catch (e: Throwable) {
+            Log.d(TAG, "startTunnel: falló", e)
             false
         }
     }
@@ -130,34 +146,52 @@ class FirewallVpnService : VpnService() {
         false
     }
 
-    // Cierre ordenado: Firestack primero, después el descriptor de la VPN, y por último el servicio.
+    // Cierre ordenado: disconnect de Firestack, cerrar el descriptor de la VPN (obligatorio para quitar la llave) y detener el servicio.
     private fun shutdown() {
         stopRequested = true
-        FirewallRepository.setRunning(false)
+        Log.d(TAG, "shutdown: inicio")
         ioScope.launch {
-            synchronized(lock) {
-                try {
-                    tunnel?.disconnect()
-                    vpnInterface?.close()
-                } catch (_: Throwable) {
-                } finally {
-                    tunnel = null
-                    vpnInterface = null
-                }
-            }
-            stopForeground(STOP_FOREGROUND_REMOVE)
+            closeResources()
+            // La UI se actualiza solo cuando el túnel ya está cerrado.
+            FirewallRepository.setRunning(false)
+            Log.d(TAG, "shutdown: stopForeground + stopSelf")
+            try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (e: Throwable) { Log.d(TAG, "stopForeground falló", e) }
             stopSelf()
         }
     }
 
+    private fun closeResources() = synchronized(lock) {
+        try {
+            Log.d(TAG, "tunnel.disconnect()")
+            tunnel?.disconnect()
+        } catch (e: Throwable) {
+            Log.d(TAG, "tunnel.disconnect() falló", e)
+        }
+        tunnel = null
+        try {
+            Log.d(TAG, "tunFd.close()")
+            vpnInterface?.close()
+        } catch (e: Throwable) {
+            Log.d(TAG, "tunFd.close() falló", e)
+        }
+        vpnInterface = null
+    }
+
     override fun onRevoke() {
+        Log.d(TAG, "onRevoke")
         FirewallRepository.setShouldRun(false)
         shutdown()
         super.onRevoke()
     }
 
     override fun onDestroy() {
-        shutdown()
+        Log.d(TAG, "onDestroy")
+        stopRequested = true
+        // Limpieza síncrona y segura para no dejar el túnel abierto; fuera del hilo principal si hay bloqueo.
+        ioScope.launch {
+            closeResources()
+            FirewallRepository.setRunning(false)
+        }
         super.onDestroy()
     }
 
@@ -186,6 +220,7 @@ class FirewallVpnService : VpnService() {
     }
 
     companion object {
+        private const val TAG = "FirewallVpnService"
         const val ACTION_STOP = "com.firewall.dns.vpn.STOP"
         private const val CHANNEL_ID = "firewall_vpn_channel"
         private const val NOTIFICATION_ID = 2002
