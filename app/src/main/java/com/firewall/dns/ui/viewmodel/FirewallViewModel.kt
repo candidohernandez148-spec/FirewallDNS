@@ -55,7 +55,7 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
     ) { logs, blockedOnly, query ->
         logs.filter { entry ->
             (!blockedOnly || entry.isBlocked) &&
-                (query.isBlank() || entry.domain.contains(query, ignoreCase = true))
+                (query.isBlank() || entry.domain.contains(query, ignoreCase = true) || entry.appName.contains(query, ignoreCase = true))
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
