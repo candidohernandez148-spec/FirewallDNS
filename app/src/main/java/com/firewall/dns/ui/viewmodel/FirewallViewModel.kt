@@ -21,6 +21,7 @@ import kotlinx.coroutines.launch
 class FirewallViewModel(application: Application) : AndroidViewModel(application) {
 
     val stats: StateFlow<FirewallStats> = FirewallRepository.stats
+    val traffic: StateFlow<List<com.firewall.dns.domain.model.TrafficPoint>> = FirewallRepository.traffic
     val customBlockList: StateFlow<List<String>> = FirewallRepository.customBlockList
     val customAllowList: StateFlow<List<String>> = FirewallRepository.customAllowList
     val excludedPackages: StateFlow<Set<String>> = FirewallRepository.excludedPackages

@@ -2,6 +2,9 @@ package com.firewall.dns.domain.model
 
 import androidx.compose.ui.graphics.ImageBitmap
 
+// Una muestra de actividad por intervalo para la gráfica en tiempo real.
+data class TrafficPoint(val allowed: Int, val blocked: Int)
+
 data class DnsLogEntry(
     val id: Long,
     val timestamp: String,

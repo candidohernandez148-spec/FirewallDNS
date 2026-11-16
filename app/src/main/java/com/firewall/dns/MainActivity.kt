@@ -233,6 +233,7 @@ fun FirewallApp(
     val context = LocalContext.current
     val stats by viewModel.stats.collectAsState()
     val logs by viewModel.filteredLogs.collectAsState()
+    val traffic by viewModel.traffic.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val onlyBlocked by viewModel.onlyBlocked.collectAsState()
     val customBlock by viewModel.customBlockList.collectAsState()
@@ -318,6 +319,7 @@ fun FirewallApp(
                 0 -> LogsScreen(
                     stats = stats,
                     logs = logs,
+                    traffic = traffic,
                     searchQuery = searchQuery,
                     onlyBlocked = onlyBlocked,
                     onSearchQueryChange = viewModel::onSearchQueryChange,

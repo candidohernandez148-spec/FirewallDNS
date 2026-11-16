@@ -13,6 +13,7 @@ import com.firewall.dns.domain.engine.RuleEvaluator
 import com.firewall.dns.domain.engine.SmartDomainAnalyzer
 import com.firewall.dns.domain.model.AppInfoItem
 import com.firewall.dns.domain.model.DnsLogEntry
+import com.firewall.dns.domain.model.TrafficPoint
 import com.firewall.dns.domain.model.FirewallStats
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -33,6 +34,8 @@ import java.util.concurrent.atomic.AtomicLong
 object FirewallRepository {
 
     private const val MAX_LOGS = 400
+    private const val TRAFFIC_POINTS = 40
+    private const val TRAFFIC_INTERVAL_MS = 2_000L
     private const val MAX_LEARNED_DOMAINS = 5000
     private const val ICON_SIZE_PX = 96
 
@@ -80,6 +83,22 @@ object FirewallRepository {
     private val learningScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
 
     private val logCounter = AtomicLong(0L)
+
+    private val _traffic = MutableStateFlow(List(TRAFFIC_POINTS) { TrafficPoint(0, 0) })
+    val traffic: StateFlow<List<TrafficPoint>> = _traffic.asStateFlow()
+    private val bucketAllowed = java.util.concurrent.atomic.AtomicInteger(0)
+    private val bucketBlocked = java.util.concurrent.atomic.AtomicInteger(0)
+    private val trafficScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.Default)
+
+    init {
+        trafficScope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(TRAFFIC_INTERVAL_MS)
+                val point = TrafficPoint(bucketAllowed.getAndSet(0), bucketBlocked.getAndSet(0))
+                _traffic.update { (it + point).takeLast(TRAFFIC_POINTS) }
+            }
+        }
+    }
 
     @Volatile
     private var initialized = false
@@ -361,6 +380,7 @@ object FirewallRepository {
             appName = appName
         )
         _logs.update { (listOf(entry) + it).take(MAX_LOGS) }
+        (if (allowed) bucketAllowed else bucketBlocked).incrementAndGet()
         _stats.update { stats ->
             if (allowed) stats.copy(totalAllowed = stats.totalAllowed + 1)
             else stats.copy(totalBlocked = stats.totalBlocked + 1)
