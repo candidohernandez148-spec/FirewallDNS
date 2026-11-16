@@ -49,8 +49,6 @@ fun AppsSettingsScreen(
     excludedPackages: Set<String>,
     blockedApps: Set<String>,
     onToggleBlockedApp: (AppInfoItem) -> Unit,
-    ngfwEnabled: Boolean,
-    onNgfwEnabledChange: (Boolean) -> Unit,
     appSearch: String,
     onAppSearchChange: (String) -> Unit,
     onSelectUpstreamDns: (String) -> Unit,
@@ -100,28 +98,6 @@ fun AppsSettingsScreen(
                                 Text("$description  ·  $ip", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
-                    }
-                }
-            }
-        }
-
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(22.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-            ) {
-                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("NGFW", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                            Text(
-                                "Motor NGFW (Firestack): filtrado DNS, lista de anuncios y bloqueo de Internet por app. Desactivado usa solo el filtro DNS clásico.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(checked = ngfwEnabled, onCheckedChange = onNgfwEnabledChange)
                     }
                 }
             }
@@ -221,7 +197,7 @@ fun AppsSettingsScreen(
                             Text("Excluir del filtrado", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                             Switch(checked = excluded, onCheckedChange = { onToggleExcludedApp(app.packageName) })
                         }
-                        if (ngfwEnabled) Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 if (internetBlocked) "Internet bloqueado" else "Internet permitido",
                                 modifier = Modifier.weight(1f),
