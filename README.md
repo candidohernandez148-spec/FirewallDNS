@@ -34,11 +34,6 @@ MIT. Consulta el archivo [LICENSE](LICENSE).
 
 ## Instalación y firma del APK
 
-El workflow «Compilar APK» genera `app-release.apk`. Para que Android lo trate como una app de un desarrollador consistente (y permita actualizarla sin desinstalar), hay que firmarlo siempre con la misma clave:
-
-1. Ejecuta una vez `scripts/generate-keystore.sh` (necesita `keytool` y `gh` con permiso para escribir secretos). Guarda el `.jks` y la contraseña.
-2. Eso crea los secretos `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD` y `KEY_ALIAS`; el workflow los usa solo.
-
-Sin esos secretos el APK se firma con una clave de depuración distinta en cada compilación.
+El workflow «Compilar APK» genera `app-release.apk`. La primera vez crea una clave de firma y la guarda en la caché de Actions, así que los siguientes builds se firman con la misma clave y el APK se puede actualizar sin desinstalar. Si la caché se borra (por ejemplo, tras 7 días sin builds), se crea una clave nueva y habrá que desinstalar la app una vez. Para una clave permanente se pueden definir los secretos `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD` y `KEY_ALIAS`, que tienen prioridad.
 
 Aviso: Android pide permitir «instalar apps desconocidas» para cualquier APK instalado fuera de Google Play, y Google Play Protect puede mostrar un aviso a apps de desarrolladores no verificados. Esos avisos solo desaparecen del todo publicando en Google Play (o F-Droid).

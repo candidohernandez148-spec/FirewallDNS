@@ -24,22 +24,38 @@ jobs:
         with:
           gradle-version: "8.14"
 
+      - name: Restaurar clave de firma
+        id: signing-cache
+        uses: actions/cache@v5
+        with:
+          path: signing
+          key: firewalldns-signing-v1
+
       - name: Preparar firma de release
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD_SECRET: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS_SECRET: ${{ secrets.KEY_ALIAS }}
         run: |
+          mkdir -p signing
           if [[ -n "$KEYSTORE_BASE64" ]]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
-            echo "KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
-            echo "SIGNED=true" >> "$GITHUB_ENV"
-          else
-            echo "::warning::Sin KEYSTORE_BASE64: el APK se firma con la clave de depuración (cambia en cada build)."
+            echo "$KEYSTORE_BASE64" | base64 -d > signing/release.jks
+            echo "$KEYSTORE_PASSWORD_SECRET" > signing/password
+            echo "$KEY_ALIAS_SECRET" > signing/alias
+          elif [[ ! -s signing/release.jks ]]; then
+            head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24 > signing/password
+            echo firewalldns > signing/alias
+            keytool -genkeypair -keystore signing/release.jks -alias firewalldns \
+              -keyalg RSA -keysize 4096 -validity 36500 \
+              -storepass "$(cat signing/password)" -keypass "$(cat signing/password)" \
+              -dname "CN=Candido y Elizabeth, O=FirewallDNS"
           fi
+          echo "KEYSTORE_PATH=$PWD/signing/release.jks" >> "$GITHUB_ENV"
+          echo "KEYSTORE_PASSWORD=$(cat signing/password)" >> "$GITHUB_ENV"
+          echo "KEY_ALIAS=$(cat signing/alias)" >> "$GITHUB_ENV"
+          echo "::add-mask::$(cat signing/password)"
 
       - name: Compilar Release APK
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: gradle assembleRelease --no-daemon
 
       - name: Inspeccionar firmas de Firestack (opcional)
