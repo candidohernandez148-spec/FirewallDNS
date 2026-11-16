@@ -114,7 +114,9 @@ class FirewallVpnService : VpnService() {
             val bridge = FirestackBridge(this)
             val defaultDns = Intra.newDefaultDNS(Backend.DNS53, bootstrapIp, "")
             // vpnInterface se mantiene abierto y solo se cierra en closeResources(), después de disconnect().
-            Settings.dupTunFd(false)
+            // dupTunFd(true): Firestack trabaja con su propia copia del descriptor y nosotros conservamos el original.
+            // Con false, Firestack lo cierra al desconectar y nuestro close() sería un doble cierre del mismo fd.
+            Settings.dupTunFd(true)
             Settings.setTunMode(Settings.DNSModeIP, Settings.BlockModeFilter, Settings.PtModeAuto)
             val t = Intra.connect(
                 established.fd.toLong(), MTU.toLong(), MTU.toLong(),

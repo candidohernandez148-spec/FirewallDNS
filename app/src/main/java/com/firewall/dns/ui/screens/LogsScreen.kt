@@ -57,6 +57,7 @@ fun LogsScreen(
     stats: FirewallStats,
     logs: List<DnsLogEntry>,
     traffic: List<TrafficPoint>,
+    otherVpnActive: Boolean,
     searchQuery: String,
     onlyBlocked: Boolean,
     onSearchQueryChange: (String) -> Unit,
@@ -100,8 +101,31 @@ fun LogsScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            if (stats.isRunning) "${stats.engine} · ${stats.networkType}" else "Enciende el interruptor superior para proteger tu dispositivo",
+                            when {
+                                !stats.isRunning -> "Enciende el interruptor superior para proteger tu dispositivo"
+                                stats.engine == "Firestack" -> "Motor: Firestack (local) · ${stats.networkType}"
+                                else -> "Motor: Respaldo DNS · ${stats.networkType}"
+                            },
                             style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            }
+        }
+
+        if (otherVpnActive) {
+            item {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.errorContainer
+                ) {
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("Otra VPN está activa", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onErrorContainer)
+                        Text(
+                            "Otra app VPN (como Outline) ocupa el permiso de red del sistema. Desactívala en Ajustes de VPN y vuelve a encender el firewall.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer
                         )
                     }
                 }
