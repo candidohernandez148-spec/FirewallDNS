@@ -1,10 +1,17 @@
 package com.firewall.dns.ui.theme
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 private val BrandBlue = Color(0xFF2457D6)
 private val BrandBlueDark = Color(0xFFB7C7FF)
@@ -58,6 +65,21 @@ private val DarkFirewallColors = darkColorScheme(
     onErrorContainer = Color(0xFFFFDADB)
 )
 
+private val FirewallTypography = Typography(
+    headlineSmall = TextStyle(fontSize = 26.sp, lineHeight = 32.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.3).sp),
+    titleLarge = TextStyle(fontSize = 20.sp, lineHeight = 26.sp, fontWeight = FontWeight.Bold),
+    titleMedium = TextStyle(fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold),
+    bodyMedium = TextStyle(fontSize = 14.sp, lineHeight = 21.sp),
+    bodySmall = TextStyle(fontSize = 12.sp, lineHeight = 18.sp),
+    labelMedium = TextStyle(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.3.sp)
+)
+
+private val FirewallShapes = Shapes(
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(18.dp),
+    large = RoundedCornerShape(26.dp)
+)
+
 @Composable
 fun FirewallTheme(content: @Composable () -> Unit) {
     MaterialTheme(
@@ -66,6 +88,8 @@ fun FirewallTheme(content: @Composable () -> Unit) {
         } else {
             LightFirewallColors
         },
+        typography = FirewallTypography,
+        shapes = FirewallShapes,
         content = content
     )
 }

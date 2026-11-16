@@ -27,3 +27,18 @@ Esta app usa un servicio `VpnService` para interceptar y filtrar consultas DNS c
 - Mantén activado solo el filtrado DNS necesario.
 - Usa listas externas con cuidado y valida reglas personalizadas.
 - Si quieres mayor protección, combina este filtro con políticas de red y controles del sistema.
+
+## Licencia
+
+MIT. Consulta el archivo [LICENSE](LICENSE).
+
+## Instalación y firma del APK
+
+El workflow «Compilar APK» genera `app-release.apk`. Para que Android lo trate como una app de un desarrollador consistente (y permita actualizarla sin desinstalar), hay que firmarlo siempre con la misma clave:
+
+1. Ejecuta una vez `scripts/generate-keystore.sh` (necesita `keytool` y `gh` con permiso para escribir secretos). Guarda el `.jks` y la contraseña.
+2. Eso crea los secretos `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD` y `KEY_ALIAS`; el workflow los usa solo.
+
+Sin esos secretos el APK se firma con una clave de depuración distinta en cada compilación.
+
+Aviso: Android pide permitir «instalar apps desconocidas» para cualquier APK instalado fuera de Google Play, y Google Play Protect puede mostrar un aviso a apps de desarrolladores no verificados. Esos avisos solo desaparecen del todo publicando en Google Play (o F-Droid).
