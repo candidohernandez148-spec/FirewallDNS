@@ -247,6 +247,7 @@ fun FirewallApp(
     val ngfwEnabled by viewModel.ngfwEnabled.collectAsState()
     val ngfwRules by viewModel.ngfwRules.collectAsState()
     val ngfwBlockedApps by viewModel.ngfwBlockedApps.collectAsState()
+    val ngfwEnforce by viewModel.ngfwEnforce.collectAsState()
     val ngfwDefaultDeny by viewModel.ngfwDefaultDeny.collectAsState()
     val ngfwHits by viewModel.ngfwHits.collectAsState()
     val appSearch by viewModel.appSearch.collectAsState()
@@ -356,6 +357,8 @@ fun FirewallApp(
                     ngfwEnabled = ngfwEnabled,
                     ngfwRules = ngfwRules,
                     ngfwBlockedApps = ngfwBlockedApps,
+                    ngfwEnforce = ngfwEnforce,
+                    onNgfwEnforceChange = viewModel::setNgfwEnforce,
                     ngfwDefaultDeny = ngfwDefaultDeny,
                     ngfwHits = ngfwHits,
                     onNgfwDefaultDenyChange = viewModel::setNgfwDefaultDeny,

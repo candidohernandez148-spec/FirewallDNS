@@ -142,7 +142,16 @@ class NgfwBridge(
         } catch (_: Throwable) {
             null
         }
-        if (reason != null) {
+        if (reason != null && !FirewallRepository.isNgfwEnforce()) {
+            // Observador: se registra lo que se bloquearía, pero la conexión pasa.
+            FirewallRepository.addLog(
+                domain = "$destIp:${target.second}",
+                qType = protoName(protocol),
+                isBlocked = false,
+                reason = "Observado ($reason)",
+                appName = label
+            )
+        } else if (reason != null) {
             mark.pidcsv = Backend.Block
             FirewallRepository.addLog(
                 domain = "$destIp:${target.second}",

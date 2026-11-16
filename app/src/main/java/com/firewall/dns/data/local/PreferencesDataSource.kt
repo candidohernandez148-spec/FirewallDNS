@@ -100,6 +100,12 @@ class PreferencesDataSource(context: Context) {
         prefs.edit().putBoolean(KEY_NGFW_ENABLED, enabled).apply()
     }
 
+    fun getNgfwEnforce(): Boolean = prefs.getBoolean("ngfw_enforce", false)
+
+    fun saveNgfwEnforce(enforce: Boolean) {
+        prefs.edit().putBoolean("ngfw_enforce", enforce).apply()
+    }
+
     fun getNgfwDefaultDeny(): Boolean = prefs.getBoolean(KEY_NGFW_DEFAULT_DENY, false)
 
     fun saveNgfwDefaultDeny(deny: Boolean) {

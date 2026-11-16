@@ -69,6 +69,8 @@ object FirewallRepository {
     private val _ngfwRules = MutableStateFlow<List<NgfwRule>>(emptyList())
     val ngfwRules: StateFlow<List<NgfwRule>> = _ngfwRules.asStateFlow()
 
+    private val _ngfwEnforce = MutableStateFlow(false)
+    val ngfwEnforce: StateFlow<Boolean> = _ngfwEnforce.asStateFlow()
     private val _ngfwDefaultDeny = MutableStateFlow(false)
     val ngfwDefaultDeny: StateFlow<Boolean> = _ngfwDefaultDeny.asStateFlow()
 
@@ -124,6 +126,7 @@ object FirewallRepository {
             _ngfwRules.value = prefsDataSource.getNgfwRules().mapNotNull { NgfwRule.parse(it) }
             _ngfwBlockedApps.value = prefsDataSource.getNgfwBlockedApps()
             _ngfwDefaultDeny.value = prefsDataSource.getNgfwDefaultDeny()
+            _ngfwEnforce.value = prefsDataSource.getNgfwEnforce()
             learnedTokens.clear()
             learnedTokens.putAll(prefsDataSource.getLearnedTokens())
 
@@ -223,6 +226,13 @@ object FirewallRepository {
         if (!updated.add(pkg)) updated.remove(pkg)
         _ngfwBlockedApps.value = updated
         prefsDataSource.saveNgfwBlockedApps(updated)
+    }
+
+    fun isNgfwEnforce(): Boolean = _ngfwEnforce.value
+
+    fun setNgfwEnforce(enforce: Boolean) {
+        _ngfwEnforce.value = enforce
+        prefsDataSource.saveNgfwEnforce(enforce)
     }
 
     fun setNgfwDefaultDeny(deny: Boolean) {

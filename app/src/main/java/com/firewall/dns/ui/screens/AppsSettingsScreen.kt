@@ -51,6 +51,8 @@ fun AppsSettingsScreen(
     ngfwEnabled: Boolean,
     ngfwRules: List<NgfwRule>,
     ngfwBlockedApps: Set<String>,
+    ngfwEnforce: Boolean,
+    onNgfwEnforceChange: (Boolean) -> Unit,
     ngfwDefaultDeny: Boolean,
     ngfwHits: Map<String, Long>,
     onNgfwDefaultDenyChange: (Boolean) -> Unit,
@@ -132,6 +134,21 @@ fun AppsSettingsScreen(
                             )
                         }
                         Switch(checked = ngfwEnabled, onCheckedChange = onNgfwEnabledChange)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                if (ngfwEnforce) "Modo bloqueo: las políticas deny cortan conexiones" else "Modo observador: solo registra; el DNS sí se bloquea",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                "Activa el bloqueo de conexiones solo cuando tus políticas estén probadas.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(checked = ngfwEnforce, onCheckedChange = onNgfwEnforceChange)
                     }
                     OutlinedTextField(
                         value = ruleText,

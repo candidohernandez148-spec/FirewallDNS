@@ -33,6 +33,7 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
     val ngfwRules: StateFlow<List<NgfwRule>> = FirewallRepository.ngfwRules
     val ngfwBlockedApps: StateFlow<Set<String>> = FirewallRepository.ngfwBlockedApps
 
+    val ngfwEnforce: StateFlow<Boolean> = FirewallRepository.ngfwEnforce
     val ngfwDefaultDeny: StateFlow<Boolean> = FirewallRepository.ngfwDefaultDeny
     val ngfwHits: StateFlow<Map<String, Long>> = FirewallRepository.ngfwHits
 
@@ -135,6 +136,7 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun setNgfwEnforce(enforce: Boolean) { FirewallRepository.setNgfwEnforce(enforce) }
     fun setNgfwDefaultDeny(deny: Boolean) { FirewallRepository.setNgfwDefaultDeny(deny) }
 
     fun moveNgfwRule(text: String, delta: Int) { FirewallRepository.moveNgfwRule(text, delta) }
