@@ -1,7 +1,6 @@
 package com.firewall.dns.service
 
 import android.app.NotificationChannel
-import com.firewall.dns.R
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
@@ -9,6 +8,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
+import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
@@ -24,25 +24,37 @@ import com.celzero.firestack.intra.Intra
 import com.celzero.firestack.intra.Tunnel
 import com.celzero.firestack.settings.Settings
 import com.firewall.dns.MainActivity
+import com.firewall.dns.R
 import com.firewall.dns.data.repository.FirewallRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import java.net.Inet6Address
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** VPN basada en Firestack: filtra DNS con DomainBlocker y conexiones por UID con AppFirewallManager. */
 class FirewallVpnService : VpnService() {
 
     @Volatile
     private var stopRequested = false
-    private val lock = Any()
-    // Alcance propio, no cancelado en onDestroy, para que el cierre nativo termine aunque el servicio muera.
-    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    @Volatile
+    private var fallingBack = false
+
+    @Volatile
     private var tunnel: Tunnel? = null
-    private var vpnInterface: ParcelFileDescriptor? = null
-    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+
     @Volatile
     private var lastDnsIps = ""
+
+    private val isStarting = AtomicBoolean(false)
+    private val lock = Any()
+
+    // Alcance propio, no cancelado en onDestroy, para que el cierre nativo termine aunque el servicio muera.
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var vpnInterface: ParcelFileDescriptor? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -65,17 +77,31 @@ class FirewallVpnService : VpnService() {
             stopSelf()
             return START_NOT_STICKY
         }
+
         stopRequested = false
+        fallingBack = false
         startForegroundNotification()
-        if (tunnel == null) {
+
+        if (tunnel == null && isStarting.compareAndSet(false, true)) {
             // Firestack puede tardar en conectar; se hace fuera del hilo principal para no congelar la app.
             Thread {
-                if (!startTunnel() && !stopRequested) {
-                    // Si Firestack no arranca, se usa el filtro DNS clásico para no dejar al usuario sin protección.
-                    shutdown()
+                val started = try {
+                    startTunnel()
+                } finally {
+                    isStarting.set(false)
+                }
+
+                if (!started && !stopRequested) {
+                    // Cierre síncrono antes de arrancar el respaldo para no pisar el túnel ni isRunning.
+                    fallingBack = true
+                    closeResources()
+                    try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Throwable) {}
+                    stopSelf()
                     ContextCompat.startForegroundService(
                         this,
-                        Intent(this, DnsFirewallService::class.java).apply { action = DnsFirewallService.ACTION_START }
+                        Intent(this, DnsFirewallService::class.java).apply {
+                            action = DnsFirewallService.ACTION_START
+                        }
                     )
                 }
             }.start()
@@ -85,13 +111,16 @@ class FirewallVpnService : VpnService() {
 
     private fun startTunnel(): Boolean = synchronized(lock) {
         if (stopRequested) return false
+        if (tunnel != null) return true
         Log.d(TAG, "startTunnel: inicio")
         try {
-            // Sin IPv6 real, enrutar ::/0 provoca timeouts y lentitud.
-            val v6 = hasIpv6()
             // Debe leerse antes de establish(): después la red activa pasa a ser la propia VPN.
             val cm = getSystemService(ConnectivityManager::class.java)
+            val activeNet = cm.activeNetwork
+            val activeLp = cm.getLinkProperties(activeNet)
+            val v6 = hasGlobalIpv6(activeLp)
             val activeDnsIps = getActiveNetworkDns(v6)
+
             val builder = Builder()
                 .setSession("FirewallDNS")
                 .setMtu(MTU)
@@ -109,17 +138,17 @@ class FirewallVpnService : VpnService() {
                 } catch (_: PackageManager.NameNotFoundException) {}
             }
 
-            cm.activeNetwork?.let { builder.setUnderlyingNetworks(arrayOf(it)) }
+            activeNet?.let { builder.setUnderlyingNetworks(arrayOf(it)) }
 
             val established = builder.establish() ?: return false
             vpnInterface = established
             Log.d(TAG, "startTunnel: establish() ok")
+
             val bridge = FirestackBridge(this)
             Log.d(TAG, "DNS de la red activa: $activeDnsIps")
             val defaultDns = Intra.newDefaultDNS(Backend.DNS53, activeDnsIps, "")
-            // vpnInterface se mantiene abierto y solo se cierra en closeResources(), después de disconnect().
-            // dupTunFd(true): Firestack trabaja con su propia copia del descriptor y nosotros conservamos el original.
-            // Con false, Firestack lo cierra al desconectar y nuestro close() sería un doble cierre del mismo fd.
+
+            // dupTunFd(true): Firestack trabaja con su propia copia del descriptor y conservamos el original.
             Settings.dupTunFd(true)
             Settings.setTunMode(Settings.DNSModeIP, Settings.BlockModeFilter, Settings.PtModeAuto)
             val t = Intra.connect(
@@ -130,6 +159,7 @@ class FirewallVpnService : VpnService() {
             )
             Log.d(TAG, "startTunnel: Intra.connect ok")
             tunnel = t
+            lastDnsIps = activeDnsIps
             registerNetworkMonitor()
             FirewallRepository.setShouldRun(true)
             FirewallRepository.setRunning(true, "Firestack")
@@ -137,7 +167,11 @@ class FirewallVpnService : VpnService() {
             true
         } catch (e: Throwable) {
             Log.e(TAG, "startTunnel: falló", e)
-            FirewallRepository.addLog("firestack", "-", false, "Firestack falló (${e.javaClass.simpleName}: ${e.message}); se usa el respaldo DNS", "Sistema")
+            FirewallRepository.addLog(
+                "firestack", "-", false,
+                "Firestack falló (${e.javaClass.simpleName}: ${e.message}); se usa el respaldo DNS",
+                "Sistema"
+            )
             closeResources()
             false
         }
@@ -157,21 +191,25 @@ class FirewallVpnService : VpnService() {
             .build()
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                setUnderlyingNetworks(arrayOf(network))
+                if (stopRequested || tunnel == null) return
+                try { setUnderlyingNetworks(arrayOf(network)) } catch (_: Throwable) {}
                 applyNetworkDns(cm.getLinkProperties(network))
             }
 
-            override fun onLinkPropertiesChanged(network: Network, linkProperties: android.net.LinkProperties) {
+            override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
+                if (stopRequested || tunnel == null) return
                 applyNetworkDns(linkProperties)
             }
 
             override fun onLost(network: Network) {
+                if (stopRequested || tunnel == null) return
                 val other = cm.allNetworks.firstOrNull {
                     it != network && cm.getNetworkCapabilities(it)?.let { c ->
-                        c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) && !c.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+                        c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                            !c.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
                     } == true
                 }
-                setUnderlyingNetworks(other?.let { arrayOf(it) })
+                try { setUnderlyingNetworks(other?.let { arrayOf(it) }) } catch (_: Throwable) {}
                 if (other != null) applyNetworkDns(cm.getLinkProperties(other))
             }
         }
@@ -184,9 +222,10 @@ class FirewallVpnService : VpnService() {
     }
 
     // Al cambiar de Wi-Fi a datos (o al revés) Firestack pasa a usar los DNS de la nueva red.
-    private fun applyNetworkDns(lp: android.net.LinkProperties?) {
+    private fun applyNetworkDns(lp: LinkProperties?) = synchronized(lock) {
+        if (stopRequested) return
         val t = tunnel ?: return
-        val ips = NetworkDns.fromLink(lp, hasIpv6())
+        val ips = NetworkDns.fromLink(lp, hasGlobalIpv6(lp))
         if (ips.isBlank()) {
             Log.w(TAG, "La red no informó DNS; se conservan los actuales")
             return
@@ -206,24 +245,26 @@ class FirewallVpnService : VpnService() {
         } catch (_: Throwable) {}
     }
 
-    private fun hasIpv6(): Boolean = try {
-        val cm = getSystemService(ConnectivityManager::class.java)
-        cm.getLinkProperties(cm.activeNetwork)?.linkAddresses?.any {
+    private fun hasGlobalIpv6(lp: LinkProperties?): Boolean = try {
+        lp?.linkAddresses?.any {
             val a = it.address
-            a is java.net.Inet6Address && !a.isLinkLocalAddress && !a.isLoopbackAddress && !a.isSiteLocalAddress
+            a is Inet6Address &&
+                !a.isLinkLocalAddress &&
+                !a.isLoopbackAddress &&
+                !a.isSiteLocalAddress &&
+                (a.address[0].toInt() and 0xFE) != 0xFC // Excluye ULA fc00::/7
         } == true
     } catch (_: Throwable) {
         false
     }
 
-    // Cierre ordenado: disconnect de Firestack, cerrar el descriptor de la VPN (obligatorio para quitar la llave) y detener el servicio.
+    // Cierre ordenado: disconnect de Firestack, cerrar el descriptor de la VPN y detener el servicio.
     private fun shutdown() {
         stopRequested = true
         Log.d(TAG, "shutdown: inicio")
         ioScope.launch {
             closeResources()
-            // La UI se actualiza solo cuando el túnel ya está cerrado.
-            FirewallRepository.setRunning(false)
+            if (!fallingBack) FirewallRepository.setRunning(false)
             Log.d(TAG, "shutdown: stopForeground + stopSelf")
             try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (e: Throwable) { Log.d(TAG, "stopForeground falló", e) }
             stopSelf()
@@ -235,7 +276,6 @@ class FirewallVpnService : VpnService() {
         lastDnsIps = ""
         val t = tunnel
         if (t != null) {
-            // disconnect() es nativo y puede bloquearse; con tiempo máximo para no dejar el servicio colgado.
             val worker = Thread {
                 try {
                     Log.d(TAG, "tunnel.disconnect()")
@@ -268,10 +308,10 @@ class FirewallVpnService : VpnService() {
     override fun onDestroy() {
         Log.d(TAG, "onDestroy")
         stopRequested = true
-        // Limpieza síncrona y segura para no dejar el túnel abierto; fuera del hilo principal si hay bloqueo.
+        val wasFallback = fallingBack
         ioScope.launch {
             closeResources()
-            FirewallRepository.setRunning(false)
+            if (!wasFallback) FirewallRepository.setRunning(false)
         }
         super.onDestroy()
     }
