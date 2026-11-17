@@ -1,9 +1,15 @@
-# 🛡️ Firewall DNS
+<div align="center">
+  <img src="logo.svg" width="115" height="115" alt="Logo Firewall DNS" />
+  <h1>Firewall DNS</h1>
+  <p><strong>Firewall local y filtro DNS sin root para Android</strong></p>
 
-![Platform](https://img.shields.io/badge/Android-7.0%2B%20(API%2024%2B)-3DDC84?logo=android&logoColor=white)
-![Kotlin](https://img.shields.io/badge/Kotlin-2.1-7F52FF?logo=kotlin&logoColor=white)
-![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?logo=jetpackcompose&logoColor=white)
-![Architecture](https://img.shields.io/badge/Architecture-MVVM-informational)
+  ![Platform](https://img.shields.io/badge/Android-7.0%2B%20(API%2024%2B)-3DDC84?logo=android&logoColor=white)
+  ![Kotlin](https://img.shields.io/badge/Kotlin-2.1-7F52FF?logo=kotlin&logoColor=white)
+  ![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?logo=jetpackcompose&logoColor=white)
+  ![Architecture](https://img.shields.io/badge/Architecture-MVVM-informational)
+</div>
+
+---
 
 Aplicación Android de **firewall local y filtrado DNS sin permisos root**, construida en Kotlin con Jetpack Compose (Material 3) y arquitectura **MVVM**. Permite supervisar en tiempo real las consultas DNS y conexiones TCP/UDP de cada aplicación, aplicar listas estándar Adblock (`||dominio.com^`) y bloquear o excluir aplicaciones individuales directamente desde el dispositivo.
 
