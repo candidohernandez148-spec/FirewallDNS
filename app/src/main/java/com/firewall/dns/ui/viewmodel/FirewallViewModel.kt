@@ -7,6 +7,7 @@ import com.firewall.dns.data.repository.FirewallRepository
 import com.firewall.dns.domain.model.AppInfoItem
 import com.firewall.dns.domain.model.DnsLogEntry
 import com.firewall.dns.domain.model.FirewallStats
+import com.firewall.dns.domain.model.TrafficPoint
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -21,14 +22,13 @@ import kotlinx.coroutines.launch
 class FirewallViewModel(application: Application) : AndroidViewModel(application) {
 
     val stats: StateFlow<FirewallStats> = FirewallRepository.stats
-    val traffic: StateFlow<List<com.firewall.dns.domain.model.TrafficPoint>> = FirewallRepository.traffic
+    val traffic: StateFlow<List<TrafficPoint>> = FirewallRepository.traffic
     val customBlockList: StateFlow<List<String>> = FirewallRepository.customBlockList
     val customAllowList: StateFlow<List<String>> = FirewallRepository.customAllowList
     val excludedPackages: StateFlow<Set<String>> = FirewallRepository.excludedPackages
     val blocklistUrls: StateFlow<List<String>> = FirewallRepository.blocklistUrls
     val smartModeEnabled: StateFlow<Boolean> = FirewallRepository.smartModeEnabled
     val observationModeEnabled: StateFlow<Boolean> = FirewallRepository.observationModeEnabled
-
     val blockedApps: StateFlow<Set<String>> = FirewallRepository.blockedApps
 
     private val _searchQuery = MutableStateFlow("")
@@ -55,7 +55,9 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
     ) { logs, blockedOnly, query ->
         logs.filter { entry ->
             (!blockedOnly || entry.isBlocked) &&
-                (query.isBlank() || entry.domain.contains(query, ignoreCase = true) || entry.appName.contains(query, ignoreCase = true))
+                (query.isBlank() ||
+                    entry.domain.contains(query, ignoreCase = true) ||
+                    entry.appName.contains(query, ignoreCase = true))
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -102,14 +104,22 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
 
     fun clearLogs() { FirewallRepository.clearLogs() }
 
+    fun toggleBlockedApp(app: AppInfoItem) {
+        FirewallRepository.toggleBlockedApp(app.packageName, app.uid)
+    }
 
-    fun toggleBlockedApp(app: AppInfoItem) { FirewallRepository.toggleBlockedApp(app.packageName, app.uid) }
+    fun toggleExcludedApp(packageName: String) {
+        FirewallRepository.toggleExcludedApp(packageName)
+    }
 
-    fun toggleExcludedApp(packageName: String) { FirewallRepository.toggleExcludedApp(packageName) }
+    fun resetLearning() {
+        FirewallRepository.resetLearning()
+        _toastMessage.tryEmit("Aprendizaje reiniciado")
+    }
 
-    fun resetLearning() { FirewallRepository.resetLearning() }
-
-    fun toggleSmartMode(enabled: Boolean) { FirewallRepository.setSmartModeEnabled(enabled) }
+    fun toggleSmartMode(enabled: Boolean) {
+        FirewallRepository.setSmartModeEnabled(enabled)
+    }
 
     fun setObservationModeEnabled(enabled: Boolean) {
         FirewallRepository.setObservationModeEnabled(enabled)
