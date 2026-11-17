@@ -72,7 +72,7 @@ fun DashboardScreen(
                 )
                 Text(
                     text = if (isActive) {
-                        "Las consultas DNS compatibles se están filtrando según tus reglas. DoH/DoT no se inspecciona."
+                        "Las consultas DNS compatibles se están filtrando según tus reglas. El tráfico cifrado (DoH/DoT) de otras apps no se inspecciona."
                     } else {
                         "Activa la protección para filtrar consultas DNS con tus reglas y listas."
                     },
@@ -113,7 +113,7 @@ fun DashboardScreen(
             ) {
                 Text("Conexión", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 ConnectionRow("Red", stats.networkType)
-                ConnectionRow("Servidor DNS", "${stats.dnsProvider.label} (DoH)")
+                ConnectionRow("Servidor DNS", "DNS local de la red (Firewall local)")
                 ConnectionRow("Reglas activas", stats.loadedRulesCount.toString())
             }
         }

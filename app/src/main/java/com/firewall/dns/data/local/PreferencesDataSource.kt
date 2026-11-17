@@ -15,7 +15,6 @@ class PreferencesDataSource(context: Context) {
         private const val KEY_BLOCKED_APPS = "blocked_apps"
         private const val KEY_SHOULD_RUN = "should_run"
         private const val KEY_BLOCKLIST_URLS = "blocklist_urls"
-        private const val KEY_DNS_PROVIDER = "dns_provider"
         private const val KEY_SMART_MODE = "smart_mode_enabled"
         private const val KEY_LEARNED_TOKENS = "learned_tokens"
         private const val KEY_ADBLOCK_MIGRATED = "adblock_syntax_migrated_v1"
@@ -60,12 +59,6 @@ class PreferencesDataSource(context: Context) {
 
     fun saveBlockedApps(set: Set<String>) {
         prefs.edit().putStringSet(KEY_BLOCKED_APPS, set).apply()
-    }
-
-    fun getDnsProvider(): String = prefs.getString(KEY_DNS_PROVIDER, "cloudflare") ?: "cloudflare"
-
-    fun saveDnsProvider(id: String) {
-        prefs.edit().putString(KEY_DNS_PROVIDER, id).apply()
     }
 
     fun getShouldRun(): Boolean = prefs.getBoolean(KEY_SHOULD_RUN, false)

@@ -26,12 +26,9 @@ class FirestackBridge(
     private val context: Context = vpn.applicationContext
 ) : Bridge {
 
-    /** Transportes DoH registrados en Firestack; el proveedor elegido se lee en cada consulta. */
+    // Backend.Default resuelve con los DNS de la red física activa (DNS53), sin servidores externos fijos.
     @Volatile
-    var registeredTransports: Set<String> = emptySet()
-
-    private val upstreamId: String
-        get() = FirewallRepository.dnsProvider().transportId.takeIf { it in registeredTransports } ?: Backend.Preferred
+    var upstreamId: String = Backend.Default
 
     private val appLabels = HashMap<Int, String>()
     private val recentConnections = java.util.concurrent.ConcurrentHashMap<String, Long>()
@@ -49,7 +46,7 @@ class FirestackBridge(
         vpn.protect(fd.toInt())
     }
 
-    // BlockAll hace que Firestack responda de inmediato sin consultar al servidor DoH.
+    // BlockAll hace que Firestack responda de inmediato sin consultar al DNS de la red.
     override fun onQuery(origin: String?, uid: String?, fqdn: String?, qtype: Long): DNSOpts {
         val opts = DNSOpts()
         opts.uid = uid ?: ""

@@ -13,7 +13,6 @@ import com.firewall.dns.domain.engine.RuleEvaluator
 import com.firewall.dns.domain.engine.SmartDomainAnalyzer
 import com.firewall.dns.domain.model.AppInfoItem
 import com.firewall.dns.domain.model.DnsLogEntry
-import com.firewall.dns.domain.model.DnsProvider
 import com.firewall.dns.domain.model.TrafficPoint
 import com.firewall.dns.domain.model.FirewallStats
 import kotlinx.coroutines.Dispatchers
@@ -133,7 +132,7 @@ object FirewallRepository {
             _observationModeEnabled.value = prefsDataSource.getObservationModeEnabled()
             learnedTokens.clear()
             learnedTokens.putAll(prefsDataSource.getLearnedTokens())
-            _stats.update { it.copy(learnedTokens = learnedTokens.size, dnsProvider = DnsProvider.fromId(prefsDataSource.getDnsProvider())) }
+            _stats.update { it.copy(learnedTokens = learnedTokens.size) }
 
             val (loadedBlocked, loadedExceptions) = blocklistDataSource.loadFromDisk(defaultDomains)
             hostBlockSet.clear()
@@ -152,17 +151,8 @@ object FirewallRepository {
         prefsDataSource.saveShouldRun(shouldRun)
     }
 
-    // IP del proveedor elegido; la usa también el filtro DNS clásico de respaldo.
-    fun getUpstreamDns(): String = _stats.value.dnsProvider.ip
-
-    fun dnsProvider(): DnsProvider = _stats.value.dnsProvider
-
-    // FirestackBridge lee el proveedor en cada consulta, así que el cambio se aplica sin reiniciar el túnel.
-    fun setDnsProvider(provider: DnsProvider) {
-        prefsDataSource.saveDnsProvider(provider.id)
-        _stats.update { it.copy(dnsProvider = provider) }
-        _cacheInvalidateEvent.tryEmit(Unit)
-    }
+    // El filtro clásico de respaldo reenvía a los DNS de la red activa.
+    fun getUpstreamDns(): String = com.firewall.dns.service.NetworkDns.firstActiveDns(appContext)
 
     fun isObservationModeEnabled(): Boolean = _observationModeEnabled.value
 

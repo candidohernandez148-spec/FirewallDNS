@@ -39,7 +39,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.firewall.dns.domain.model.AppInfoItem
-import com.firewall.dns.domain.model.DnsProvider
 import androidx.compose.material3.RadioButton
 import com.firewall.dns.domain.model.FirewallStats
 
@@ -52,7 +51,6 @@ fun AppsSettingsScreen(
     onToggleBlockedApp: (AppInfoItem) -> Unit,
     appSearch: String,
     onAppSearchChange: (String) -> Unit,
-    onSelectDnsProvider: (DnsProvider) -> Unit,
     onToggleExcludedApp: (String) -> Unit,
     onOpenBatteryOpt: () -> Unit,
     onOpenVpnSettings: () -> Unit
@@ -65,35 +63,6 @@ fun AppsSettingsScreen(
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Configuración", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 Text("Ajustes de tu protección", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(22.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-            ) {
-                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Servidor DNS (DoH)", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text(
-                        "Se aplica de inmediato a las consultas permitidas, sin reiniciar la VPN.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    DnsProvider.entries.forEach { p ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth().clickable { onSelectDnsProvider(p) }.padding(vertical = 3.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(selected = stats.dnsProvider == p, onClick = { onSelectDnsProvider(p) })
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(p.label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-                                Text("${p.description}  ·  ${p.ip}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    }
-                }
             }
         }
 
