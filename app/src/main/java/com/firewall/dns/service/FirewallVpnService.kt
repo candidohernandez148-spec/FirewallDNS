@@ -116,7 +116,9 @@ class FirewallVpnService : VpnService() {
             val activeNet = cm.activeNetwork
             val activeLp = cm.getLinkProperties(activeNet)
             val v6 = hasGlobalIpv6(activeLp)
-            val activeDnsIps = getActiveNetworkDns(v6)
+            val dnsProbe = getActiveNetworkDns(v6)
+            val activeDnsIps = dnsProbe.orderedServers.ifEmpty { NetworkDns.EMERGENCY_DNS }
+            Log.i(TAG, "Medición de DNS de la red activa: ${dnsProbe.measurements}; orden: $activeDnsIps")
 
             val builder = Builder()
                 .setSession("FirewallDNS")
@@ -173,8 +175,10 @@ class FirewallVpnService : VpnService() {
         }
     }
 
-    private fun getActiveNetworkDns(allowIpv6: Boolean = true): String =
-        NetworkDns.active(this, allowIpv6).ifEmpty { NetworkDns.EMERGENCY_DNS }
+    private fun getActiveNetworkDns(allowIpv6: Boolean = true): NetworkDns.DnsProbeResult {
+        val candidates = NetworkDns.active(this, allowIpv6).ifEmpty { NetworkDns.EMERGENCY_DNS }
+        return NetworkDns.rankByLatency(this, candidates)
+    }
 
     private fun registerNetworkMonitor() {
         if (networkCallback != null) return
@@ -187,12 +191,13 @@ class FirewallVpnService : VpnService() {
             override fun onAvailable(network: Network) {
                 if (stopRequested || tunnel == null) return
                 try { setUnderlyingNetworks(arrayOf(network)) } catch (_: Throwable) {}
-                applyNetworkDns(cm.getLinkProperties(network))
+                val linkProperties = cm.getLinkProperties(network)
+                ioScope.launch { applyNetworkDns(linkProperties) }
             }
 
             override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
                 if (stopRequested || tunnel == null) return
-                applyNetworkDns(linkProperties)
+                ioScope.launch { applyNetworkDns(linkProperties) }
             }
 
             override fun onLost(network: Network) {
@@ -204,7 +209,10 @@ class FirewallVpnService : VpnService() {
                     } == true
                 }
                 try { setUnderlyingNetworks(other?.let { arrayOf(it) }) } catch (_: Throwable) {}
-                if (other != null) applyNetworkDns(cm.getLinkProperties(other))
+                if (other != null) {
+                    val linkProperties = cm.getLinkProperties(other)
+                    ioScope.launch { applyNetworkDns(linkProperties) }
+                }
             }
         }
         try {
@@ -220,11 +228,14 @@ class FirewallVpnService : VpnService() {
         synchronized(lock) {
             if (stopRequested) return
             val t = tunnel ?: return
-            val ips = NetworkDns.fromLink(lp, hasGlobalIpv6(lp))
-            if (ips.isBlank()) {
+            val candidates = NetworkDns.fromLink(lp, hasGlobalIpv6(lp))
+            if (candidates.isBlank()) {
                 Log.w(TAG, "La red no informó DNS; se conservan los actuales")
                 return
             }
+            val probe = NetworkDns.rankByLatency(this, candidates)
+            val ips = probe.orderedServers.ifEmpty { candidates }
+            Log.i(TAG, "Medición DNS al cambiar de red: ${probe.measurements}; orden: $ips")
             if (ips == lastDnsIps) return
             lastDnsIps = ips
             Log.d(TAG, "DNS de la red cambió: $ips")
