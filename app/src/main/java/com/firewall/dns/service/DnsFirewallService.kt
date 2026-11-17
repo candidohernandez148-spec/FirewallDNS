@@ -108,11 +108,8 @@ class DnsFirewallService : VpnService() {
         return START_NOT_STICKY
     }
 
-    private fun notificationText(): String = if (FirewallRepository.isObservationModeEnabled()) {
-        "Monitoreo + bloqueo por reglas DNS; DoH/DoT no se inspecciona"
-    } else {
-        "Bloqueo DNS activo; DoH/DoT no se inspecciona"
-    }
+    private fun notificationText(): String =
+        "Respaldo DNS-only: filtra consultas DNS; no bloquea todo el tráfico por app ni inspecciona DoH/DoT"
 
     private fun buildNotification() = NotificationCompat.Builder(this, CHANNEL_ID)
         .setContentTitle("Firewall DNS activo")
@@ -183,7 +180,7 @@ class DnsFirewallService : VpnService() {
         }
         vpnInterface = established
         isRunning = true
-        FirewallRepository.setRunning(true, "DNS clásico")
+        FirewallRepository.setRunning(true, "DNS clásico (solo DNS)")
         val input = FileInputStream(established.fileDescriptor)
         val output = FileOutputStream(established.fileDescriptor)
 
