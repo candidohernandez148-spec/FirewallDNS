@@ -16,6 +16,7 @@ import com.firewall.dns.data.repository.FirewallRepository
 import com.firewall.dns.domain.engine.AppFirewallManager
 import com.firewall.dns.domain.engine.DomainBlocker
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Puente Firestack del servicio [FirewallVpnService]:
@@ -26,16 +27,17 @@ class FirestackBridge(
     private val context: Context = vpn.applicationContext
 ) : Bridge {
 
-    // Backend.Default resuelve con los DNS de la red física activa (DNS53), sin servidores externos fijos.
+    // Backend.Default resuelve con los DNS de la red física activa (DNS53).
     @Volatile
     var upstreamId: String = Backend.Default
 
-    private val appLabels = HashMap<Int, String>()
-    private val recentConnections = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val appLabels = ConcurrentHashMap<Int, String>()
+    private val recentConnections = ConcurrentHashMap<String, Long>()
 
     private companion object {
         const val CONNECTION_DEDUP_MS = 4000L
         val VPN_DNS = setOf("10.111.222.3", "fd66:f83a:c650::3")
+        val SINKHOLE_IPS = setOf("0.0.0.0", "::", "::0")
     }
 
     override fun bind4(who: String?, addrPort: String?, fd: Long) = protect(who, fd)
@@ -58,16 +60,21 @@ class FirestackBridge(
         }
         val (blocked, reason) = evaluate(qname)
         opts.tidcsv = if (blocked) Backend.BlockAll else upstreamId
+        val numericUid = uid?.toIntOrNull()
+        val appName = if (numericUid != null && numericUid >= 0) appLabel(numericUid) else "Sistema / DNS"
         FirewallRepository.addLog(
             domain = qname,
             qType = when (qtype) {
                 1L -> "A"
                 28L -> "AAAA"
+                65L -> "HTTPS"
+                5L -> "CNAME"
+                16L -> "TXT"
                 else -> "T$qtype"
             },
             isBlocked = blocked,
             reason = reason,
-            appName = uid?.toIntOrNull()?.let { appLabel(it) } ?: "Sistema / DNS"
+            appName = appName
         )
         return opts
     }
@@ -83,7 +90,7 @@ class FirestackBridge(
         return pre
     }
 
-    // Nueva conexión TCP/UDP: se descarta (Block) si la app propietaria está bloqueada.
+    // Nueva conexión TCP/UDP: se descarta (Block) si la app propietaria o el dominio están bloqueados.
     override fun flow(
         protocol: Int,
         uid: Int,
@@ -100,20 +107,39 @@ class FirestackBridge(
         val owner = resolveUid(protocol, uid, src, dst)
         mark.uid = owner.toString()
         val target = splitHostPort(dst)
+
+        // Evita ruido de conexiones hacia la IP nula cuando un dominio fue bloqueado por DNS.
+        if (target != null && target.first in SINKHOLE_IPS) {
+            mark.pidcsv = Backend.Block
+            return mark
+        }
+
         val isDns = target != null && (target.second == 53 || target.first in VPN_DNS)
         if (isDns) {
             mark.pidcsv = Backend.Base
             return mark
         }
-        val appBlocked = owner != Process.INVALID_UID && AppFirewallManager.isUidBlocked(owner)
-        val names = domains.orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
-        val blockedName = if (appBlocked) null else names.firstOrNull { evaluate(it).first }
+
+        val appBlocked = owner >= 0 && AppFirewallManager.isUidBlocked(owner)
+        val exactDomains = domains.orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
+        val probableList = probableDomains.orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
+
+        val blockedName = if (appBlocked) null else exactDomains.firstOrNull { evaluate(it).first }
         val blocked = appBlocked || blockedName != null
         mark.pidcsv = if (blocked) Backend.Block else Backend.Exit
-        logConnection(
-            owner, protocol, target, names.firstOrNull() ?: target?.first ?: dst.orEmpty(),
-            blocked, if (appBlocked) "Internet bloqueado para la app" else if (blockedName != null) "Dominio bloqueado" else "Conexión permitida"
-        )
+
+        val displayLabel = exactDomains.firstOrNull()
+            ?: probableList.firstOrNull()
+            ?: target?.first
+            ?: dst.orEmpty()
+
+        val reason = when {
+            appBlocked -> "Internet bloqueado para la app"
+            blockedName != null -> "Dominio bloqueado"
+            else -> "Conexión permitida"
+        }
+
+        logConnection(owner, protocol, target, displayLabel, blocked, reason)
         return mark
     }
 
@@ -123,7 +149,6 @@ class FirestackBridge(
         false to "Permitido"
     }
 
-    // Registra conexiones de cada app; se evita repetir la misma app y destino en una ventana corta.
     private fun logConnection(
         uid: Int, protocol: Int, target: Pair<String, Int>?, label: String, blocked: Boolean, reason: String
     ) {
@@ -131,7 +156,10 @@ class FirestackBridge(
         val now = System.currentTimeMillis()
         val last = recentConnections[key]
         if (last != null && now - last < CONNECTION_DEDUP_MS) return
-        if (recentConnections.size > 500) recentConnections.entries.removeIf { now - it.value > CONNECTION_DEDUP_MS }
+        if (recentConnections.size > 500) {
+            recentConnections.entries.removeIf { now - it.value > CONNECTION_DEDUP_MS }
+            if (recentConnections.size > 1500) recentConnections.clear()
+        }
         recentConnections[key] = now
         FirewallRepository.addLog(
             domain = label,
@@ -150,7 +178,6 @@ class FirestackBridge(
         return mark
     }
 
-    // Si Firestack no conoce el uid, se consulta ConnectivityManager.getConnectionOwnerUid.
     private fun resolveUid(protocol: Int, uid: Int, src: String?, dst: String?): Int {
         if (uid >= 0) return uid
         val s = splitHostPort(src) ?: return Process.INVALID_UID
@@ -166,14 +193,17 @@ class FirestackBridge(
         return value.substring(0, idx).removePrefix("[").removeSuffix("]") to port
     }
 
-    @Synchronized
-    private fun appLabel(uid: Int): String = appLabels.getOrPut(uid) {
-        try {
-            val pm = vpn.packageManager
-            val pkg = pm.getPackagesForUid(uid)?.firstOrNull()
-            if (pkg != null) pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() else "UID $uid"
-        } catch (_: Exception) {
-            "UID $uid"
+    private fun appLabel(uid: Int): String {
+        if (uid == 0) return "Sistema (root)"
+        if (uid == Process.SYSTEM_UID) return "Sistema Android"
+        return appLabels.getOrPut(uid) {
+            try {
+                val pm = vpn.packageManager
+                val pkg = pm.getPackagesForUid(uid)?.firstOrNull()
+                if (pkg != null) pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() else "UID $uid"
+            } catch (_: Exception) {
+                "UID $uid"
+            }
         }
     }
 
