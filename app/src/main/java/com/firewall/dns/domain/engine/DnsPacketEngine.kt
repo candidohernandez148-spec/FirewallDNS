@@ -4,27 +4,55 @@ import com.firewall.dns.domain.model.DnsQueryInfo
 
 object DnsPacketEngine {
 
+    /**
+     * Parses one standard DNS question without following compression pointers.
+     * Queries are untrusted network input: every length and header field is
+     * validated before it is read or used to construct a response.
+     */
     fun parseDnsQuery(dns: ByteArray): DnsQueryInfo? {
+        // DNS header (12 bytes), at least one label/root byte and QTYPE/QCLASS.
         if (dns.size < 17) return null
-        var pos = 12
-        val sb = StringBuilder()
 
-        while (pos < dns.size) {
-            val len = dns[pos].toInt() and 0xFF
-            if (len == 0) {
-                pos += 1
-                break
-            }
-            if ((len and 0xC0) == 0xC0) return null
-            pos += 1
-            if (pos + len > dns.size) return null
-            if (sb.isNotEmpty()) sb.append('.')
-            sb.append(String(dns, pos, len, Charsets.US_ASCII))
-            pos += len
+        val flags = readU16(dns, 2)
+        val questionCount = readU16(dns, 4)
+        // This engine handles standard queries only, never DNS responses or
+        // UPDATE/NOTIFY/etc. A single question is the supported wire format.
+        if ((flags and 0x8000) != 0 || (flags and 0x7800) != 0 || questionCount != 1) {
+            return null
         }
 
-        if (pos + 4 > dns.size || sb.isEmpty()) return null
-        return DnsQueryInfo(sb.toString(), readU16(dns, pos), pos + 4)
+        var pos = 12
+        var encodedNameLength = 1 // Include the terminating root label.
+        val labels = ArrayList<String>()
+
+        while (pos < dns.size) {
+            val length = dns[pos].toInt() and 0xFF
+            pos++
+
+            if (length == 0) break
+            // Compression and reserved label encodings are intentionally
+            // rejected; a query name must consist of ordinary DNS labels.
+            if ((length and 0xC0) != 0 || length > 63) return null
+            if (pos + length > dns.size) return null
+
+            encodedNameLength += 1 + length
+            if (encodedNameLength > 255) return null
+
+            for (i in pos until pos + length) {
+                val octet = dns[i].toInt() and 0xFF
+                // DNS host names are represented as ASCII/IDNA on the wire.
+                // Reject control bytes, non-ASCII bytes and embedded dots.
+                if (octet !in 0x21..0x7E || octet == '.'.code) return null
+            }
+
+            labels += String(dns, pos, length, Charsets.US_ASCII).lowercase()
+            pos += length
+        }
+
+        if (pos > dns.size || labels.isEmpty() || pos + 4 > dns.size) return null
+
+        val questionEnd = pos + 4
+        return DnsQueryInfo(labels.joinToString("."), readU16(dns, pos), questionEnd)
     }
 
     fun queryTypeToString(qType: Int): String = when (qType) {
@@ -37,9 +65,15 @@ object DnsPacketEngine {
     }
 
     fun buildNxDomainResponse(reqDns: ByteArray, qEnd: Int): ByteArray {
+        require(reqDns.size >= 12 && qEnd in 17..reqDns.size) {
+            "Invalid DNS question boundary"
+        }
         val resp = reqDns.copyOfRange(0, qEnd)
-        resp[2] = 0x81.toByte()
-        resp[3] = 0x83.toByte()
+        // QR=1, preserve RD, set RA=1 and RCODE=NXDOMAIN.
+        val requestFlags = readU16(reqDns, 2)
+        val responseFlags = 0x8000 or (requestFlags and 0x0100) or 0x0080 or 0x0003
+        resp[2] = (responseFlags ushr 8).toByte()
+        resp[3] = responseFlags.toByte()
         resp[6] = 0; resp[7] = 0
         resp[8] = 0; resp[9] = 0
         resp[10] = 0; resp[11] = 0
