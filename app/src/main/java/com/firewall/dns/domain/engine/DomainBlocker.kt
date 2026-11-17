@@ -36,7 +36,7 @@ object DomainBlocker {
         "mixpanel.com",
         "hotjar.com",
         "flurry.com",
-        "unity3d.com",
+        "unityads.unity3d.com",
         "applovin.com",
         "ironsrc.com",
         "mopub.com",
@@ -46,7 +46,6 @@ object DomainBlocker {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    // Se reemplaza el conjunto completo (copia inmutable por convención) para lecturas sin bloqueo.
     @Volatile
     private var blocked: HashSet<String> = HashSet(DEFAULT_DOMAINS)
 
@@ -83,10 +82,12 @@ object DomainBlocker {
         merge(lines.mapNotNullTo(HashSet()) { parseLine(it) })
     }
 
+    @Synchronized
     fun reset() {
         blocked = HashSet(DEFAULT_DOMAINS)
     }
 
+    @Synchronized
     private fun merge(extra: Set<String>) {
         val next = HashSet<String>(blocked.size + extra.size)
         next.addAll(blocked)
@@ -102,7 +103,6 @@ object DomainBlocker {
         return result
     }
 
-    // Acepta un dominio por línea, formato hosts ("0.0.0.0 dominio") y comentarios con #.
     private fun parseLine(raw: String): String? {
         val line = raw.substringBefore('#').trim()
         if (line.isEmpty()) return null
