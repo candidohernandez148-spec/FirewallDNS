@@ -127,8 +127,10 @@ class BlocklistDataSource(context: Context) {
             }
         }
 
-        if (successCount == 0) {
-            return@withContext Result.failure(lastError ?: Exception("No se pudo descargar ninguna lista válida"))
+        if (successCount != uniqueUrls.size) {
+            return@withContext Result.failure(
+                lastError ?: Exception("No se pudieron descargar todas las listas; se conserva la versión anterior")
+            )
         }
 
         val outFile = File(filesDir, ADBLOCK_FILE_NAME)
