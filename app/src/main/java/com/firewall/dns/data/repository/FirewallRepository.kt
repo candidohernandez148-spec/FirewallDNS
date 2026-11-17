@@ -1,7 +1,5 @@
 package com.firewall.dns.data.repository
 
-import com.firewall.dns.domain.engine.AppFirewallManager
-import com.firewall.dns.domain.engine.DomainBlocker
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
@@ -9,14 +7,19 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.drawable.toBitmap
 import com.firewall.dns.data.local.BlocklistDataSource
 import com.firewall.dns.data.local.PreferencesDataSource
+import com.firewall.dns.domain.engine.AppFirewallManager
+import com.firewall.dns.domain.engine.DomainBlocker
 import com.firewall.dns.domain.engine.RuleEvaluator
 import com.firewall.dns.domain.engine.SmartDomainAnalyzer
 import com.firewall.dns.domain.model.AppInfoItem
 import com.firewall.dns.domain.model.DnsLogEntry
-import com.firewall.dns.domain.model.TrafficPoint
 import com.firewall.dns.domain.model.FirewallStats
+import com.firewall.dns.domain.model.TrafficPoint
+import com.firewall.dns.service.NetworkDns
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -24,11 +27,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
 object FirewallRepository {
@@ -58,6 +64,9 @@ object FirewallRepository {
     private val _excludedPackages = MutableStateFlow<Set<String>>(emptySet())
     val excludedPackages: StateFlow<Set<String>> = _excludedPackages.asStateFlow()
 
+    private val _blockedApps = MutableStateFlow<Set<String>>(emptySet())
+    val blockedApps: StateFlow<Set<String>> = _blockedApps.asStateFlow()
+
     private val _blocklistUrls = MutableStateFlow<List<String>>(emptyList())
     val blocklistUrls: StateFlow<List<String>> = _blocklistUrls.asStateFlow()
 
@@ -79,23 +88,31 @@ object FirewallRepository {
     private val customAllowSet = ConcurrentHashMap.newKeySet<String>()
     private val learnedTokens = ConcurrentHashMap<String, Int>()
     private val learnedDomains = ConcurrentHashMap.newKeySet<String>()
-    private val learningSaveScheduled = java.util.concurrent.atomic.AtomicBoolean(false)
-    private val learningScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
+    private val learningSaveScheduled = AtomicBoolean(false)
+    private val learningScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val logCounter = AtomicLong(0L)
+    private val timeFormatLocal = object : ThreadLocal<SimpleDateFormat>() {
+        override fun initialValue(): SimpleDateFormat =
+            SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+    }
 
     private val _traffic = MutableStateFlow(List(TRAFFIC_POINTS) { TrafficPoint(0, 0) })
     val traffic: StateFlow<List<TrafficPoint>> = _traffic.asStateFlow()
-    private val bucketAllowed = java.util.concurrent.atomic.AtomicInteger(0)
-    private val bucketBlocked = java.util.concurrent.atomic.AtomicInteger(0)
-    private val trafficScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.Default)
+    private val bucketAllowed = AtomicInteger(0)
+    private val bucketBlocked = AtomicInteger(0)
+    private val trafficScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     init {
         trafficScope.launch {
             while (true) {
-                kotlinx.coroutines.delay(TRAFFIC_INTERVAL_MS)
-                val point = TrafficPoint(bucketAllowed.getAndSet(0), bucketBlocked.getAndSet(0))
-                _traffic.update { (it + point).takeLast(TRAFFIC_POINTS) }
+                delay(TRAFFIC_INTERVAL_MS)
+                val allowed = bucketAllowed.getAndSet(0)
+                val blocked = bucketBlocked.getAndSet(0)
+                if (_stats.value.isRunning || allowed > 0 || blocked > 0) {
+                    val point = TrafficPoint(allowed, blocked)
+                    _traffic.update { (it + point).takeLast(TRAFFIC_POINTS) }
+                }
             }
         }
     }
@@ -153,7 +170,7 @@ object FirewallRepository {
     }
 
     // El filtro clásico de respaldo reenvía a los DNS de la red activa.
-    fun getUpstreamDns(): String = com.firewall.dns.service.NetworkDns.firstActiveDns(appContext)
+    fun getUpstreamDns(): String = NetworkDns.firstActiveDns(appContext)
 
     fun isObservationModeEnabled(): Boolean = _observationModeEnabled.value
 
@@ -194,9 +211,6 @@ object FirewallRepository {
         prefsDataSource.saveExcludedPackages(updated)
         _rebuildVpnEvent.tryEmit(Unit)
     }
-
-    private val _blockedApps = MutableStateFlow<Set<String>>(emptySet())
-    val blockedApps: StateFlow<Set<String>> = _blockedApps.asStateFlow()
 
     // Bloquea o permite todo el acceso a Internet de una app (por UID) en AppFirewallManager.
     fun toggleBlockedApp(pkg: String, uid: Int) {
@@ -240,7 +254,6 @@ object FirewallRepository {
             hostBlock = hostBlockSet
         )
         if (!baseEval.first && baseEval.second != "Permitido") {
-            // Excepción o lista blanca: el usuario o la lista confía en este dominio.
             learnFromActivity(domain, blocked = false, step = 1)
             return baseEval
         }
@@ -258,14 +271,11 @@ object FirewallRepository {
         return baseEval
     }
 
-    // Aprende de la actividad real: cada dominio distinto bloqueado por la lista refuerza sus subdominios típicos
-    // (p. ej. "metrics", "adservice"), así dominios nuevos con el mismo patrón se detectan aunque no estén en la lista.
     private fun learnFromActivity(domain: String, blocked: Boolean, step: Int) {
         if (!_smartModeEnabled.value) return
         val key = (if (blocked) "b:" else "a:") + domain
         if (learnedDomains.size > MAX_LEARNED_DOMAINS) learnedDomains.clear()
         if (!learnedDomains.add(key)) return
-        // Solo las excepciones explícitas restan peso; el tráfico permitido normal no se interpreta como señal.
         if (SmartDomainAnalyzer.updateLearning(domain, blocked, learnedTokens, step)) scheduleLearningSave()
     }
 
@@ -273,16 +283,16 @@ object FirewallRepository {
         _stats.update { it.copy(learnedTokens = learnedTokens.size) }
         if (!learningSaveScheduled.compareAndSet(false, true)) return
         learningScope.launch {
-            kotlinx.coroutines.delay(5_000)
+            delay(5_000)
             learningSaveScheduled.set(false)
-            prefsDataSource.saveLearnedTokens(learnedTokens)
+            prefsDataSource.saveLearnedTokens(HashMap(learnedTokens))
         }
     }
 
     fun resetLearning() {
         learnedTokens.clear()
         learnedDomains.clear()
-        prefsDataSource.saveLearnedTokens(learnedTokens)
+        prefsDataSource.saveLearnedTokens(emptyMap())
         _stats.update { it.copy(learnedTokens = 0) }
         _cacheInvalidateEvent.tryEmit(Unit)
     }
@@ -296,10 +306,11 @@ object FirewallRepository {
         if (_smartModeEnabled.value && SmartDomainAnalyzer.updateLearning(clean, block, learnedTokens, step = 3)) {
             scheduleLearningSave()
         }
-        prefsDataSource.saveCustomBlockSet(customBlockSet)
-        prefsDataSource.saveCustomAllowSet(customAllowSet)
+        prefsDataSource.saveCustomBlockSet(customBlockSet.toSet())
+        prefsDataSource.saveCustomAllowSet(customAllowSet.toSet())
         _customBlockList.value = customBlockSet.sorted()
         _customAllowList.value = customAllowSet.sorted()
+        updateRulesCount()
         _cacheInvalidateEvent.tryEmit(Unit)
     }
 
@@ -307,10 +318,11 @@ object FirewallRepository {
         val clean = RuleEvaluator.normalizeManualDomain(domain) ?: return
         customBlockSet.remove(clean)
         customAllowSet.remove(clean)
-        prefsDataSource.saveCustomBlockSet(customBlockSet)
-        prefsDataSource.saveCustomAllowSet(customAllowSet)
+        prefsDataSource.saveCustomBlockSet(customBlockSet.toSet())
+        prefsDataSource.saveCustomAllowSet(customAllowSet.toSet())
         _customBlockList.value = customBlockSet.sorted()
         _customAllowList.value = customAllowSet.sorted()
+        updateRulesCount()
         _cacheInvalidateEvent.tryEmit(Unit)
     }
 
@@ -322,7 +334,7 @@ object FirewallRepository {
     // Monitor propio de la app: funciona igual con Firestack o con el respaldo DNS.
     private fun startNetworkTypeMonitor() {
         val cm = appContext.getSystemService(android.net.ConnectivityManager::class.java)
-        val refresh = { setNetworkType(com.firewall.dns.service.NetworkDns.currentType(appContext)) }
+        val refresh = { setNetworkType(NetworkDns.currentType(appContext)) }
         refresh()
         val request = android.net.NetworkRequest.Builder()
             .addCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
@@ -380,7 +392,7 @@ object FirewallRepository {
     }
 
     private fun recordDnsDecision(domain: String, allowed: Boolean, appName: String, reason: String, queryType: String) {
-        val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+        val timestamp = timeFormatLocal.get()?.format(Date()) ?: ""
         val entry = DnsLogEntry(
             id = logCounter.incrementAndGet(),
             timestamp = timestamp,
