@@ -152,8 +152,11 @@ class FirestackBridge(
      */
     private fun evaluate(domain: String): Pair<Boolean, String> = try {
         val normalized = DomainBlocker.normalize(domain)
-        if (normalized.isBlank()) return false to "Dominio no válido"
-        FirewallRepository.evaluateDomain(normalized)
+        if (normalized.isBlank()) {
+            false to "Dominio no válido"
+        } else {
+            FirewallRepository.evaluateDomain(normalized)
+        }
     } catch (error: Exception) {
         val now = System.currentTimeMillis()
         val previous = lastEvaluationFailureLog.get()
