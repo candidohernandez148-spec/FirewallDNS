@@ -20,8 +20,12 @@ object SmartDomainAnalyzer {
         "accounts", "mail", "play", "web", "v1", "v2", "v3", "s1", "s2", "com", "net", "org",
         "update", "updates", "download", "dl", "store", "shop", "cloud", "push", "sync",
         "config", "data", "service", "services", "time", "ntp", "dns", "cache", "content",
-        "secure", "assets", "files", "downloads", "live", "chat", "search", "maps", "photos"
+        "secure", "assets", "files", "downloads", "live", "chat", "search", "maps", "photos",
+        "client", "clients", "portal", "status", "docs", "help", "support", "geo",
+        "stream", "player", "feed", "region", "info", "news", "blog"
     )
+
+    private val SECOND_LEVEL_TLDS = setOf("com", "net", "org", "gob", "edu", "co", "ac")
 
     private val HIGH_CONFIDENCE_TOKENS = setOf(
         "ads", "adserver", "adservice", "adsystem", "adtech", "adnxs",
@@ -96,7 +100,8 @@ object SmartDomainAnalyzer {
         }
         val leftmost = labels.first()
         if (leftmost.length >= 10 && leftmost.count { it.isDigit() } >= 4 &&
-            !leftmost.startsWith("cdn") && !leftmost.startsWith("img")
+            !leftmost.startsWith("cdn") && !leftmost.startsWith("img") &&
+            !leftmost.startsWith("static") && !leftmost.startsWith("video")
         ) {
             score += 1
         }
@@ -110,11 +115,16 @@ object SmartDomainAnalyzer {
         }
     }
 
-    // Subdominios sin el dominio registrable (aprox. las dos últimas etiquetas), sin números finales y sin términos genéricos.
+    // Quita el dominio registrable (2 etiquetas en .com/.net, o 3 en .com.mx/.co.uk).
     fun learnableTokens(domain: String): List<String> {
         val labels = domain.lowercase().trimEnd('.').split('.')
-        if (labels.size < 3) return emptyList()
-        return labels.dropLast(2)
+        val rootLabels = if (labels.size >= 4 &&
+            labels.last().length == 2 &&
+            labels[labels.size - 2] in SECOND_LEVEL_TLDS
+        ) 3 else 2
+
+        if (labels.size <= rootLabels) return emptyList()
+        return labels.dropLast(rootLabels)
             .flatMap { it.split('-', '_') }
             .map { it.trimEnd { c -> c.isDigit() } }
             .filter { it.length >= 2 && it !in GENERIC_TOKENS }
@@ -123,7 +133,6 @@ object SmartDomainAnalyzer {
 
     fun isCoreSafe(domain: String): Boolean = matchesDomainOrParent(domain.lowercase(), CORE_SAFE_HOSTS)
 
-    // Devuelve true si cambió algún peso. Bloqueo: +1 (aprendizaje automático) o +3 (decisión del usuario); permitir: -3.
     fun updateLearning(
         domain: String,
         blocked: Boolean,
