@@ -14,6 +14,7 @@ class BlocklistDataSource(context: Context) {
 
     companion object {
         private const val ADBLOCK_FILE_NAME = "adblock_rules.txt"
+        private const val ADBLOCK_TMP_NAME = "adblock_rules.txt.tmp"
     }
 
     fun loadFromDisk(defaultDomains: List<String>): Pair<Set<String>, Set<String>> {
@@ -37,7 +38,8 @@ class BlocklistDataSource(context: Context) {
         defaultDomains: List<String>,
         urls: List<String>
     ): Result<Triple<Set<String>, Set<String>, String>> = withContext(Dispatchers.IO) {
-        if (urls.isEmpty()) {
+        val uniqueUrls = urls.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        if (uniqueUrls.isEmpty()) {
             return@withContext Result.failure(Exception("Agrega al menos una URL en sintaxis Adblock"))
         }
 
@@ -46,7 +48,7 @@ class BlocklistDataSource(context: Context) {
         var successCount = 0
         var lastError: Exception? = null
 
-        for (targetUrl in urls) {
+        for (targetUrl in uniqueUrls) {
             var conn: HttpURLConnection? = null
             try {
                 conn = (URL(targetUrl).openConnection() as HttpURLConnection).apply {
@@ -78,8 +80,9 @@ class BlocklistDataSource(context: Context) {
             return@withContext Result.failure(lastError ?: Exception("No se pudo descargar ninguna lista"))
         }
 
+        val tmpFile = File(filesDir, ADBLOCK_TMP_NAME)
         val outFile = File(filesDir, ADBLOCK_FILE_NAME)
-        outFile.bufferedWriter().use { writer ->
+        tmpFile.bufferedWriter().use { writer ->
             blocked.forEach { domain ->
                 writer.write("||$domain^")
                 writer.newLine()
@@ -89,8 +92,12 @@ class BlocklistDataSource(context: Context) {
                 writer.newLine()
             }
         }
+        if (!tmpFile.renameTo(outFile)) {
+            tmpFile.copyTo(outFile, overwrite = true)
+            tmpFile.delete()
+        }
 
-        val summary = "Adblock OK ($successCount/${urls.size}): ${blocked.size} reglas"
+        val summary = "Adblock OK ($successCount/${uniqueUrls.size}): ${blocked.size} reglas"
         Result.success(Triple(blocked, exceptions, summary))
     }
 }
