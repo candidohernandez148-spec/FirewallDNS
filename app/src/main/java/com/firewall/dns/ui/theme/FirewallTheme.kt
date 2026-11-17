@@ -1,12 +1,13 @@
 package com.firewall.dns.ui.theme
 
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -22,6 +23,8 @@ private val DarkCanvas = Color(0xFF101722)
 private val DarkSurface = Color(0xFF192331)
 private val SecureGreen = Color(0xFF16845B)
 private val SecureGreenDark = Color(0xFF72D7AD)
+private val AmberWarn = Color(0xFFD97706)
+private val AmberWarnDark = Color(0xFFFBBF24)
 
 private val LightFirewallColors = lightColorScheme(
     primary = BrandBlue,
@@ -32,6 +35,7 @@ private val LightFirewallColors = lightColorScheme(
     onSecondary = Color.White,
     secondaryContainer = Color(0xFFDDF5E9),
     onSecondaryContainer = Color(0xFF123D2D),
+    tertiary = AmberWarn,
     background = Canvas,
     onBackground = Ink,
     surface = Color.White,
@@ -53,6 +57,7 @@ private val DarkFirewallColors = darkColorScheme(
     onSecondary = Color(0xFF003824),
     secondaryContainer = Color(0xFF174B37),
     onSecondaryContainer = Color(0xFFC9F2DF),
+    tertiary = AmberWarnDark,
     background = DarkCanvas,
     onBackground = Color(0xFFE4EAF4),
     surface = DarkSurface,
@@ -83,11 +88,7 @@ private val FirewallShapes = Shapes(
 @Composable
 fun FirewallTheme(content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = if (androidx.compose.foundation.isSystemInDarkTheme()) {
-            DarkFirewallColors
-        } else {
-            LightFirewallColors
-        },
+        colorScheme = if (isSystemInDarkTheme()) DarkFirewallColors else LightFirewallColors,
         typography = FirewallTypography,
         shapes = FirewallShapes,
         content = content
