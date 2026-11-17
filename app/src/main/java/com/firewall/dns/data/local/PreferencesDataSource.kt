@@ -74,4 +74,42 @@ class PreferencesDataSource(context: Context) {
     }
 
     fun saveBlocklistUrls(urls: List<String>) {
-        prefs.edit().putString(KEY_BLOCKLIST_URLS, urls.joinTo
+        val sep = System.lineSeparator()
+        prefs.edit().putString(KEY_BLOCKLIST_URLS, urls.joinToString(sep)).apply()
+    }
+
+    fun getSmartModeEnabled(): Boolean = prefs.getBoolean(KEY_SMART_MODE, true)
+
+    fun saveSmartModeEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_SMART_MODE, enabled).apply()
+    }
+
+    fun getObservationModeEnabled(): Boolean =
+        prefs.getBoolean(KEY_OBSERVATION_MODE, true)
+
+    fun saveObservationModeEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_OBSERVATION_MODE, enabled).apply()
+    }
+
+    fun getLearnedTokens(): MutableMap<String, Int> {
+        val raw = prefs.getString(KEY_LEARNED_TOKENS, "") ?: ""
+        val map = mutableMapOf<String, Int>()
+        raw.lines().forEach { line ->
+            val idx = line.indexOf('=')
+            if (idx > 0) {
+                val token = line.substring(0, idx).trim()
+                val score = line.substring(idx + 1).toIntOrNull()
+                if (token.isNotEmpty() && score != null) map[token] = score
+            }
+        }
+        return map
+    }
+
+    fun saveLearnedTokens(tokens: Map<String, Int>) {
+        val sep = System.lineSeparator()
+        val serialized = tokens.entries
+            .filter { it.key.isNotBlank() && !it.key.contains('=') && !it.key.contains('\n') }
+            .joinToString(sep) { "${it.key}=${it.value}" }
+        prefs.edit().putString(KEY_LEARNED_TOKENS, serialized).apply()
+    }
+}
