@@ -258,7 +258,6 @@ fun FirewallApp(
             kotlinx.coroutines.delay(2_000)
         }
     }
-    }
     val tabs = listOf("Actividad", "Listas", "Apps")
 
     LaunchedEffect(Unit) {
