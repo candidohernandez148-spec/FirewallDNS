@@ -59,22 +59,6 @@ class DnsFirewallService : VpnService() {
 
     private lateinit var connectivityManager: ConnectivityManager
 
-    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
-        override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
-            val type = when {
-                caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
-                caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "Datos móviles"
-                caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
-                else -> "Otra red"
-            }
-            FirewallRepository.setNetworkType(type)
-        }
-
-        override fun onLost(network: Network) {
-            if (connectivityManager.activeNetwork == null) FirewallRepository.setNetworkType("Sin red")
-        }
-    }
-
     companion object {
         const val ACTION_START = "ACTION_START_DNS_VPN"
         const val ACTION_STOP = "ACTION_STOP_DNS_VPN"
@@ -93,13 +77,6 @@ class DnsFirewallService : VpnService() {
         FirewallRepository.init(applicationContext)
         connectivityManager = getSystemService(ConnectivityManager::class.java)
 
-        val request = NetworkRequest.Builder()
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
-            .build()
-        try {
-            connectivityManager.registerNetworkCallback(request, networkCallback)
-        } catch (_: Exception) {}
 
         serviceScope.launch {
             FirewallRepository.cacheInvalidateEvent.collect {
@@ -411,7 +388,6 @@ class DnsFirewallService : VpnService() {
     }
 
     override fun onDestroy() {
-        try { connectivityManager.unregisterNetworkCallback(networkCallback) } catch (_: Exception) {}
         serviceScope.cancel()
         closeInterface()
         executor.shutdownNow()

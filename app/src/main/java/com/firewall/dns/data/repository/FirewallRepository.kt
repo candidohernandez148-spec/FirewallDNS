@@ -113,6 +113,7 @@ object FirewallRepository {
         synchronized(this) {
             if (initialized) return
             appContext = context.applicationContext
+            startNetworkTypeMonitor()
             prefsDataSource = PreferencesDataSource(appContext)
             blocklistDataSource = BlocklistDataSource(appContext)
 
@@ -316,6 +317,24 @@ object FirewallRepository {
     fun clearLogs() {
         _logs.value = emptyList()
         _stats.update { it.copy(totalAllowed = 0, totalBlocked = 0) }
+    }
+
+    // Monitor propio de la app: funciona igual con Firestack o con el respaldo DNS.
+    private fun startNetworkTypeMonitor() {
+        val cm = appContext.getSystemService(android.net.ConnectivityManager::class.java)
+        val refresh = { setNetworkType(com.firewall.dns.service.NetworkDns.currentType(appContext)) }
+        refresh()
+        val request = android.net.NetworkRequest.Builder()
+            .addCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .addCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+            .build()
+        try {
+            cm.registerNetworkCallback(request, object : android.net.ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: android.net.Network) = refresh()
+                override fun onCapabilitiesChanged(network: android.net.Network, caps: android.net.NetworkCapabilities) = refresh()
+                override fun onLost(network: android.net.Network) = refresh()
+            })
+        } catch (_: Throwable) {}
     }
 
     fun setNetworkType(type: String) {
