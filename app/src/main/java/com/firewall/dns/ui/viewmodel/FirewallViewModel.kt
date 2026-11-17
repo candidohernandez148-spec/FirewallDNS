@@ -133,7 +133,7 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
         if (FirewallRepository.addBlocklistUrl(url)) {
             _toastMessage.tryEmit("URL agregada. Pulsa Actualizar listas")
         } else {
-            _toastMessage.tryEmit("Debe empezar con http:// o https://")
+            _toastMessage.tryEmit("Usa una URL HTTPS válida (puerto 443, sin credenciales ni fragmentos)")
         }
     }
 
