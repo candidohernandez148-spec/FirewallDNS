@@ -1,39 +1,50 @@
-<p align="center">
-  <img src="docs/logo.svg" alt="FirewallDNS" width="140">
-</p>
+# 🛡️ Firewall DNS
 
-<h1 align="center">FirewallDNS</h1>
+![Platform](https://img.shields.io/badge/Android-7.0%2B%20(API%2024%2B)-3DDC84?logo=android&logoColor=white)
+![Kotlin](https://img.shields.io/badge/Kotlin-2.1-7F52FF?logo=kotlin&logoColor=white)
+![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?logo=jetpackcompose&logoColor=white)
+![Architecture](https://img.shields.io/badge/Architecture-MVVM-informational)
 
-<p align="center">
-  Firewall local para Android que permite filtrar dominios y controlar el acceso a Internet por aplicación.
-</p>
+Aplicación Android de **firewall local y filtrado DNS sin permisos root**, construida en Kotlin con Jetpack Compose (Material 3) y arquitectura **MVVM**. Permite supervisar en tiempo real las consultas DNS y conexiones TCP/UDP de cada aplicación, aplicar listas estándar Adblock (`||dominio.com^`) y bloquear o excluir aplicaciones individuales directamente desde el dispositivo.
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white" alt="Android 8.0 o superior">
-  <img src="https://img.shields.io/badge/Kotlin-Jetpack%20Compose-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin y Jetpack Compose">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/licencia-MIT-blue" alt="Licencia MIT"></a>
-</p>
+---
 
-FirewallDNS utiliza el servicio VPN de Android para filtrar conexiones localmente. Su motor de red se basa en [Firestack](https://github.com/celzero/firestack).
+## ✨ Características principales
 
-## Características
+* **Motor híbrido Firestack + Respaldo DNS clásico:**
+  * **Modo principal (`FirewallVpnService` + `Firestack`):** Túnel local IPv4/IPv6 (`gVisor/netstack`) para interceptar y registrar conexiones **TCP/UDP** y consultas **DNS** (`A`, `AAAA`, `HTTPS`, `CNAME`, `TXT`) identificando la aplicación propietaria por UID.
+  * **Respaldo automático (`DnsFirewallService`):** Motor DNS ligero en Kotlin puro (`DnsPacketEngine`) que entra en acción automáticamente si el túnel principal no logra iniciar.
+  * **Adaptación dinámica de red (`NetworkDns`):** Detecta cambios entre Wi-Fi, datos móviles y Ethernet para usar los servidores DNS de la red física activa.
+* **Control de aplicaciones (Split Tunneling y bloqueo total):**
+  * Bloquea por completo el acceso a Internet de aplicaciones individuales por UID (`AppFirewallManager`).
+  * Excluye aplicaciones concretas del filtrado mediante `addDisallowedApplication`.
+* **Listas Adblock externas y reglas personalizadas:**
+  * Compatible con sintaxis estándar Adblock DNS (`||dominio.com^` y excepciones `@@||dominio.com^`), con presets recomendados de **HaGeZi** (Ligera, Estándar y Avanzada) y soporte para añadir URLs externas sin recompilar.
+  * Reglas manuales de **Lista Blanca** y **Lista Negra** con prioridad sobre las listas descargadas, y botones rápidos de *Permitir/Bloquear* desde el historial en vivo.
+* **Protección inteligente local (`SmartDomainAnalyzer`):**
+  * Evaluación heurística multi-señal con escudo de dominios esenciales (`CORE_SAFE_HOSTS`) para evitar falsos positivos en chats, videos o inicios de sesión.
+  * Aprendizaje ponderado local en el dispositivo basado en las decisiones del usuario, con opción para reiniciar los patrones aprendidos en cualquier momento.
+* **Interfaz moderna y monitoreo en vivo:**
+  * Gráfica de tráfico en tiempo real (`TrafficChart`), métricas de bloqueo, ranking de dominios más bloqueados, buscador por dominio o aplicación y detección de conflicto cuando otra VPN del sistema está activa.
+  * Soporte automático para tema claro y oscuro (`Material 3`).
 
-- **Filtrado de dominios:** admite listas de bloqueo, excepciones y formato hosts, además de reglas personalizadas para permitir o bloquear dominios.
-- **Control por aplicación:** consulta las aplicaciones instaladas y configura su acceso a Internet desde la aplicación.
-- **Protección inteligente:** analiza localmente la actividad y las reglas para ayudar a identificar dominios de anuncios y rastreo.
-- **Actividad de red:** muestra estadísticas de conexiones permitidas y bloqueadas, dominios frecuentes y actividad por aplicación.
-- **DNS de respaldo:** incluye un filtro DNS alternativo si Firestack no puede iniciarse.
-- **VPN local:** utiliza `VpnService` de Android. No requiere configurar un servidor VPN remoto.
+---
 
-## Requisitos
+## 🏗️ Arquitectura del proyecto (MVVM)
 
-- Android 8.0 (API 24) o superior.
-- Para compilar: JDK 17 y Android SDK compatible con el proyecto.
+El proyecto está organizado por capas dentro de `:app`:
 
-## Compilación
-
-Clona el repositorio:
-
-```bash
-git clone https://github.com/candidohernandez148-spec/FirewallDNS.git
-cd FirewallDNS
+```text
+app/src/main/java/com/firewall/dns/
+├── domain/
+│   ├── model/         # Modelos de dominio (FirewallStats, DnsLogEntry, TrafficPoint, AppInfoItem)
+│   └── engine/        # Lógica pura (DnsPacketEngine, RuleEvaluator, SmartDomainAnalyzer, DomainBlocker, AppFirewallManager)
+├── data/
+│   ├── local/         # Persistencia y fuentes de datos (PreferencesDataSource, BlocklistDataSource)
+│   └── repository/    # Fuente única de verdad reactiva con StateFlow (FirewallRepository)
+├── service/           # Servicios VPN y red (FirewallVpnService, FirestackBridge, DnsFirewallService, NetworkDns)
+├── ui/
+│   ├── viewmodel/     # Estado de presentación (FirewallViewModel)
+│   ├── screens/       # Pantallas Jetpack Compose (LogsScreen, RulesScreen, AppsSettingsScreen)
+│   └── theme/         # Paleta clara/oscura, tipografía y formas (Theme)
+└── MainActivity.kt    # Punto de entrada, permisos de red/notificaciones y visor de fallos
