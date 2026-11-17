@@ -377,7 +377,9 @@ fun FirewallApp(
 private fun isOtherVpnActive(context: android.content.Context): Boolean = try {
     val cm = context.getSystemService(android.net.ConnectivityManager::class.java)
     // Solo la red por defecto: allNetworks incluye redes VPN que ya no se usan.
-    cm.getNetworkCapabilities(cm.activeNetwork)?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == true
+    val vpnUp = cm.getNetworkCapabilities(cm.activeNetwork)?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == true
+    // prepare() devuelve null mientras la VPN autorizada sea la nuestra; si otra app la tomó, pide permiso de nuevo.
+    vpnUp && android.net.VpnService.prepare(context) != null
 } catch (_: Throwable) {
     false
 }

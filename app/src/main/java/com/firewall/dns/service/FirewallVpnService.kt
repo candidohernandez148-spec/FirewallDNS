@@ -218,11 +218,20 @@ class FirewallVpnService : VpnService() {
 
     private fun closeResources() = synchronized(lock) {
         unregisterNetworkMonitor()
-        try {
-            Log.d(TAG, "tunnel.disconnect()")
-            tunnel?.disconnect()
-        } catch (e: Throwable) {
-            Log.d(TAG, "tunnel.disconnect() falló", e)
+        val t = tunnel
+        if (t != null) {
+            // disconnect() es nativo y puede bloquearse; con tiempo máximo para no dejar el servicio colgado.
+            val worker = Thread {
+                try {
+                    Log.d(TAG, "tunnel.disconnect()")
+                    t.disconnect()
+                } catch (e: Throwable) {
+                    Log.d(TAG, "tunnel.disconnect() falló", e)
+                }
+            }
+            worker.start()
+            worker.join(DISCONNECT_TIMEOUT_MS)
+            if (worker.isAlive) Log.w(TAG, "tunnel.disconnect() excedió ${DISCONNECT_TIMEOUT_MS}ms; se cierra el descriptor igualmente")
         }
         tunnel = null
         try {
@@ -284,6 +293,7 @@ class FirewallVpnService : VpnService() {
         private const val CHANNEL_ID = "firewall_vpn_channel"
         private const val NOTIFICATION_ID = 2002
         private const val MTU = 1500
+        private const val DISCONNECT_TIMEOUT_MS = 3000L
         private const val GATEWAY4 = "10.111.222.1"
         private const val DNS4 = "10.111.222.3"
         private const val GATEWAY6 = "fd66:f83a:c650::1"
