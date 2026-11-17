@@ -250,10 +250,14 @@ fun FirewallApp(
     var selectedTab by remember { mutableIntStateOf(0) }
     var otherVpnActive by remember { mutableStateOf(false) }
     LaunchedEffect(stats.isRunning) {
+        var hits = 0
         while (true) {
-            otherVpnActive = !stats.isRunning && isOtherVpnActive(context)
+            // Dos lecturas seguidas evitan falsos positivos por una VPN que Android aún no retira tras apagar la nuestra.
+            hits = if (!stats.isRunning && isOtherVpnActive(context)) hits + 1 else 0
+            otherVpnActive = hits >= 2
             kotlinx.coroutines.delay(2_000)
         }
+    }
     }
     val tabs = listOf("Actividad", "Listas", "Apps")
 
@@ -373,9 +377,8 @@ fun FirewallApp(
 // Android solo permite una VPN a la vez: si no es la nuestra y hay una red VPN, otra app (p. ej. Outline) tiene el permiso.
 private fun isOtherVpnActive(context: android.content.Context): Boolean = try {
     val cm = context.getSystemService(android.net.ConnectivityManager::class.java)
-    cm.allNetworks.any {
-        cm.getNetworkCapabilities(it)?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == true
-    }
+    // Solo la red por defecto: allNetworks incluye redes VPN que ya no se usan.
+    cm.getNetworkCapabilities(cm.activeNetwork)?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == true
 } catch (_: Throwable) {
     false
 }
