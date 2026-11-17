@@ -37,28 +37,28 @@ class PreferencesDataSource(context: Context) {
         prefs.getStringSet(KEY_CUSTOM_BLOCK, emptySet())?.toSet() ?: emptySet()
 
     fun saveCustomBlockSet(set: Set<String>) {
-        prefs.edit().putStringSet(KEY_CUSTOM_BLOCK, set).apply()
+        prefs.edit().putStringSet(KEY_CUSTOM_BLOCK, set.toSet()).apply()
     }
 
     fun getCustomAllowSet(): Set<String> =
         prefs.getStringSet(KEY_CUSTOM_ALLOW, emptySet())?.toSet() ?: emptySet()
 
     fun saveCustomAllowSet(set: Set<String>) {
-        prefs.edit().putStringSet(KEY_CUSTOM_ALLOW, set).apply()
+        prefs.edit().putStringSet(KEY_CUSTOM_ALLOW, set.toSet()).apply()
     }
 
     fun getExcludedPackages(): Set<String> =
         prefs.getStringSet(KEY_EXCLUDED_APPS, emptySet())?.toSet() ?: emptySet()
 
     fun saveExcludedPackages(set: Set<String>) {
-        prefs.edit().putStringSet(KEY_EXCLUDED_APPS, set).apply()
+        prefs.edit().putStringSet(KEY_EXCLUDED_APPS, set.toSet()).apply()
     }
 
     fun getBlockedApps(): Set<String> =
         prefs.getStringSet(KEY_BLOCKED_APPS, emptySet())?.toSet() ?: emptySet()
 
     fun saveBlockedApps(set: Set<String>) {
-        prefs.edit().putStringSet(KEY_BLOCKED_APPS, set).apply()
+        prefs.edit().putStringSet(KEY_BLOCKED_APPS, set.toSet()).apply()
     }
 
     fun getShouldRun(): Boolean = prefs.getBoolean(KEY_SHOULD_RUN, false)
@@ -105,7 +105,9 @@ class PreferencesDataSource(context: Context) {
     }
 
     fun saveLearnedTokens(tokens: Map<String, Int>) {
-        val serialized = tokens.entries.joinToString("\n") { "${it.key}=${it.value}" }
+        val serialized = tokens.entries
+            .filter { !it.key.contains('=') && !it.key.contains('\n') }
+            .joinToString("\n") { "${it.key}=${it.value}" }
         prefs.edit().putString(KEY_LEARNED_TOKENS, serialized).apply()
     }
 }
