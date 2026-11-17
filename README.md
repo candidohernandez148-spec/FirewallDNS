@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="logo.svg" width="115" height="115" alt="Logo Firewall DNS" />
+  <img src="docs/logo.svg" width="115" height="115" alt="Logo Firewall DNS" />
   <h1>Firewall DNS</h1>
   <p><strong>Firewall local y filtro DNS sin root para Android</strong></p>
 
