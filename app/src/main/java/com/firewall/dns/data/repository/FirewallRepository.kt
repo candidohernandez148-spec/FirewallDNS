@@ -7,6 +7,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.drawable.toBitmap
 import com.firewall.dns.data.local.BlocklistDataSource
 import com.firewall.dns.data.local.PreferencesDataSource
+import com.firewall.dns.domain.engine.BlocklistSourcePolicy
 import com.firewall.dns.domain.engine.AppFirewallManager
 import com.firewall.dns.domain.engine.DomainBlocker
 import com.firewall.dns.domain.engine.RuleEvaluator
@@ -188,7 +189,7 @@ object FirewallRepository {
 
     fun addBlocklistUrl(rawUrl: String): Boolean {
         val clean = rawUrl.trim()
-        if (!clean.startsWith("http://") && !clean.startsWith("https://")) return false
+        if (!BlocklistSourcePolicy.isAllowed(clean)) return false
         val current = _blocklistUrls.value.toMutableList()
         if (!current.contains(clean)) {
             current.add(clean)
