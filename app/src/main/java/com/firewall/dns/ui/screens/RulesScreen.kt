@@ -127,7 +127,7 @@ fun RulesScreen(
                         value = urlInput,
                         onValueChange = { urlInput = it },
                         placeholder = { Text("https://ejemplo.com/lista.txt") },
-                        label = { Text("URL de lista Adblock") },
+                        label = { Text("URL HTTPS de lista Adblock") },
                         singleLine = true,
                         shape = RoundedCornerShape(15.dp),
                         modifier = Modifier.fillMaxWidth()
