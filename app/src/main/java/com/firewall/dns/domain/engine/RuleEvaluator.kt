@@ -48,13 +48,24 @@ object RuleEvaluator {
         val isException = noComment.startsWith("@@")
         val body = if (isException) noComment.removePrefix("@@") else noComment
         val candidate = when {
-            body.startsWith("||") -> body.removePrefix("||")
-                .substringBefore('^')
-                .substringBefore('$')
-            body.startsWith("0.0.0.0 ") -> body.removePrefix("0.0.0.0 ").substringBefore(' ')
-            body.startsWith("127.0.0.1 ") -> body.removePrefix("127.0.0.1 ").substringBefore(' ')
-            body.startsWith(":: ") -> body.removePrefix(":: ").substringBefore(' ')
-            else -> body.substringBefore('^').substringBefore('$')
+            body.startsWith("||") -> {
+                val rawTarget = body.removePrefix("||")
+                    .substringBefore('^')
+                    .substringBefore('$')
+                // Si trae ruta web ("||sitio.com/ads.js"), no es una regla DNS de dominio completo.
+                if (rawTarget.contains('/') || rawTarget.contains('*')) return null
+                rawTarget
+            }
+            body.startsWith("0.0.0.0") || body.startsWith("127.0.0.1") || body.startsWith("::") -> {
+                val parts = body.split(Regex("\\s+"))
+                if (parts.size < 2) return null
+                parts[1]
+            }
+            else -> {
+                val rawTarget = body.substringBefore('^').substringBefore('$')
+                if (rawTarget.contains('/') || rawTarget.contains('*')) return null
+                rawTarget
+            }
         }
 
         val domain = canonicalizeDomain(candidate) ?: return null
