@@ -1,16 +1,12 @@
 package com.firewall.dns.service
 
 import android.app.NotificationChannel
-import com.firewall.dns.R
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
-import android.net.Network
-import android.net.NetworkCapabilities
-import android.net.NetworkRequest
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
@@ -19,6 +15,7 @@ import android.system.OsConstants
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.firewall.dns.MainActivity
+import com.firewall.dns.R
 import com.firewall.dns.data.repository.FirewallRepository
 import com.firewall.dns.domain.engine.DnsPacketEngine
 import kotlinx.coroutines.CoroutineScope
@@ -48,6 +45,7 @@ class DnsFirewallService : VpnService() {
         ThreadPoolExecutor.CallerRunsPolicy()
     )
     private val writeLock = Any()
+    private val vpnLock = Any()
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     @Volatile
@@ -77,7 +75,6 @@ class DnsFirewallService : VpnService() {
         FirewallRepository.init(applicationContext)
         connectivityManager = getSystemService(ConnectivityManager::class.java)
 
-
         serviceScope.launch {
             FirewallRepository.cacheInvalidateEvent.collect {
                 dnsCache.clear()
@@ -95,16 +92,15 @@ class DnsFirewallService : VpnService() {
         when (intent?.action) {
             ACTION_STOP -> {
                 FirewallRepository.setShouldRun(false)
-                stopVpn()
+                stopVpnAsync()
                 return START_NOT_STICKY
             }
             ACTION_START -> {
                 FirewallRepository.setShouldRun(true)
                 startForegroundNotification()
-                startVpn()
+                Thread { startVpn() }.start()
             }
             null -> {
-                // Reinicio del sistema sin intent: no se vuelve a encender la VPN.
                 stopSelf()
                 return START_NOT_STICKY
             }
@@ -122,8 +118,8 @@ class DnsFirewallService : VpnService() {
         .setContentTitle("Firewall DNS activo")
         .setContentText(notificationText())
         .setSmallIcon(R.drawable.ic_stat_firewall)
-            .setNumber(0)
-            .setBadgeIconType(NotificationCompat.BADGE_ICON_NONE)
+        .setNumber(0)
+        .setBadgeIconType(NotificationCompat.BADGE_ICON_NONE)
         .setContentIntent(
             PendingIntent.getActivity(
                 this, 0, Intent(this, MainActivity::class.java),
@@ -144,7 +140,9 @@ class DnsFirewallService : VpnService() {
 
     private fun startForegroundNotification() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(CHANNEL_ID, "Firewall DNS", NotificationManager.IMPORTANCE_LOW).apply { setShowBadge(false) }
+            val channel = NotificationChannel(CHANNEL_ID, "Firewall DNS", NotificationManager.IMPORTANCE_LOW).apply {
+                setShowBadge(false)
+            }
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
         val fgsType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -157,9 +155,8 @@ class DnsFirewallService : VpnService() {
         getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification())
     }
 
-    @Synchronized
-    private fun startVpn() {
-        closeInterface()
+    private fun startVpn() = synchronized(vpnLock) {
+        closeInterfaceSync()
         val upstream = FirewallRepository.getUpstreamDns()
         val builder = Builder()
             .setSession("FirewallDNS")
@@ -180,7 +177,8 @@ class DnsFirewallService : VpnService() {
 
         val established = builder.establish()
         if (established == null) {
-            stopVpn()
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
             return
         }
         vpnInterface = established
@@ -200,9 +198,7 @@ class DnsFirewallService : VpnService() {
                         executor.execute {
                             try {
                                 handlePacket(copy, output)
-                            } catch (_: Throwable) {
-                                // Un paquete inválido no debe cerrar el servicio.
-                            }
+                            } catch (_: Throwable) {}
                         }
                     }
                 }
@@ -314,9 +310,7 @@ class DnsFirewallService : VpnService() {
 
     private fun writePacket(output: FileOutputStream, data: ByteArray) {
         synchronized(writeLock) {
-            try {
-                output.write(data)
-            } catch (_: IOException) {}
+            try { output.write(data) } catch (_: IOException) {}
         }
     }
 
@@ -331,7 +325,9 @@ class DnsFirewallService : VpnService() {
         } catch (_: Exception) {
             Process.INVALID_UID
         }
-        if (uid == Process.INVALID_UID || uid <= 0) return "Sistema / DNS"
+        if (uid == Process.INVALID_UID || uid < 0) return "Sistema / DNS"
+        if (uid == 0) return "Sistema (root)"
+        if (uid == Process.SYSTEM_UID) return "Sistema Android"
         return uidAppCache.getOrPut(uid) {
             try {
                 val pkgs = packageManager.getPackagesForUid(uid)
@@ -362,34 +358,39 @@ class DnsFirewallService : VpnService() {
         }
     }
 
-    private fun closeInterface() {
+    private fun closeInterfaceSync() {
         isRunning = false
         FirewallRepository.setRunning(false)
         tunReaderThread?.interrupt()
         tunReaderThread = null
         val iface = vpnInterface
         vpnInterface = null
-        // Se cierra fuera del hilo principal para no congelar el botón de apagado.
-        Thread {
-            try { iface?.close() } catch (_: IOException) {}
-        }.start()
+        try { iface?.close() } catch (_: IOException) {}
     }
 
-    private fun stopVpn() {
-        closeInterface()
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
+    private fun stopVpnAsync() {
+        isRunning = false
+        Thread {
+            synchronized(vpnLock) {
+                closeInterfaceSync()
+            }
+            try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Throwable) {}
+            stopSelf()
+        }.start()
     }
 
     override fun onRevoke() {
         FirewallRepository.setShouldRun(false)
-        stopVpn()
+        stopVpnAsync()
         super.onRevoke()
     }
 
     override fun onDestroy() {
         serviceScope.cancel()
-        closeInterface()
+        isRunning = false
+        Thread {
+            synchronized(vpnLock) { closeInterfaceSync() }
+        }.start()
         executor.shutdownNow()
         super.onDestroy()
     }
