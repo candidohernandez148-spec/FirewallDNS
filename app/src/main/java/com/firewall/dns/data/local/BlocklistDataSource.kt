@@ -116,11 +116,7 @@ class BlocklistDataSource(context: Context) {
         }
 
         // Política conservadora: si una fuente falla, no reemplazar el conjunto anterior por uno parcial.
-        val successfulSources = uniqueUrls.count { url ->
-            // Cada URL válida que llegó a procesarse incrementa este contador más abajo.
-            completedSources.contains(url)
-        }
-        if (successfulSources != uniqueUrls.size) {
+        if (completedSources.size != uniqueUrls.size) {
             return@withContext Result.failure(lastError ?: IllegalStateException("No se pudieron validar todas las listas; se conserva la versión anterior"))
         }
 
@@ -128,12 +124,13 @@ class BlocklistDataSource(context: Context) {
         val atomicFile = AtomicFile(outputFile)
         var stream: FileOutputStream? = null
         try {
-            stream = atomicFile.startWrite()
-            val writer = OutputStreamWriter(stream, StandardCharsets.UTF_8).buffered()
+            val outputStream = atomicFile.startWrite()
+            stream = outputStream
+            val writer = OutputStreamWriter(outputStream, StandardCharsets.UTF_8).buffered()
             blocked.sorted().forEach { domain -> writer.apply { write("||$domain^"); newLine() } }
             exceptions.sorted().forEach { domain -> writer.apply { write("@@||$domain^"); newLine() } }
             writer.flush()
-            atomicFile.finishWrite(stream)
+            atomicFile.finishWrite(outputStream)
             stream = null
         } catch (error: Exception) {
             stream?.let(atomicFile::failWrite)
