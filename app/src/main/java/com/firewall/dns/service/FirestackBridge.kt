@@ -17,6 +17,7 @@ import com.firewall.dns.domain.engine.AppFirewallManager
 import com.firewall.dns.domain.engine.DomainBlocker
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Puente Firestack del servicio [FirewallVpnService]:
@@ -33,9 +34,11 @@ class FirestackBridge(
 
     private val appLabels = ConcurrentHashMap<Int, String>()
     private val recentConnections = ConcurrentHashMap<String, Long>()
+    private val lastEvaluationFailureLog = AtomicLong(0L)
 
     private companion object {
         const val CONNECTION_DEDUP_MS = 4000L
+        const val EVALUATION_ERROR_LOG_INTERVAL_MS = 10_000L
         val VPN_DNS = setOf("10.111.222.3", "fd66:f83a:c650::3")
         val SINKHOLE_IPS = setOf("0.0.0.0", "::", "::0")
     }
@@ -143,10 +146,33 @@ class FirestackBridge(
         return mark
     }
 
+    /**
+     * Mantiene la política fail-open para evitar cortar toda la conectividad ante
+     * un fallo interno, pero deja constancia visible del error en el historial.
+     */
     private fun evaluate(domain: String): Pair<Boolean, String> = try {
-        FirewallRepository.evaluateDomain(DomainBlocker.normalize(domain))
-    } catch (_: Throwable) {
-        false to "Permitido"
+        val normalized = DomainBlocker.normalize(domain)
+        if (normalized.isBlank()) return false to "Dominio no válido"
+        FirewallRepository.evaluateDomain(normalized)
+    } catch (error: Exception) {
+        val now = System.currentTimeMillis()
+        val previous = lastEvaluationFailureLog.get()
+        if (now - previous >= EVALUATION_ERROR_LOG_INTERVAL_MS &&
+            lastEvaluationFailureLog.compareAndSet(previous, now)
+        ) {
+            try {
+                FirewallRepository.addLog(
+                    domain = domain.take(253),
+                    qType = "ERROR",
+                    isBlocked = false,
+                    reason = "Error al evaluar reglas; permitido por compatibilidad (${error.javaClass.simpleName})",
+                    appName = "FirewallDNS"
+                )
+            } catch (_: Exception) {
+                // El registro nunca debe interrumpir el callback de Firestack.
+            }
+        }
+        false to "Error al evaluar reglas; permitido por compatibilidad"
     }
 
     private fun logConnection(
