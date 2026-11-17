@@ -91,7 +91,6 @@ class MainActivity : ComponentActivity() {
                             onToggleVpn = { enable ->
                                 if (enable) checkPermissionsAndStart() else stopFirewallService()
                             },
-                            onToggleObservationMode = firewallViewModel::setObservationModeEnabled,
                             onOpenBatteryOpt = { requestIgnoreBatteryOptimization() },
                             onOpenVpnSettings = { startActivity(Intent(Settings.ACTION_VPN_SETTINGS)) }
                         )
@@ -110,7 +109,7 @@ class MainActivity : ComponentActivity() {
         val pad = (16 * density).toInt()
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(pad, (56 * density).toInt(), pad, pad)
+            setPadding(pad, (56 * density).toInt(), pad, (48 * density).toInt())
             setBackgroundColor(android.graphics.Color.WHITE)
         }
         val title = TextView(this).apply {
@@ -171,9 +170,16 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun stopFirewallService() {
-        android.util.Log.d("MainActivity", "Apagando VPN: enviando ACTION_STOP")
-        FirewallVpnService.stop(this)
-        stopService(Intent(this, DnsFirewallService::class.java))
+        val activeEngine = firewallViewModel.stats.value.engine
+        android.util.Log.d("MainActivity", "Apagando VPN (motor=$activeEngine)")
+        if (activeEngine == "DNS clásico") {
+            startService(Intent(this, DnsFirewallService::class.java).apply {
+                action = DnsFirewallService.ACTION_STOP
+            })
+        } else {
+            FirewallVpnService.stop(this)
+            stopService(Intent(this, DnsFirewallService::class.java))
+        }
     }
 
     @SuppressLint("BatteryLife")
@@ -226,7 +232,6 @@ private fun FirewallShieldIcon(modifier: Modifier = Modifier) {
 fun FirewallApp(
     viewModel: FirewallViewModel,
     onToggleVpn: (Boolean) -> Unit,
-    onToggleObservationMode: (Boolean) -> Unit,
     onOpenBatteryOpt: () -> Unit,
     onOpenVpnSettings: () -> Unit
 ) {
@@ -240,7 +245,6 @@ fun FirewallApp(
     val customAllow by viewModel.customAllowList.collectAsState()
     val blocklistUrls by viewModel.blocklistUrls.collectAsState()
     val smartModeEnabled by viewModel.smartModeEnabled.collectAsState()
-    val observationModeEnabled by viewModel.observationModeEnabled.collectAsState()
     val isDownloading by viewModel.isDownloading.collectAsState()
     val apps by viewModel.filteredApps.collectAsState()
     val excludedPackages by viewModel.excludedPackages.collectAsState()
@@ -249,15 +253,21 @@ fun FirewallApp(
 
     var selectedTab by remember { mutableIntStateOf(0) }
     var otherVpnActive by remember { mutableStateOf(false) }
+
     LaunchedEffect(stats.isRunning) {
+        if (stats.isRunning) {
+            otherVpnActive = false
+            return@LaunchedEffect
+        }
         var hits = 0
         while (true) {
-            // Dos lecturas seguidas evitan falsos positivos por una VPN que Android aún no retira tras apagar la nuestra.
-            hits = if (!stats.isRunning && isOtherVpnActive(context)) hits + 1 else 0
+            // Dos lecturas seguidas evitan falsos positivos tras apagar nuestra VPN.
+            hits = if (isOtherVpnActive(context)) hits + 1 else 0
             otherVpnActive = hits >= 2
             kotlinx.coroutines.delay(2_000)
         }
     }
+
     val tabs = listOf("Actividad", "Listas", "Apps")
 
     LaunchedEffect(Unit) {
@@ -372,13 +382,11 @@ fun FirewallApp(
     }
 }
 
-// Android solo permite una VPN a la vez: si no es la nuestra y hay una red VPN, otra app (p. ej. Outline) tiene el permiso.
 private fun isOtherVpnActive(context: android.content.Context): Boolean = try {
     val cm = context.getSystemService(android.net.ConnectivityManager::class.java)
-    // Solo la red por defecto: allNetworks incluye redes VPN que ya no se usan.
-    val vpnUp = cm.getNetworkCapabilities(cm.activeNetwork)?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == true
-    // prepare() devuelve null mientras la VPN autorizada sea la nuestra; si otra app la tomó, pide permiso de nuevo.
-    vpnUp && android.net.VpnService.prepare(context) != null
+    val vpnUp = cm.getNetworkCapabilities(cm.activeNetwork)
+        ?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == true
+    vpnUp && VpnService.prepare(context) != null
 } catch (_: Throwable) {
     false
 }
