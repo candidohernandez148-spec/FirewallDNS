@@ -8,7 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.OutputStream
+import java.io.FileOutputStream
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
@@ -133,7 +133,7 @@ class BlocklistDataSource(context: Context) {
 
         val outFile = File(filesDir, ADBLOCK_FILE_NAME)
         val atomicFile = AtomicFile(outFile)
-        var stream: OutputStream? = null
+        var stream: FileOutputStream? = null
         try {
             stream = atomicFile.startWrite()
             val writer = OutputStreamWriter(stream, StandardCharsets.UTF_8).buffered()
