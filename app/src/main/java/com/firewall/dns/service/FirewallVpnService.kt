@@ -186,12 +186,16 @@ class FirewallVpnService : VpnService() {
     // Al cambiar de Wi-Fi a datos (o al revés) Firestack pasa a usar los DNS de la nueva red.
     private fun applyNetworkDns(lp: android.net.LinkProperties?) {
         val t = tunnel ?: return
-        val ips = NetworkDns.fromLink(lp, hasIpv6()).ifEmpty { return }
+        val ips = NetworkDns.fromLink(lp, hasIpv6())
+        if (ips.isBlank()) {
+            Log.w(TAG, "La red no informó DNS; se conservan los actuales")
+            return
+        }
         if (ips == lastDnsIps) return
         lastDnsIps = ips
         Log.d(TAG, "DNS de la red cambió: $ips")
-        try { Intra.setSystemDNS(t, ips) } catch (e: Throwable) { Log.d(TAG, "setSystemDNS falló", e) }
-        try { Intra.addDefaultTransport(t, Backend.DNS53, ips, "") } catch (e: Throwable) { Log.d(TAG, "addDefaultTransport falló", e) }
+        try { Intra.setSystemDNS(t, ips) } catch (e: Throwable) { Log.e(TAG, "setSystemDNS falló", e) }
+        try { Intra.addDefaultTransport(t, Backend.DNS53, ips, "") } catch (e: Throwable) { Log.e(TAG, "addDefaultTransport falló", e) }
     }
 
     private fun unregisterNetworkMonitor() {
