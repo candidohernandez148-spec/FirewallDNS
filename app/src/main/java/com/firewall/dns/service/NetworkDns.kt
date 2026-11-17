@@ -5,23 +5,50 @@ import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.NetworkCapabilities
 import java.net.Inet6Address
+import java.net.InetAddress
 
 /** DNS nativos de la red física activa (Wi-Fi o datos móviles). */
 object NetworkDns {
     const val EMERGENCY_DNS = "1.1.1.1"
-    private val OWN_DNS = setOf("10.111.222.3", "fd66:f83a:c650::3")
+    private val OWN_DNS = setOf("10.111.222.3", "fd66:f83a:c650::3", "10.10.10.1", "fd00:10:10::1")
+
+    private fun isUsableDns(addr: InetAddress, allowIpv6: Boolean): Boolean {
+        if (addr.isLoopbackAddress || addr.isAnyLocalAddress) return false
+        if (addr is Inet6Address) {
+            if (!allowIpv6 || addr.isLinkLocalAddress || addr.isSiteLocalAddress) return false
+            val firstByte = addr.address[0].toInt() and 0xFE
+            if (firstByte == 0xFC) return false // Excluye IPv6 ULA privada (fc00::/7)
+        }
+        return true
+    }
 
     fun fromLink(lp: LinkProperties?, allowIpv6: Boolean = true): String =
         lp?.dnsServers.orEmpty()
-            .filter { !it.isLoopbackAddress && !it.isAnyLocalAddress && !(it is Inet6Address && (!allowIpv6 || it.isLinkLocalAddress)) }
+            .filter { isUsableDns(it, allowIpv6) }
             .mapNotNull { it.hostAddress?.substringBefore('%') }
             .filter { it !in OWN_DNS }
             .distinct()
             .joinToString(",")
 
+    @Suppress("DEPRECATION")
     fun active(context: Context, allowIpv6: Boolean = true): String = try {
         val cm = context.getSystemService(ConnectivityManager::class.java)
-        fromLink(cm.getLinkProperties(cm.activeNetwork), allowIpv6)
+        val active = cm.activeNetwork
+        val activeCaps = active?.let { cm.getNetworkCapabilities(it) }
+        val physicalNet = if (active != null && activeCaps != null &&
+            activeCaps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            !activeCaps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+        ) {
+            active
+        } else {
+            cm.allNetworks.firstOrNull { net ->
+                cm.getNetworkCapabilities(net)?.let { c ->
+                    c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                        !c.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+                } == true
+            }
+        }
+        fromLink(physicalNet?.let { cm.getLinkProperties(it) }, allowIpv6)
     } catch (_: Throwable) {
         ""
     }
@@ -34,7 +61,8 @@ object NetworkDns {
     fun currentType(context: Context): String = try {
         val cm = context.getSystemService(ConnectivityManager::class.java)
         val caps = cm.allNetworks.mapNotNull { cm.getNetworkCapabilities(it) }.filter {
-            it.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) && !it.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+            it.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                !it.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
         }
         when {
             caps.isEmpty() -> "Sin red"
