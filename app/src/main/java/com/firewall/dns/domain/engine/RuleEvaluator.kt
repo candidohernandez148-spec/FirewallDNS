@@ -104,11 +104,11 @@ object RuleEvaluator {
         if (matchesDomainOrParent(clean, customAllow)) {
             return DecisionResult(false, "Lista blanca", RuleSource.MANUAL_ALLOW)
         }
-        if (matchesDomainOrParent(clean, hostExceptions)) {
-            return DecisionResult(false, "Excepción @@||", RuleSource.LIST_EXCEPTION)
-        }
         if (matchesDomainOrParent(clean, customBlock)) {
             return DecisionResult(true, "Regla propia", RuleSource.MANUAL_BLOCK)
+        }
+        if (matchesDomainOrParent(clean, hostExceptions)) {
+            return DecisionResult(false, "Excepción @@||", RuleSource.LIST_EXCEPTION)
         }
         if (matchesDomainOrParent(clean, hostBlock)) {
             return DecisionResult(true, "Adblock ||^", RuleSource.LIST_BLOCK)
