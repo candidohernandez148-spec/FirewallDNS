@@ -65,12 +65,16 @@ object ThreatKnowledgeGraph {
     @Volatile
     private var observations: Map<String, ObservationSignal> = emptyMap()
 
+    // Índice inmutable preparado al refrescar el aprendizaje, nunca durante una consulta DNS.
+    @Volatile
+    private var adaptivePatternIndex: Map<String, AdaptivePattern> = emptyMap()
+
     /**
      * Publica un snapshot agregado desde SQLite. Se llama fuera del hilo DNS.
      * Solo conserva perfiles con evidencia suficiente; no almacena apps ni consultas crudas.
      */
     fun updateObservations(profiles: List<ObservationProfile>) {
-        observations = profiles.asSequence()
+        val updated = profiles.asSequence()
             .filter { it.allowedCount >= 0L && it.blockedCount >= 0L }
             .filter { it.allowedCount + it.blockedCount >= MIN_OBSERVATIONS }
             .associate { profile ->
@@ -84,6 +88,11 @@ object ThreatKnowledgeGraph {
             }
             .filterKeys { it.isNotBlank() }
             .toMap()
+
+        // El agrupamiento y ordenamiento de hasta 5.000 perfiles se hace al publicar
+        // el snapshot desde el worker de aprendizaje (Dispatchers.IO).
+        adaptivePatternIndex = buildAdaptivePatternIndex(updated)
+        observations = updated
     }
 
     /** Señal contextual exacta; evita propagar la reputación de un dominio a otros hosts. */
@@ -221,8 +230,13 @@ object ThreatKnowledgeGraph {
      * al menos tres dominios, 24 eventos y 75% de bloqueos (mínimo 18 bloqueos).
      * Solo esa evidencia permite que una familia influya en decisiones DNS.
      */
-    fun adaptivePatternSnapshot(): List<AdaptivePattern> {
-        val groups = observations.entries.mapNotNull { (domain, signal) ->
+    fun adaptivePatternSnapshot(): List<AdaptivePattern> =
+        adaptivePatternIndex.values.toList()
+
+    private fun buildAdaptivePatternIndex(
+        snapshot: Map<String, ObservationSignal>
+    ): Map<String, AdaptivePattern> {
+        val groups = snapshot.entries.mapNotNull { (domain, signal) ->
             if (inspect(domain) != null) return@mapNotNull null
             val indicators = indicatorsForDomain(domain)
             if (indicators.isEmpty()) return@mapNotNull null
@@ -243,7 +257,7 @@ object ThreatKnowledgeGraph {
                 domains.size >= 3 && total >= 24L -> PatternConfidence.MEDIUM
                 else -> PatternConfidence.LOW
             }
-            AdaptivePattern(
+            signature to AdaptivePattern(
                 indicators = signature.split("+"),
                 domains = domains,
                 allowedCount = allowed,
@@ -251,11 +265,11 @@ object ThreatKnowledgeGraph {
                 confidence = confidence
             )
         }.sortedWith(
-            compareByDescending<AdaptivePattern> { it.confidence.ordinal }
-                .thenByDescending { it.totalObservations }
-                .thenByDescending { it.domains.size }
-                .thenBy { it.indicators.joinToString("+") }
-        ).take(MAX_ADAPTIVE_PATTERNS)
+            compareByDescending<Pair<String, AdaptivePattern>> { it.second.confidence.ordinal }
+                .thenByDescending { it.second.totalObservations }
+                .thenByDescending { it.second.domains.size }
+                .thenBy { it.first }
+        ).take(MAX_ADAPTIVE_PATTERNS).toMap()
     }
 
     /**
