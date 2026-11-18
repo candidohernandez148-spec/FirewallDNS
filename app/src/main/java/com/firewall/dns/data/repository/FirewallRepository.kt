@@ -195,6 +195,7 @@ object FirewallRepository {
             // Así la interfaz puede mostrarse sin esperar a analizar listas grandes.
             hostBlockSet.clear()
             hostBlockSet.addAll(defaultDomains)
+            SmartDecisionEngine.updateBlocklistKnowledge(hostBlockSet)
             hostExceptionSet.clear()
             updateRulesCount()
             initialized = true
@@ -206,6 +207,7 @@ object FirewallRepository {
                     if (blocklistGeneration.get() == generationAtStart) {
                         hostBlockSet.clear()
                         hostBlockSet.addAll(snapshot.blocked)
+                        SmartDecisionEngine.updateBlocklistKnowledge(hostBlockSet)
                         hostExceptionSet.clear()
                         hostExceptionSet.addAll(snapshot.exceptions)
                         threatDomainsByCategory = snapshot.threatDomainsByCategory
@@ -324,6 +326,7 @@ object FirewallRepository {
             blocklistGeneration.incrementAndGet()
             hostBlockSet.clear()
             hostBlockSet.addAll(snapshot.blocked)
+            SmartDecisionEngine.updateBlocklistKnowledge(hostBlockSet)
             hostExceptionSet.clear()
             hostExceptionSet.addAll(snapshot.exceptions)
             threatDomainsByCategory = snapshot.threatDomainsByCategory
