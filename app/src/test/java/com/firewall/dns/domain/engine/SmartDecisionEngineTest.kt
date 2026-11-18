@@ -99,7 +99,7 @@ class SmartDecisionEngineTest {
         try {
             val result = SmartDecisionEngine.evaluate("analytics-telemetry.delta.example")
             assertEquals(SmartDecisionEngine.Level.OBSERVE, result?.level)
-            assertTrue(result?.reason?.contains("permiso prevalece sobre la familia") == true)
+            assertTrue(result?.reason?.contains("aprendizaje explícito de permiso del dominio exacto prevalece sobre la familia") == true)
         } finally {
             ThreatKnowledgeGraph.updateObservations(emptyList())
         }
