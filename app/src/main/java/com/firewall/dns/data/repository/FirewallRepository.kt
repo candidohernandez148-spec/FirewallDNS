@@ -248,13 +248,11 @@ object FirewallRepository {
                     val next = observationQueue.tryReceive().getOrNull() ?: break
                     batch.add(next)
                 }
-                val currentGeneration = learningGeneration.get()
-                val validBatch = batch.filter { it.generation == currentGeneration }
-                if (validBatch.isNotEmpty()) {
-                    runCatching {
-                        observationPersistenceMutex.withLock {
-                            smartLearningStore.recordBatch(validBatch)
-                        }
+                runCatching {
+                    observationPersistenceMutex.withLock {
+                        // Recheck after acquiring the lock so a reset cannot be undone by an old batch.
+                        val validBatch = batch.filter { it.generation == learningGeneration.get() }
+                        if (validBatch.isNotEmpty()) smartLearningStore.recordBatch(validBatch)
                     }
                 }
             }
