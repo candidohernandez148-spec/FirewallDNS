@@ -28,7 +28,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -48,6 +48,7 @@ import com.firewall.dns.ui.screens.AppsSettingsScreen
 import com.firewall.dns.ui.screens.LogsScreen
 import com.firewall.dns.ui.screens.RulesScreen
 import com.firewall.dns.ui.screens.SecurityCenterScreen
+import com.firewall.dns.ui.screens.SocDashboardScreen
 import com.firewall.dns.ui.theme.FirewallTheme
 import com.firewall.dns.ui.viewmodel.FirewallViewModel
 
@@ -285,7 +286,7 @@ fun FirewallApp(
         "Inicio" to Icons.Default.Home,
         "Monitor" to Icons.Default.Search,
         "Amenazas" to Icons.Default.Warning,
-        "Protección" to Icons.Default.Security,
+        "Protección" to Icons.Default.Lock,
         "Sistema" to Icons.Default.Settings
     )
 
