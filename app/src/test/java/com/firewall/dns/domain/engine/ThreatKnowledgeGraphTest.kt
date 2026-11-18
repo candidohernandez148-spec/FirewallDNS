@@ -60,7 +60,10 @@ class ThreatKnowledgeGraphTest {
     }
 
     @Test fun learnedAllowDowngradesGraphBlockToObservation() {
-        val result = SmartDecisionEngine.evaluate("cdn.doubleclick.net", mapOf("cdn" to -2))
+        val result = SmartDecisionEngine.evaluate(
+            "cdn.doubleclick.net",
+            mapOf("domain:cdn.doubleclick.net" to -2)
+        )
         assertEquals(SmartDecisionEngine.Level.OBSERVE, result?.level)
     }
 
