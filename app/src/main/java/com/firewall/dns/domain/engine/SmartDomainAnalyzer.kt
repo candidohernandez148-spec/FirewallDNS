@@ -141,20 +141,12 @@ object SmartDomainAnalyzer {
         }
     }
 
-    // Quita el dominio registrable (2 etiquetas en .com/.net, o 3 en .com.mx/.co.uk).
+    // El aprendizaje se vincula al FQDN exacto. Nunca generaliza una excepción
+    // ni una señal de bloqueo a otros dominios que compartan palabras o etiquetas.
     fun learnableTokens(domain: String): List<String> {
-        val labels = domain.lowercase().trimEnd('.').split('.')
-        val rootLabels = if (labels.size >= 4 &&
-            labels.last().length == 2 &&
-            labels[labels.size - 2] in SECOND_LEVEL_TLDS
-        ) 3 else 2
-
-        if (labels.size <= rootLabels) return emptyList()
-        return labels.dropLast(rootLabels)
-            .flatMap { it.split('-', '_') }
-            .map { it.trimEnd { c -> c.isDigit() } }
-            .filter { it.length >= 2 && it !in GENERIC_TOKENS }
-            .distinct()
+        val clean = domain.trim().lowercase().trimEnd('.')
+        if (clean.isEmpty() || clean.length > 253 || clean.split('.').size < 2) return emptyList()
+        return listOf("domain:$clean")
     }
 
     fun isCoreSafe(domain: String): Boolean = matchesDomainOrParent(domain.lowercase(), CORE_SAFE_HOSTS)
