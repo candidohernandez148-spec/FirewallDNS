@@ -248,7 +248,7 @@ object FirewallRepository {
             threatDomainsByCategory = snapshot.threatDomainsByCategory
             updateRulesCount()
             _cacheInvalidateEvent.tryEmit(Unit)
-            summary
+            snapshot.summary
         }
     }
 
