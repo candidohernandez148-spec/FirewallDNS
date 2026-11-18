@@ -189,10 +189,12 @@ object FirewallRepository {
             _smartModeEnabled.value = prefsDataSource.getSmartModeEnabled()
             _observationModeEnabled.value = prefsDataSource.getObservationModeEnabled()
             learnedTokens.clear()
-            // Descarta pesos antiguos por token: podían afectar dominios no relacionados.
-            learnedTokens.putAll(
-                prefsDataSource.getLearnedTokens().filterKeys { it.startsWith("domain:") }
-            )
+            // Descarta y limpia pesos antiguos por token: podían afectar dominios no relacionados.
+            val storedLearnedTokens = prefsDataSource.getLearnedTokens()
+            learnedTokens.putAll(storedLearnedTokens.filterKeys { it.startsWith("domain:") })
+            if (learnedTokens.size != storedLearnedTokens.size) {
+                prefsDataSource.saveLearnedTokens(HashMap(learnedTokens))
+            }
             val activitySnapshot = prefsDataSource.getActivitySnapshot()
             _logs.value = activitySnapshot.logs
             logCounter.set(activitySnapshot.logs.maxOfOrNull { it.id } ?: 0L)
