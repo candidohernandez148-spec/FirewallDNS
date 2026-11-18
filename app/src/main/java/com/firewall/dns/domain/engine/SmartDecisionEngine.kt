@@ -119,9 +119,17 @@ object SmartDecisionEngine {
         } else if (isTikTok && parts.any { it in tiktokMeasure }) {
             score += 5; strong = true; reasons += "Medición TikTok"
         }
-        if (!strong && tokens.any { it in mediumTokens }) {
-            score += 2
-            reasons += "Indicador de medición o telemetría"
+        // Dos o más indicadores débiles distintos forman un patrón compuesto.
+        // Esto eleva la prioridad de observación, nunca activa un bloqueo por sí solo.
+        val matchedMediumSignals = tokens.filter { it in mediumTokens }.sorted()
+        if (!strong && matchedMediumSignals.isNotEmpty()) {
+            if (matchedMediumSignals.size >= 2) {
+                score += 3
+                reasons += "Patrón compuesto de señales débiles: ${matchedMediumSignals.joinToString(", ")}"
+            } else {
+                score += 2
+                reasons += "Indicador de medición o telemetría: ${matchedMediumSignals.first()}"
+            }
         }
         val first = labels.first()
         if (first.length >= 18 && first.count { it.isDigit() } >= 5) {
