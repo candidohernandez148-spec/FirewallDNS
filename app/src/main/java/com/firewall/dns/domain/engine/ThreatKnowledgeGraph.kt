@@ -99,6 +99,38 @@ object ThreatKnowledgeGraph {
     fun hasRepeatedObservations(domain: String): Boolean =
         observations.containsKey(domain.trim().lowercase().trimEnd('.'))
 
+    enum class LearnedAssessmentStatus { REVIEW_CANDIDATE, POSSIBLE_FALSE_POSITIVE, MIXED_HISTORY }
+
+    data class LearnedDomainAssessment(
+        val domain: String,
+        val allowedCount: Long,
+        val blockedCount: Long,
+        val status: LearnedAssessmentStatus,
+        val explanation: String
+    ) {
+        val totalObservations: Long get() = allowedCount + blockedCount
+    }
+
+    /** Clasifica perfiles desconocidos con historial suficiente; nunca modifica decisiones DNS. */
+    fun learnedDomainAssessments(): List<LearnedDomainAssessment> = observations.entries
+        .asSequence()
+        .filter { inspect(it.key) == null }
+        .map { (domain, signal) ->
+            val status = when {
+                signal.blockedCount.toDouble() / signal.total.coerceAtLeast(1L) >= REVIEW_BLOCKED_RATIO -> LearnedAssessmentStatus.REVIEW_CANDIDATE
+                signal.allowedCount.toDouble() / signal.total.coerceAtLeast(1L) >= ALLOWED_RATIO -> LearnedAssessmentStatus.POSSIBLE_FALSE_POSITIVE
+                else -> LearnedAssessmentStatus.MIXED_HISTORY
+            }
+            val explanation = when (status) {
+                LearnedAssessmentStatus.REVIEW_CANDIDATE -> "Candidato a revisión: predominan los bloqueos locales; todavía no es una amenaza confirmada."
+                LearnedAssessmentStatus.POSSIBLE_FALSE_POSITIVE -> "Posible falso positivo: predominan los permisos locales; no se crea una excepción automática."
+                LearnedAssessmentStatus.MIXED_HISTORY -> "Historial mixto: las observaciones no permiten una conclusión fiable."
+            }
+            LearnedDomainAssessment(domain, signal.allowedCount, signal.blockedCount, status, explanation)
+        }
+        .sortedWith(compareBy<LearnedDomainAssessment> { it.status.ordinal }.thenByDescending { it.totalObservations }.thenBy { it.domain })
+        .toList()
+
     data class ProviderCorrelation(
         val provider: String,
         val platform: String?,
@@ -222,6 +254,7 @@ object ThreatKnowledgeGraph {
 
     private const val MIN_OBSERVATIONS = 8L
     private const val ALLOWED_RATIO = 0.90
+    private const val REVIEW_BLOCKED_RATIO = 0.75
 
     /**
      * Catálogo semilla conservador:
