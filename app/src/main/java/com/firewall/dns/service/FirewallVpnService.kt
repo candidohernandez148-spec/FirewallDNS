@@ -60,6 +60,15 @@ class FirewallVpnService : VpnService() {
         super.onCreate()
         Log.d(TAG, "onCreate")
         FirewallRepository.init(applicationContext)
+        ioScope.launch {
+            FirewallRepository.closeUidConnectionsEvent.collect { uid ->
+                val activeTunnel = tunnel ?: return@collect
+                runCatching { activeTunnel.closeConns(uid.toString()) }
+                    .onFailure { error ->
+                        Log.w(TAG, "No se pudieron cerrar conexiones del UID $uid", error)
+                    }
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -83,26 +92,29 @@ class FirewallVpnService : VpnService() {
         startForegroundNotification()
 
         if (tunnel == null && isStarting.compareAndSet(false, true)) {
-            Thread {
-                val started = try {
-                    startTunnel()
+            ioScope.launch {
+                try {
+                    // Igual que MainActivity: ni Firestack ni el respaldo arrancan
+                    // con reglas locales aún sin cargar.
+                    FirewallRepository.awaitInitialBlocklistLoad()
+                    if (stopRequested) return@launch
+                    val started = startTunnel()
+                    if (!started && !stopRequested) {
+                        fallingBack = true
+                        closeResources()
+                        try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Throwable) {}
+                        stopSelf()
+                        ContextCompat.startForegroundService(
+                            this@FirewallVpnService,
+                            Intent(this@FirewallVpnService, DnsFirewallService::class.java).apply {
+                                action = DnsFirewallService.ACTION_START
+                            }
+                        )
+                    }
                 } finally {
                     isStarting.set(false)
                 }
-
-                if (!started && !stopRequested) {
-                    fallingBack = true
-                    closeResources()
-                    try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Throwable) {}
-                    stopSelf()
-                    ContextCompat.startForegroundService(
-                        this,
-                        Intent(this, DnsFirewallService::class.java).apply {
-                            action = DnsFirewallService.ACTION_START
-                        }
-                    )
-                }
-            }.start()
+            }
         }
         return START_NOT_STICKY
     }
