@@ -203,6 +203,39 @@ class ThreatKnowledgeGraphTest {
         finally { ThreatKnowledgeGraph.updateObservations(emptyList()) }
     }
 
+    @Test fun providerCorrelationAggregatesOnlyKnownProviderSubdomainsWithoutChangingDecisions() {
+        ThreatKnowledgeGraph.updateObservations(
+            listOf(
+                ThreatKnowledgeGraph.ObservationProfile("cdn.doubleclick.net", 4, 4),
+                ThreatKnowledgeGraph.ObservationProfile("img.doubleclick.net", 4, 4),
+                ThreatKnowledgeGraph.ObservationProfile("cdn.other-provider.example", 8, 0)
+            )
+        )
+        try {
+            val correlated =
+                ThreatKnowledgeGraph.relatedProviderObservationEvidence("api.doubleclick.net")
+            assertEquals("doubleclick.net", correlated?.provider)
+            assertEquals(2, correlated?.observedDomainCount)
+            assertEquals(8L, correlated?.allowedCount)
+            assertEquals(8L, correlated?.blockedCount)
+            assertEquals(16L, correlated?.total)
+
+            assertNull(
+                ThreatKnowledgeGraph.relatedProviderObservationEvidence("api.unknown.example")
+            )
+            assertNull(
+                ThreatKnowledgeGraph.relatedProviderObservationEvidence("notdoubleclick.net")
+            )
+
+            val decision = SmartDecisionEngine.evaluate("api.doubleclick.net")
+            assertEquals(SmartDecisionEngine.Level.BLOCK, decision?.level)
+            assertTrue(decision?.reason?.contains("correlación local del proveedor doubleclick.net") == true)
+            assertTrue(decision?.reason?.contains("contexto informativo, no cambia el nivel de decisión") == true)
+        } finally {
+            ThreatKnowledgeGraph.updateObservations(emptyList())
+        }
+    }
+
     @Test fun nonSocialProviderHasNoInventedPlatformAttribution() {
         val evidence = ThreatKnowledgeGraph.inspect("cdn.doubleclick.net")
         assertNull(evidence?.platform)
