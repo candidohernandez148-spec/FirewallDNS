@@ -362,7 +362,9 @@ object FirewallRepository {
             return true to "Lista de anuncios y rastreo"
         }
         if (_smartModeEnabled.value) {
-            SmartDomainAnalyzer.evaluate(domain, learnedTokens)?.let { return it }
+            SmartDecisionEngine.evaluate(domain, learnedTokens)?.let { decision ->
+                return (decision.level == SmartDecisionEngine.Level.BLOCK) to decision.reason
+            }
         }
         return baseEval
     }
