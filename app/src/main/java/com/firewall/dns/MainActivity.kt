@@ -41,6 +41,7 @@ import com.firewall.dns.service.FirewallVpnService
 import com.firewall.dns.ui.screens.AppsSettingsScreen
 import com.firewall.dns.ui.screens.LogsScreen
 import com.firewall.dns.ui.screens.RulesScreen
+import com.firewall.dns.ui.screens.SecurityCenterScreen
 import com.firewall.dns.ui.theme.FirewallTheme
 import com.firewall.dns.ui.viewmodel.FirewallViewModel
 
@@ -238,6 +239,7 @@ fun FirewallApp(
     val context = LocalContext.current
     val stats by viewModel.stats.collectAsState()
     val logs by viewModel.filteredLogs.collectAsState()
+    val activityLogs by viewModel.activityLogs.collectAsState()
     val traffic by viewModel.traffic.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val onlyBlocked by viewModel.onlyBlocked.collectAsState()
@@ -268,7 +270,7 @@ fun FirewallApp(
         }
     }
 
-    val tabs = listOf("Actividad", "Listas", "Apps")
+    val tabs = listOf("Seguridad", "Actividad", "Listas", "Apps")
 
     LaunchedEffect(Unit) {
         viewModel.toastMessage.collect { msg ->
@@ -336,7 +338,13 @@ fun FirewallApp(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             when (selectedTab) {
-                0 -> LogsScreen(
+                0 -> SecurityCenterScreen(
+                    stats = stats,
+                    logs = activityLogs,
+                    otherVpnActive = otherVpnActive,
+                    onOpenActivity = { selectedTab = 1 }
+                )
+                1 -> LogsScreen(
                     stats = stats,
                     logs = logs,
                     traffic = traffic,
@@ -350,7 +358,7 @@ fun FirewallApp(
                         viewModel.setCustomRule(entry.domain, block = !entry.isBlocked)
                     }
                 )
-                1 -> RulesScreen(
+                2 -> RulesScreen(
                     stats = stats,
                     customBlock = customBlock,
                     customAllow = customAllow,
@@ -365,7 +373,7 @@ fun FirewallApp(
                     onAddCustomRule = viewModel::setCustomRule,
                     onRemoveCustomRule = viewModel::removeCustomRule
                 )
-                2 -> AppsSettingsScreen(
+                3 -> AppsSettingsScreen(
                     stats = stats,
                     apps = apps,
                     excludedPackages = excludedPackages,
