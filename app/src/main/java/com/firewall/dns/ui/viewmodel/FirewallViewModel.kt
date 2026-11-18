@@ -29,6 +29,7 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
     val customAllowList: StateFlow<List<String>> = FirewallRepository.customAllowList
     val excludedPackages: StateFlow<Set<String>> = FirewallRepository.excludedPackages
     val blocklistUrls: StateFlow<List<String>> = FirewallRepository.blocklistUrls
+    val blocklistsDownloaded: StateFlow<Boolean> = FirewallRepository.blocklistsDownloaded
     val smartModeEnabled: StateFlow<Boolean> = FirewallRepository.smartModeEnabled
     val observationModeEnabled: StateFlow<Boolean> = FirewallRepository.observationModeEnabled
     val blockedApps: StateFlow<Set<String>> = FirewallRepository.blockedApps
