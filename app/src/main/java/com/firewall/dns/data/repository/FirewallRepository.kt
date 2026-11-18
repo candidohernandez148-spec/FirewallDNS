@@ -265,9 +265,11 @@ object FirewallRepository {
             return baseEval
         }
         if (baseEval.first) {
-            val category = threatDomainsByCategory.entries.firstOrNull { (_, domains) ->
-                ThreatFeedCatalog.matchesDomainOrParent(domain, domains)
-            }?.key
+            val category = if (baseEval.second.startsWith("Adblock")) {
+                threatDomainsByCategory.entries.firstOrNull { (_, domains) ->
+                    ThreatFeedCatalog.matchesDomainOrParent(domain, domains)
+                }?.key
+            } else null
             val reason = category?.let(ThreatFeedCatalog::reasonFor) ?: baseEval.second
             if (reason.startsWith("Adblock") || category != null) {
                 learnFromActivity(domain, blocked = true, step = 1)
