@@ -45,7 +45,7 @@ object DnsActivityAnalyzer {
             .maxByOrNull { it.value }
 
         if (repeatedBlocked != null) {
-            score += 1
+            score += 2
             findings += "El dominio ${repeatedBlocked.key} aparece bloqueado ${repeatedBlocked.value} veces en la muestra."
         }
 
