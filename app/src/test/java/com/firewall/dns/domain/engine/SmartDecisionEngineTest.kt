@@ -8,7 +8,7 @@ import org.junit.Test
 class SmartDecisionEngineTest {
     @Test fun knownAdTechIsBlockedWithStrongEvidence() {
         assertEquals(SmartDecisionEngine.Level.BLOCK, SmartDecisionEngine.evaluate("sync.adsrvr.org")?.level)
-        assertEquals(SmartDecisionEngine.Level.BLOCK, SmartDecisionEngine.evaluate("ads.google.com")?.level)
+        assertEquals(SmartDecisionEngine.Level.BLOCK, SmartDecisionEngine.evaluate("pagead2.googlesyndication.com")?.level)
     }
 
     @Test fun metaAndTikTokSignalsDoNotBlockPlatformRoots() {
