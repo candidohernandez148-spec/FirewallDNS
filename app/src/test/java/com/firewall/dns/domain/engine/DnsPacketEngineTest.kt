@@ -89,6 +89,47 @@ class DnsPacketEngineTest {
         }
     }
 
+    @Test
+    fun acceptsOnlyResponseForMatchingQuestion() {
+        val query = dnsQuery("example.com")
+        val response = query.copyOf().apply {
+            this[2] = 0x81.toByte()
+            this[3] = 0x80.toByte()
+        }
+
+        assertTrue(DnsPacketEngine.matchesDnsResponse(query, response))
+    }
+
+    @Test
+    fun responseQuestionNameComparisonIsCaseInsensitive() {
+        val query = dnsQuery("example.com")
+        val response = query.copyOf().apply {
+            this[2] = 0x81.toByte()
+            this[3] = 0x80.toByte()
+            this[13] = 'E'.code.toByte()
+        }
+
+        assertTrue(DnsPacketEngine.matchesDnsResponse(query, response))
+    }
+
+    @Test
+    fun rejectsWrongTransactionIdQuestionAndNonResponsePackets() {
+        val query = dnsQuery("example.com")
+        val valid = query.copyOf().apply { this[2] = 0x81.toByte() }
+
+        assertTrue(DnsPacketEngine.matchesDnsResponse(query, valid))
+        assertNullIfFalse(query, valid.copyOf().apply { this[0] = 0x7F })
+        assertNullIfFalse(query, valid.copyOf().apply { this[13] = 'x'.code.toByte() })
+        assertNullIfFalse(query, query.copyOf())
+        assertNullIfFalse(query, valid.copyOf().apply { this[2] = 0x89.toByte() })
+        assertNullIfFalse(query, valid.copyOf().apply { this[5] = 2 })
+        assertNullIfFalse(query, valid.copyOf().apply { this[valid.lastIndex] = 3 })
+    }
+
+    private fun assertNullIfFalse(request: ByteArray, response: ByteArray) {
+        assertTrue(!DnsPacketEngine.matchesDnsResponse(request, response))
+    }
+
     private fun dnsQuery(domain: String, qType: Int = 1): ByteArray {
         val labels = domain.split('.')
         val name = labels.flatMap { label ->
