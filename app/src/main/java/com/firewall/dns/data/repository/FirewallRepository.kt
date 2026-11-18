@@ -14,6 +14,7 @@ import com.firewall.dns.domain.engine.DomainBlocker
 import com.firewall.dns.domain.engine.RuleEvaluator
 import com.firewall.dns.domain.engine.SmartDomainAnalyzer
 import com.firewall.dns.domain.engine.SmartDecisionEngine
+import com.firewall.dns.domain.engine.ThreatKnowledgeGraph
 import com.firewall.dns.domain.engine.ThreatFeedCatalog
 import com.firewall.dns.domain.engine.ThreatFeedCategory
 import com.firewall.dns.domain.model.AppInfoItem
@@ -211,6 +212,7 @@ object FirewallRepository {
                         hostExceptionSet.clear()
                         hostExceptionSet.addAll(snapshot.exceptions)
                         threatDomainsByCategory = snapshot.threatDomainsByCategory
+                        refreshObservationKnowledge()
                         updateRulesCount()
                         _cacheInvalidateEvent.tryEmit(Unit)
                     }
@@ -225,6 +227,7 @@ object FirewallRepository {
 
     private fun startObservationWorker() {
         learningScope.launch {
+            var lastGraphRefreshMs = 0L
             for (first in observationQueue) {
                 val batch = ArrayList<DomainObservationEvent>(128)
                 batch.add(first)
@@ -235,12 +238,31 @@ object FirewallRepository {
                     batch.add(next)
                 }
                 runCatching { smartLearningStore.recordBatch(batch) }
+                val now = System.currentTimeMillis()
+                // Refresca el perfil contextual como máximo cada 30 segundos, nunca por consulta DNS.
+                if (now - lastGraphRefreshMs >= 30_000L) {
+                    refreshObservationKnowledge()
+                    lastGraphRefreshMs = now
+                }
             }
         }
     }
 
     suspend fun getSmartLearningMemory(): List<DomainObservationSummary> =
         withContext(Dispatchers.IO) { smartLearningStore.getSnapshot() }
+
+    /** Lee la memoria agregada en IO y publica un snapshot inmutable para el motor DNS. */
+    private fun refreshObservationKnowledge() {
+        runCatching {
+            smartLearningStore.getSnapshot().map { summary ->
+                ThreatKnowledgeGraph.ObservationProfile(
+                    domain = summary.domain,
+                    allowedCount = summary.allowedCount,
+                    blockedCount = summary.blockedCount
+                )
+            }
+        }.onSuccess(ThreatKnowledgeGraph::updateObservations)
+    }
 
     suspend fun awaitInitialBlocklistLoad() {
         initialBlocklistLoad.await()
@@ -395,6 +417,11 @@ object FirewallRepository {
         learnedTokens.clear()
         learnedDomains.clear()
         prefsDataSource.saveLearnedTokens(emptyMap())
+        // Reinicia también la memoria contextual agregada, sin bloquear la interfaz.
+        learningScope.launch {
+            runCatching { smartLearningStore.clear() }
+            ThreatKnowledgeGraph.updateObservations(emptyList())
+        }
         _stats.update { it.copy(learnedTokens = 0) }
         _cacheInvalidateEvent.tryEmit(Unit)
     }
