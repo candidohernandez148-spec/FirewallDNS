@@ -34,6 +34,16 @@ object DomainObservationPolicy {
         if (labels.size < 2 || labels.any { !LABEL.matches(it) }) return null
         return clean
     }
+
+    fun isValidSummary(
+        domain: String,
+        allowedCount: Long,
+        blockedCount: Long,
+        firstSeen: Long,
+        lastSeen: Long
+    ): Boolean = normalize(domain) == domain &&
+        allowedCount >= 0L && blockedCount >= 0L &&
+        firstSeen >= 0L && lastSeen >= firstSeen
 }
 
 /**
@@ -150,17 +160,32 @@ class SmartLearningStore(context: Context) {
 
         if (parsed.optInt("version", -1) != SCHEMA_VERSION) return false
         val rows = parsed.optJSONArray("domains") ?: return false
+        if (rows.length() > MAX_DOMAINS) return false
         val restored = LinkedHashMap<String, DomainObservationSummary>()
         for (index in 0 until rows.length()) {
-            val row = rows.optJSONObject(index) ?: continue
-            val domain = DomainObservationPolicy.normalize(row.optString("domain")) ?: continue
-            val allowed = row.optLong("allowed", -1L)
-            val blocked = row.optLong("blocked", -1L)
-            val firstSeen = row.optLong("firstSeen", -1L)
-            val lastSeen = row.optLong("lastSeen", -1L)
-            if (allowed < 0L || blocked < 0L || firstSeen < 0L || lastSeen < 0L) continue
+            val row = rows.optJSONObject(index) ?: return false
+            if (!row.has("domain") || !row.has("allowed") || !row.has("blocked") ||
+                !row.has("firstSeen") || !row.has("lastSeen") || !row.has("lastBlocked")
+            ) return false
+            val domainValue = row.opt("domain")
+            val allowedValue = row.opt("allowed")
+            val blockedValue = row.opt("blocked")
+            val firstSeenValue = row.opt("firstSeen")
+            val lastSeenValue = row.opt("lastSeen")
+            val lastBlockedValue = row.opt("lastBlocked")
+            if (domainValue !is String || allowedValue !is Number || blockedValue !is Number ||
+                firstSeenValue !is Number || lastSeenValue !is Number || lastBlockedValue !is Boolean
+            ) return false
+            val domain = DomainObservationPolicy.normalize(domainValue) ?: return false
+            val allowed = allowedValue.toLong()
+            val blocked = blockedValue.toLong()
+            val firstSeen = firstSeenValue.toLong()
+            val lastSeen = lastSeenValue.toLong()
+            if (!DomainObservationPolicy.isValidSummary(domain, allowed, blocked, firstSeen, lastSeen) ||
+                restored.containsKey(domain)
+            ) return false
             restored[domain] = DomainObservationSummary(
-                domain, allowed, blocked, firstSeen, lastSeen, row.optBoolean("lastBlocked")
+                domain, allowed, blocked, firstSeen, lastSeen, lastBlockedValue
             )
         }
         observations.clear()
