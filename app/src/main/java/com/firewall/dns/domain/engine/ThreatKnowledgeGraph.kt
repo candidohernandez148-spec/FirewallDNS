@@ -70,7 +70,7 @@ object ThreatKnowledgeGraph {
     private var adaptivePatternIndex: Map<String, AdaptivePattern> = emptyMap()
 
     /**
-     * Publica un snapshot agregado desde SQLite. Se llama fuera del hilo DNS.
+     * Publica un snapshot agregado desde almacenamiento local. Se llama fuera del hilo DNS.
      * Solo conserva perfiles con evidencia suficiente; no almacena apps ni consultas crudas.
      */
     fun updateObservations(profiles: List<ObservationProfile>) {

@@ -111,11 +111,14 @@ object FirewallRepository {
     private val activitySaveScheduled = AtomicBoolean(false)
     private val activityVersion = AtomicLong(0L)
     private val learningScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    // Cola acotada: nunca espera a SQLite dentro de la consulta DNS.
+    // Cola acotada: nunca espera a operaciones de disco dentro de la consulta DNS.
     private val observationQueue = Channel<DomainObservationEvent>(
         capacity = 2048,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
+    private val learningStoreReady = CompletableDeferred<Unit>()
+    private val learningGeneration = AtomicLong(0L)
+    private val observationPersistenceMutex = Mutex()
     private val initialBlocklistLoad = CompletableDeferred<Unit>()
     private val blocklistDownloadMutex = Mutex()
     private val blocklistGeneration = AtomicLong(0L)
@@ -163,6 +166,14 @@ object FirewallRepository {
             prefsDataSource = PreferencesDataSource(appContext)
             blocklistDataSource = BlocklistDataSource(appContext)
             smartLearningStore = SmartLearningStore(appContext)
+            learningScope.launch {
+                try {
+                    smartLearningStore.load()
+                    refreshObservationKnowledge()
+                } finally {
+                    learningStoreReady.complete(Unit)
+                }
+            }
             startObservationWorker()
             _blocklistsDownloaded.value = blocklistDataSource.hasSavedBlocklists()
 
@@ -228,22 +239,34 @@ object FirewallRepository {
 
     private fun startObservationWorker() {
         learningScope.launch {
-            var lastGraphRefreshMs = 0L
+            learningStoreReady.await()
             for (first in observationQueue) {
                 val batch = ArrayList<DomainObservationEvent>(128)
                 batch.add(first)
-                // Agrupa escrituras para no abrir una transacción por cada paquete DNS.
                 delay(1_000)
                 while (batch.size < 256) {
                     val next = observationQueue.tryReceive().getOrNull() ?: break
                     batch.add(next)
                 }
-                runCatching { smartLearningStore.recordBatch(batch) }
-                val now = System.currentTimeMillis()
-                // Refresca el perfil contextual cada 5 segundos en IO, nunca por consulta DNS.
-                if (now - lastGraphRefreshMs >= 5_000L) {
-                    refreshObservationKnowledge()
-                    lastGraphRefreshMs = now
+                runCatching {
+                    observationPersistenceMutex.withLock {
+                        // Recheck after acquiring the lock so a reset cannot be undone by an old batch.
+                        val validBatch = batch.filter { it.generation == learningGeneration.get() }
+                        if (validBatch.isNotEmpty()) smartLearningStore.recordBatch(validBatch)
+                    }
+                }
+            }
+        }
+        // Atomic snapshot writes are periodic and remain outside the DNS decision path.
+        learningScope.launch {
+            learningStoreReady.await()
+            while (true) {
+                delay(5_000)
+                runCatching {
+                    observationPersistenceMutex.withLock {
+                        smartLearningStore.flush()
+                        refreshObservationKnowledge()
+                    }
                 }
             }
         }
@@ -252,17 +275,15 @@ object FirewallRepository {
     suspend fun getSmartLearningMemory(): List<DomainObservationSummary> =
         withContext(Dispatchers.IO) { smartLearningStore.getSnapshot() }
 
-    /** Lee la memoria agregada en IO y publica un snapshot inmutable para el motor DNS. */
+    /** Publishes an immutable in-memory profile snapshot for the DNS decision engine. */
     private fun refreshObservationKnowledge() {
-        runCatching {
-            smartLearningStore.getSnapshot().map { summary ->
-                ThreatKnowledgeGraph.ObservationProfile(
-                    domain = summary.domain,
-                    allowedCount = summary.allowedCount,
-                    blockedCount = summary.blockedCount
-                )
-            }
-        }.onSuccess(ThreatKnowledgeGraph::updateObservations)
+        smartLearningStore.getSnapshot().map { summary ->
+            ThreatKnowledgeGraph.ObservationProfile(
+                domain = summary.domain,
+                allowedCount = summary.allowedCount,
+                blockedCount = summary.blockedCount
+            )
+        }.also(ThreatKnowledgeGraph::updateObservations)
     }
 
     suspend fun awaitInitialBlocklistLoad() {
@@ -418,10 +439,17 @@ object FirewallRepository {
         learnedTokens.clear()
         learnedDomains.clear()
         prefsDataSource.saveLearnedTokens(emptyMap())
-        // Reinicia también la memoria contextual agregada, sin bloquear la interfaz.
+        val resetGeneration = learningGeneration.incrementAndGet()
+        // Discard queued observations from the previous learning generation.
+        while (observationQueue.tryReceive().isSuccess) Unit
         learningScope.launch {
-            runCatching { smartLearningStore.clear() }
-            ThreatKnowledgeGraph.updateObservations(emptyList())
+            learningStoreReady.await()
+            observationPersistenceMutex.withLock {
+                if (learningGeneration.get() == resetGeneration) {
+                    smartLearningStore.clear()
+                    ThreatKnowledgeGraph.updateObservations(emptyList())
+                }
+            }
         }
         _stats.update { it.copy(learnedTokens = 0) }
         _cacheInvalidateEvent.tryEmit(Unit)
@@ -545,7 +573,12 @@ object FirewallRepository {
         activityVersion.incrementAndGet()
         // Se registra únicamente el dominio y contadores agregados; no se guarda la app ni el historial crudo.
         observationQueue.trySend(
-            DomainObservationEvent(domain = domain, blocked = !allowed, observedAt = System.currentTimeMillis())
+            DomainObservationEvent(
+                domain = domain,
+                blocked = !allowed,
+                observedAt = System.currentTimeMillis(),
+                generation = learningGeneration.get()
+            )
         )
         scheduleActivitySave()
     }

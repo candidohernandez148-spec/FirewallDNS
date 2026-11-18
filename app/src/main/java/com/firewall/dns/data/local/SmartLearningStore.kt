@@ -1,14 +1,18 @@
 package com.firewall.dns.data.local
 
-import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
-import android.database.sqlite.SQLiteOpenHelper
+import android.util.AtomicFile
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.File
+import java.io.FileNotFoundException
 
 data class DomainObservationEvent(
     val domain: String,
     val blocked: Boolean,
-    val observedAt: Long
+    val observedAt: Long,
+    val generation: Long = 0L
 )
 
 data class DomainObservationSummary(
@@ -33,121 +37,169 @@ object DomainObservationPolicy {
 }
 
 /**
- * Local, bounded aggregate memory. No app identifiers, query payloads, or raw event timeline
- * are persisted. WAL and batched transactions keep disk work away from the DNS hot path.
+ * Bounded aggregate learning stored as a versioned local JSON snapshot.
+ * DNS decisions update only the in-memory map; AtomicFile persistence runs on the IO worker.
+ * A one-time read-only migration preserves the previous SQLite aggregates when possible.
  */
-class SmartLearningStore(context: Context) : SQLiteOpenHelper(
-    context.applicationContext,
-    DATABASE_NAME,
-    null,
-    DATABASE_VERSION
-) {
+class SmartLearningStore(context: Context) {
     companion object {
-        private const val DATABASE_NAME = "firewalldns_learning.db"
-        private const val DATABASE_VERSION = 1
-        private const val TABLE = "domain_observations"
+        private const val FILE_NAME = "firewalldns_learning.json"
+        private const val LEGACY_DATABASE_NAME = "firewalldns_learning.db"
+        private const val SCHEMA_VERSION = 1
         private const val MAX_DOMAINS = 5_000
     }
 
-    init {
-        setWriteAheadLoggingEnabled(true)
+    private val appContext = context.applicationContext
+    private val atomicFile = AtomicFile(File(appContext.filesDir, FILE_NAME))
+    private val observations = LinkedHashMap<String, DomainObservationSummary>()
+    private var dirty = false
+
+    @Synchronized
+    fun load() {
+        if ((atomicFile.baseFile.exists() || File(atomicFile.baseFile.path + ".bak").exists()) &&
+            readFileSnapshot()
+        ) {
+            appContext.deleteDatabase(LEGACY_DATABASE_NAME)
+            return
+        }
+
+        val migrated = readLegacyDatabase() ?: return
+        observations.clear()
+        migrated.forEach { observations[it.domain] = it }
+        dirty = true
+        // Even an empty legacy database gets a committed versioned snapshot before deletion.
+        flush()
     }
 
-    override fun onCreate(db: SQLiteDatabase) {
-        db.execSQL(
-            """
-            CREATE TABLE $TABLE (
-                domain TEXT PRIMARY KEY NOT NULL,
-                allowed_count INTEGER NOT NULL DEFAULT 0,
-                blocked_count INTEGER NOT NULL DEFAULT 0,
-                first_seen INTEGER NOT NULL,
-                last_seen INTEGER NOT NULL,
-                last_blocked INTEGER NOT NULL DEFAULT 0
-            )
-            """.trimIndent()
-        )
-        db.execSQL("CREATE INDEX idx_domain_observations_last_seen ON $TABLE(last_seen)")
-    }
-
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Las futuras versiones deben migrar esta tabla sin borrar el conocimiento existente.
-    }
-
+    @Synchronized
     fun recordBatch(events: List<DomainObservationEvent>) {
         if (events.isEmpty()) return
-        val db = writableDatabase
-        db.beginTransaction()
+        events.forEach { event ->
+            val domain = DomainObservationPolicy.normalize(event.domain) ?: return@forEach
+            val timestamp = event.observedAt.coerceAtLeast(0L)
+            val old = observations[domain]
+            observations[domain] = DomainObservationSummary(
+                domain = domain,
+                allowedCount = (old?.allowedCount ?: 0L) + if (event.blocked) 0L else 1L,
+                blockedCount = (old?.blockedCount ?: 0L) + if (event.blocked) 1L else 0L,
+                firstSeen = old?.firstSeen ?: timestamp,
+                lastSeen = maxOf(old?.lastSeen ?: 0L, timestamp),
+                lastBlocked = event.blocked
+            )
+        }
+        if (observations.size > MAX_DOMAINS) {
+            observations.values
+                .sortedBy { it.lastSeen }
+                .take(observations.size - MAX_DOMAINS)
+                .forEach { observations.remove(it.domain) }
+        }
+        dirty = true
+    }
+
+    @Synchronized
+    fun getSnapshot(): List<DomainObservationSummary> =
+        observations.values.sortedByDescending { it.lastSeen }
+
+    @Synchronized
+    fun flush() {
+        if (!dirty) return
+        val root = JSONObject().put("version", SCHEMA_VERSION)
+        val rows = JSONArray()
+        observations.values.forEach { item ->
+            rows.put(
+                JSONObject()
+                    .put("domain", item.domain)
+                    .put("allowed", item.allowedCount)
+                    .put("blocked", item.blockedCount)
+                    .put("firstSeen", item.firstSeen)
+                    .put("lastSeen", item.lastSeen)
+                    .put("lastBlocked", item.lastBlocked)
+            )
+        }
+        root.put("domains", rows)
+
+        var stream: java.io.FileOutputStream? = null
         try {
-            events.forEach { event ->
-                val domain = DomainObservationPolicy.normalize(event.domain) ?: return@forEach
-                val timestamp = event.observedAt.coerceAtLeast(0L)
-                val existing = db.query(
-                    TABLE,
-                    arrayOf("allowed_count", "blocked_count", "first_seen"),
-                    "domain = ?",
-                    arrayOf(domain),
-                    null,
-                    null,
+            stream = atomicFile.startWrite()
+            stream.write(root.toString().toByteArray(Charsets.UTF_8))
+            stream.fd.sync()
+            atomicFile.finishWrite(stream)
+            dirty = false
+            appContext.deleteDatabase(LEGACY_DATABASE_NAME)
+        } catch (error: Exception) {
+            stream?.let { atomicFile.failWrite(it) }
+            throw error
+        }
+    }
+
+    @Synchronized
+    fun clear() {
+        observations.clear()
+        dirty = true
+        flush()
+    }
+
+    private fun readFileSnapshot(): Boolean {
+        val parsed = try {
+            atomicFile.openRead().bufferedReader(Charsets.UTF_8).use { JSONObject(it.readText()) }
+        } catch (_: FileNotFoundException) {
+            return false
+        } catch (_: Exception) {
+            return false
+        }
+
+        if (parsed.optInt("version", -1) != SCHEMA_VERSION) return false
+        val rows = parsed.optJSONArray("domains") ?: return false
+        val restored = LinkedHashMap<String, DomainObservationSummary>()
+        for (index in 0 until rows.length()) {
+            val row = rows.optJSONObject(index) ?: continue
+            val domain = DomainObservationPolicy.normalize(row.optString("domain")) ?: continue
+            val allowed = row.optLong("allowed", -1L)
+            val blocked = row.optLong("blocked", -1L)
+            val firstSeen = row.optLong("firstSeen", -1L)
+            val lastSeen = row.optLong("lastSeen", -1L)
+            if (allowed < 0L || blocked < 0L || firstSeen < 0L || lastSeen < 0L) continue
+            restored[domain] = DomainObservationSummary(
+                domain, allowed, blocked, firstSeen, lastSeen, row.optBoolean("lastBlocked")
+            )
+        }
+        observations.clear()
+        restored.values.sortedByDescending { it.lastSeen }.take(MAX_DOMAINS)
+            .forEach { observations[it.domain] = it }
+        dirty = false
+        return true
+    }
+
+    private fun readLegacyDatabase(): List<DomainObservationSummary>? {
+        val databaseFile = appContext.getDatabasePath(LEGACY_DATABASE_NAME)
+        if (!databaseFile.exists()) return null
+        return try {
+            SQLiteDatabase.openDatabase(
+                databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY
+            ).use { db ->
+                db.rawQuery(
+                    "SELECT domain, allowed_count, blocked_count, first_seen, last_seen, last_blocked FROM domain_observations ORDER BY last_seen DESC LIMIT $MAX_DOMAINS",
                     null
                 ).use { cursor ->
-                    if (cursor.moveToFirst()) {
-                        Triple(cursor.getLong(0), cursor.getLong(1), cursor.getLong(2))
-                    } else null
+                    buildList {
+                        while (cursor.moveToNext()) {
+                            val domain = DomainObservationPolicy.normalize(cursor.getString(0)) ?: continue
+                            add(
+                                DomainObservationSummary(
+                                    domain = domain,
+                                    allowedCount = cursor.getLong(1).coerceAtLeast(0L),
+                                    blockedCount = cursor.getLong(2).coerceAtLeast(0L),
+                                    firstSeen = cursor.getLong(3).coerceAtLeast(0L),
+                                    lastSeen = cursor.getLong(4).coerceAtLeast(0L),
+                                    lastBlocked = cursor.getInt(5) != 0
+                                )
+                            )
+                        }
+                    }
                 }
-                val values = ContentValues().apply {
-                    put("domain", domain)
-                    put("allowed_count", (existing?.first ?: 0L) + if (event.blocked) 0L else 1L)
-                    put("blocked_count", (existing?.second ?: 0L) + if (event.blocked) 1L else 0L)
-                    put("first_seen", existing?.third ?: timestamp)
-                    put("last_seen", timestamp)
-                    put("last_blocked", if (event.blocked) 1 else 0)
-                }
-                db.insertWithOnConflict(TABLE, null, values, SQLiteDatabase.CONFLICT_REPLACE)
             }
-            val count = db.rawQuery("SELECT COUNT(*) FROM $TABLE", null).use {
-                if (it.moveToFirst()) it.getInt(0) else 0
-            }
-            val excess = count - MAX_DOMAINS
-            if (excess > 0) {
-                db.delete(
-                    TABLE,
-                    "domain IN (SELECT domain FROM $TABLE ORDER BY last_seen ASC LIMIT ?)",
-                    arrayOf(excess.toString())
-                )
-            }
-            db.setTransactionSuccessful()
-        } finally {
-            db.endTransaction()
+        } catch (_: Exception) {
+            null
         }
-    }
-
-    fun getSnapshot(): List<DomainObservationSummary> {
-        val result = ArrayList<DomainObservationSummary>()
-        readableDatabase.query(
-            TABLE,
-            arrayOf("domain", "allowed_count", "blocked_count", "first_seen", "last_seen", "last_blocked"),
-            null,
-            null,
-            null,
-            null,
-            "last_seen DESC",
-            MAX_DOMAINS.toString()
-        ).use { cursor ->
-            while (cursor.moveToNext()) {
-                result += DomainObservationSummary(
-                    domain = cursor.getString(0),
-                    allowedCount = cursor.getLong(1),
-                    blockedCount = cursor.getLong(2),
-                    firstSeen = cursor.getLong(3),
-                    lastSeen = cursor.getLong(4),
-                    lastBlocked = cursor.getInt(5) != 0
-                )
-            }
-        }
-        return result
-    }
-
-    fun clear() {
-        writableDatabase.delete(TABLE, null, null)
     }
 }
