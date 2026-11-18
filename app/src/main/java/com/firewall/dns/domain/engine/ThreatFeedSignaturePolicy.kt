@@ -5,6 +5,11 @@ import java.security.Signature
 import java.security.spec.X509EncodedKeySpec
 import java.security.interfaces.RSAPublicKey
 
+data class ThreatFeedSignatureConfig(
+    val signatureUrl: String,
+    val publicKeyX509: ByteArray
+)
+
 /**
  * Verifies detached RSA/SHA-256 signatures over the exact downloaded feed bytes.
  *
