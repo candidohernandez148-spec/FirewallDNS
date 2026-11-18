@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -19,6 +20,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -29,8 +31,11 @@ import com.firewall.dns.domain.engine.ThreatKnowledgeGraph
 
 @Composable
 fun ThreatIntelligenceScreen() {
-    val catalog = remember { ThreatKnowledgeGraph.catalogSnapshot() }
-    val learnedCount = remember { ThreatKnowledgeGraph.learnedProfileCount() }
+    var refreshKey by remember { mutableIntStateOf(0) }
+    val catalog = remember(refreshKey) { ThreatKnowledgeGraph.catalogSnapshot() }
+    val learnedCount = remember(refreshKey) { ThreatKnowledgeGraph.learnedProfileCount() }
+    val correlations = remember(refreshKey) { ThreatKnowledgeGraph.correlationSnapshot() }
+    val unattributedCount = remember(refreshKey) { ThreatKnowledgeGraph.unattributedLearnedProfileCount() }
     var query by remember { mutableStateOf("") }
     var expandedProvider by remember { mutableStateOf<String?>(null) }
 
@@ -39,6 +44,8 @@ fun ThreatIntelligenceScreen() {
             .joinToString(" ").lowercase()
         text.contains(query.trim().lowercase())
     }
+    val totalListed = correlations.sumOf { it.listedDomainCount }
+    val totalCorrelatedObservations = correlations.sumOf { it.totalObservations }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -49,10 +56,11 @@ fun ThreatIntelligenceScreen() {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Mapa de inteligencia", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 Text(
-                    "Relaciones conocidas entre plataformas, proveedores y dominios. El catálogo se consulta localmente.",
+                    "Conocimiento local que relaciona proveedores conocidos con actividad observada y reglas activas.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Button(onClick = { refreshKey++ }) { Text("Actualizar mapa") }
             }
         }
         item {
@@ -63,13 +71,65 @@ fun ThreatIntelligenceScreen() {
             }
         }
         item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SummaryTile("Dominios en listas", totalListed.toString(), Modifier.weight(1f))
+                SummaryTile("Observaciones correlacionadas", totalCorrelatedObservations.toString(), Modifier.weight(1f))
+                SummaryTile("Sin atribución", unattributedCount.toString(), Modifier.weight(1f))
+            }
+        }
+        item {
             Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    "El aprendizaje muestra perfiles agregados con al menos 8 observaciones. No identifica qué aplicación originó cada consulta.",
+                    "Las correlaciones solo se muestran cuando existe una relación explícita en el catálogo. Los perfiles desconocidos permanecen sin atribución. Esta información no crea bloqueos por sí sola.",
                     modifier = Modifier.padding(12.dp),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSecondaryContainer
                 )
+            }
+        }
+        item {
+            Text("Correlaciones activas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        }
+        if (correlations.isEmpty()) {
+            item {
+                Text(
+                    "Todavía no hay dominios de listas o perfiles aprendidos que coincidan con proveedores conocidos.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        items(correlations, key = { "correlation-${it.provider}" }) { correlation ->
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(correlation.platform ?: "Proveedor independiente", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    Text(correlation.provider, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text(categoryLabel(correlation.category), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "Listas activas: ${correlation.listedDomainCount} · Dominios aprendidos: ${correlation.observedDomains.size}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text(
+                        "Permisos: ${correlation.allowedCount} · Bloqueos: ${correlation.blockedCount}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    if (correlation.observedDomains.isNotEmpty()) {
+                        Text(
+                            "Dominios: ${correlation.observedDomains.take(5).joinToString(", ")}" +
+                                if (correlation.observedDomains.size > 5) " y ${correlation.observedDomains.size - 5} más" else "",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Text(
+                        "Relación basada en catálogo explícito; no cambia la decisión DNS.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.tertiary
+                    )
+                }
             }
         }
         item {
@@ -82,7 +142,7 @@ fun ThreatIntelligenceScreen() {
             )
         }
         item {
-            Text("Relaciones del catálogo (\${filtered.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("Relaciones del catálogo (${filtered.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         }
         items(filtered, key = { it.provider }) { evidence ->
             val expanded = expandedProvider == evidence.provider
@@ -106,7 +166,7 @@ fun ThreatIntelligenceScreen() {
                     }
                     Text(categoryLabel(evidence.category), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(
-                        if (expanded) "Ocultar evidencia" else "Ver relaciones y evidencia  ·  \${evidence.relation}",
+                        if (expanded) "Ocultar evidencia" else "Ver relaciones y evidencia · ${evidence.relation}",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -114,11 +174,11 @@ fun ThreatIntelligenceScreen() {
                         Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 evidence.knowledgePath.forEachIndexed { index, step ->
-                                    Text((index + 1).toString() + ". " + step, style = MaterialTheme.typography.bodySmall)
+                                    Text("${index + 1}. $step", style = MaterialTheme.typography.bodySmall)
                                 }
-                                Text("Fuente: \${evidence.source}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Fuente: ${evidence.source}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text(
-                                    "Decisión: " + if (evidence.category == ThreatKnowledgeGraph.Category.ADVERTISING && evidence.confidence == ThreatKnowledgeGraph.Confidence.HIGH) "puede bloquearse" else "se observa; no se bloquea automáticamente",
+                                    "Decisión: " + if (evidence.category == ThreatKnowledgeGraph.Category.ADVERTISING && evidence.confidence == ThreatKnowledgeGraph.Confidence.HIGH) "puede bloquearse según la política del motor" else "se observa; no se bloquea automáticamente",
                                     style = MaterialTheme.typography.bodySmall,
                                     fontWeight = FontWeight.SemiBold
                                 )

@@ -99,6 +99,64 @@ object ThreatKnowledgeGraph {
     fun hasRepeatedObservations(domain: String): Boolean =
         observations.containsKey(domain.trim().lowercase().trimEnd('.'))
 
+    data class ProviderCorrelation(
+        val provider: String,
+        val platform: String?,
+        val category: Category,
+        val confidence: Confidence,
+        val observedDomains: List<String>,
+        val allowedCount: Long,
+        val blockedCount: Long,
+        val listedDomainCount: Int
+    ) {
+        val totalObservations: Long get() = allowedCount + blockedCount
+    }
+
+    @Volatile
+    private var activeBlocklistDomains: Set<String> = emptySet()
+
+    /** Publica un snapshot de reglas activas ya cargadas; no realiza I/O. */
+    fun updateBlocklistDomains(domains: Set<String>) {
+        activeBlocklistDomains = domains.asSequence()
+            .map { it.trim().lowercase().trimEnd('.') }
+            .filter { it.isNotBlank() }
+            .toSet()
+    }
+
+    /**
+     * Correlaciona únicamente dominios observados/listados que coinciden con un proveedor
+     * explícito del catálogo. No atribuye proveedores por tokens, similitud o coincidencias parciales.
+     */
+    fun correlationSnapshot(): List<ProviderCorrelation> {
+        val observed = observations.entries.mapNotNull { (domain, signal) ->
+            inspect(domain)?.let { it.provider to (domain to signal) }
+        }.groupBy({ it.first }, { it.second })
+
+        val listed = activeBlocklistDomains.mapNotNull { domain ->
+            inspect(domain)?.let { it.provider }
+        }.groupingBy { it }.eachCount()
+
+        return (observed.keys + listed.keys).distinct().mapNotNull { providerDomain ->
+            val evidence = inspect(providerDomain) ?: return@mapNotNull null
+            val entries = observed[providerDomain].orEmpty()
+            ProviderCorrelation(
+                provider = providerDomain,
+                platform = evidence.platform,
+                category = evidence.category,
+                confidence = evidence.confidence,
+                observedDomains = entries.map { it.first }.distinct().sorted(),
+                allowedCount = entries.sumOf { it.second.allowedCount },
+                blockedCount = entries.sumOf { it.second.blockedCount },
+                listedDomainCount = listed[providerDomain] ?: 0
+            )
+        }.sortedWith(compareByDescending<ProviderCorrelation> { it.totalObservations + it.listedDomainCount }
+            .thenBy { it.provider })
+    }
+
+    /** Perfiles con suficiente historial que no tienen una relación curada conocida. */
+    fun unattributedLearnedProfileCount(): Int =
+        observations.keys.count { inspect(it) == null }
+
     private const val MIN_OBSERVATIONS = 8L
     private const val ALLOWED_RATIO = 0.90
 

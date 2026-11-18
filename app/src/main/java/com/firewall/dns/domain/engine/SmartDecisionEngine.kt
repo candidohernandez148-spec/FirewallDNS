@@ -13,6 +13,7 @@ object SmartDecisionEngine {
     /** Sincroniza el conocimiento con las reglas activas cargadas desde las listas. */
     fun updateBlocklistKnowledge(domains: Set<String>) {
         blocklistKnowledge = domains
+        ThreatKnowledgeGraph.updateBlocklistDomains(domains)
     }
 
     private val safeHosts = setOf(

@@ -212,4 +212,58 @@ class ThreatKnowledgeGraphTest {
         )
     }
 
+
+    @Test fun correlationAggregatesKnownProviderObservationsAndActiveListMatches() {
+        ThreatKnowledgeGraph.updateObservations(
+            listOf(
+                ThreatKnowledgeGraph.ObservationProfile("cdn.doubleclick.net", 9, 1),
+                ThreatKnowledgeGraph.ObservationProfile("img.doubleclick.net", 2, 6),
+                ThreatKnowledgeGraph.ObservationProfile("unknown-provider.example", 12, 0)
+            )
+        )
+        SmartDecisionEngine.updateBlocklistKnowledge(
+            setOf("ads.doubleclick.net", "unrelated.example")
+        )
+        try {
+            val correlation = ThreatKnowledgeGraph.correlationSnapshot()
+                .single { it.provider == "doubleclick.net" }
+            assertEquals(listOf("cdn.doubleclick.net", "img.doubleclick.net"), correlation.observedDomains)
+            assertEquals(11L, correlation.allowedCount)
+            assertEquals(7L, correlation.blockedCount)
+            assertEquals(1, correlation.listedDomainCount)
+            assertEquals(1, ThreatKnowledgeGraph.unattributedLearnedProfileCount())
+        } finally {
+            SmartDecisionEngine.updateBlocklistKnowledge(emptySet())
+            ThreatKnowledgeGraph.updateObservations(emptyList())
+        }
+    }
+
+    @Test fun correlationDoesNotInventRelationsForLookalikesOrChangeDnsDecision() {
+        ThreatKnowledgeGraph.updateObservations(
+            listOf(ThreatKnowledgeGraph.ObservationProfile("cdn.notdoubleclick.net", 12, 0))
+        )
+        try {
+            assertTrue(ThreatKnowledgeGraph.correlationSnapshot().isEmpty())
+            assertEquals(1, ThreatKnowledgeGraph.unattributedLearnedProfileCount())
+            assertNull(ThreatKnowledgeGraph.inspect("cdn.notdoubleclick.net"))
+            assertNull(SmartDecisionEngine.evaluate("cdn.notdoubleclick.net"))
+        } finally {
+            ThreatKnowledgeGraph.updateObservations(emptyList())
+        }
+    }
+
+    @Test fun activeBlocklistKnowledgeIsCorrelatedOnlyToExplicitCatalogProviders() {
+        SmartDecisionEngine.updateBlocklistKnowledge(
+            setOf("cdn.doubleclick.net", "pixel.instagram.com", "unknown-threat.example")
+        )
+        try {
+            val snapshot = ThreatKnowledgeGraph.correlationSnapshot()
+            assertEquals(1, snapshot.single { it.provider == "doubleclick.net" }.listedDomainCount)
+            assertEquals(1, snapshot.single { it.provider == "pixel.instagram.com" }.listedDomainCount)
+            assertTrue(snapshot.none { it.provider == "unknown-threat.example" })
+        } finally {
+            SmartDecisionEngine.updateBlocklistKnowledge(emptySet())
+        }
+    }
+
 }
