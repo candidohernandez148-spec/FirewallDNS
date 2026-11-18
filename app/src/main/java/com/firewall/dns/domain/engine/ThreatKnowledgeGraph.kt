@@ -23,6 +23,49 @@ object ThreatKnowledgeGraph {
     )
 
     // Nodos semilla: dominios de proveedor conocidos y su relación semántica.
+    data class ObservationProfile(
+        val domain: String,
+        val allowedCount: Long,
+        val blockedCount: Long
+    )
+
+    private data class ObservationSignal(
+        val allowed: Boolean,
+        val total: Long
+    )
+
+    @Volatile
+    private var observations: Map<String, ObservationSignal> = emptyMap()
+
+    /**
+     * Publica un snapshot agregado desde SQLite. Se llama fuera del hilo DNS.
+     * Solo conserva perfiles con evidencia suficiente; no almacena apps ni consultas crudas.
+     */
+    fun updateObservations(profiles: List<ObservationProfile>) {
+        observations = profiles.asSequence()
+            .filter { it.allowedCount >= 0L && it.blockedCount >= 0L }
+            .filter { it.allowedCount + it.blockedCount >= MIN_OBSERVATIONS }
+            .associate { profile ->
+                profile.domain.trim().lowercase().trimEnd('.') to ObservationSignal(
+                    allowed = profile.allowedCount.toDouble() /
+                        (profile.allowedCount + profile.blockedCount).coerceAtLeast(1L) >= ALLOWED_RATIO,
+                    total = profile.allowedCount + profile.blockedCount
+                )
+            }
+            .filterKeys { it.isNotBlank() }
+            .toMap()
+    }
+
+    /** Señal contextual exacta; evita propagar la reputación de un dominio a otros hosts. */
+    fun isRepeatedlyAllowed(domain: String): Boolean =
+        observations[domain.trim().lowercase().trimEnd('.') ]?.let { it.allowed } == true
+
+    fun hasRepeatedObservations(domain: String): Boolean =
+        observations.containsKey(domain.trim().lowercase().trimEnd('.'))
+
+    private const val MIN_OBSERVATIONS = 8L
+    private const val ALLOWED_RATIO = 0.90
+
     private val providers = listOf(
         Provider("doubleclick.net", Category.ADVERTISING, Confidence.HIGH),
         Provider("googlesyndication.com", Category.ADVERTISING, Confidence.HIGH),
