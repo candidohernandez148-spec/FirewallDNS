@@ -258,23 +258,9 @@ fun FirewallApp(
     onOpenVpnSettings: () -> Unit
 ) {
     val context = LocalContext.current
+    // Only the global protection state stays subscribed at the app shell.
+    // Screen-specific streams are collected while their destination is visible.
     val stats by viewModel.stats.collectAsState()
-    val logs by viewModel.filteredLogs.collectAsState()
-    val activityLogs by viewModel.activityLogs.collectAsState()
-    val traffic by viewModel.traffic.collectAsState()
-    val searchQuery by viewModel.searchQuery.collectAsState()
-    val onlyBlocked by viewModel.onlyBlocked.collectAsState()
-    val customBlock by viewModel.customBlockList.collectAsState()
-    val customAllow by viewModel.customAllowList.collectAsState()
-    val blocklistUrls by viewModel.blocklistUrls.collectAsState()
-    val blocklistsDownloaded by viewModel.blocklistsDownloaded.collectAsState()
-    val smartModeEnabled by viewModel.smartModeEnabled.collectAsState()
-    val isDownloading by viewModel.isDownloading.collectAsState()
-    val downloadProgress by viewModel.downloadProgress.collectAsState()
-    val apps by viewModel.filteredApps.collectAsState()
-    val excludedPackages by viewModel.excludedPackages.collectAsState()
-    val blockedApps by viewModel.blockedApps.collectAsState()
-    val appSearch by viewModel.appSearch.collectAsState()
 
     var selectedDestination by remember { mutableIntStateOf(0) }
     var otherVpnActive by remember { mutableStateOf(false) }
@@ -319,124 +305,59 @@ fun FirewallApp(
                         Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                             Text(
                                 when (selectedDestination) {
-                                    0 -> "FirewallDNS"
-                                    1 -> "Monitor DNS"
-                                    2 -> "Centro de amenazas"
-                                    3 -> "Protección"
-                                    4 -> "Sistema y aplicaciones"
-                                    else -> "Mapa de inteligencia"
-                                },
-                                fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                            Text(
-                                if (stats.isRunning) "SISTEMA ACTIVO · ${stats.engine}"
-                                else "SISTEMA EN ESPERA",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = if (stats.isRunning) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                },
-                actions = {
-                    Text(
-                        if (stats.isRunning) "ON" else "OFF",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Switch(
-                        checked = stats.isRunning,
-                        onCheckedChange = onToggleVpn,
-                        modifier = Modifier.padding(start = 4.dp, end = 8.dp)
-                    )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
-                )
-            )
-        },
-        bottomBar = {
-            NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surface,
-                tonalElevation = 3.dp
-            ) {
-                destinations.forEachIndexed { index, destination ->
-                    NavigationBarItem(
-                        selected = selectedDestination == index,
-                        onClick = { selectedDestination = index },
-                        icon = { Icon(destination.second, contentDescription = destination.first) },
-                        label = { Text(destination.first, maxLines = 1) },
-                        alwaysShowLabel = true
-                    )
+                0 -> {
+                    val activityLogs by viewModel.activityLogs.collectAsState()
+                    val blocklistsDownloaded by viewModel.blocklistsDownloaded.collectAsState()
+                    SocDashboardScreen(stats, activityLogs, otherVpnActive, blocklistsDownloaded,
+                        onOpenMonitor = { selectedDestination = 1 },
+                        onOpenThreats = { selectedDestination = 2 },
+                        onOpenProtection = { selectedDestination = 3 })
                 }
-            }
-        }
-    ) { padding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
-            when (selectedDestination) {
-                0 -> SocDashboardScreen(
-                    stats = stats,
-                    logs = activityLogs,
-                    otherVpnActive = otherVpnActive,
-                    blocklistsDownloaded = blocklistsDownloaded,
-                    onOpenMonitor = { selectedDestination = 1 },
-                    onOpenThreats = { selectedDestination = 2 },
-                    onOpenProtection = { selectedDestination = 3 }
-                )
-                1 -> LogsScreen(
-                    stats = stats,
-                    logs = logs,
-                    traffic = traffic,
-                    otherVpnActive = otherVpnActive,
-                    searchQuery = searchQuery,
-                    onlyBlocked = onlyBlocked,
-                    onSearchQueryChange = viewModel::onSearchQueryChange,
-                    onToggleOnlyBlocked = viewModel::onToggleOnlyBlocked,
-                    onClearLogs = viewModel::clearLogs,
-                    onToggleRule = { entry ->
-                        viewModel.setCustomRule(entry.domain, block = !entry.isBlocked)
-                    }
-                )
-                2 -> SecurityCenterScreen(
-                    stats = stats,
-                    logs = activityLogs,
-                    otherVpnActive = otherVpnActive,
-                    onOpenActivity = { selectedDestination = 1 }
-                )
-                3 -> RulesScreen(
-                    stats = stats,
-                    customBlock = customBlock,
-                    customAllow = customAllow,
-                    blocklistUrls = blocklistUrls,
-                    smartModeEnabled = smartModeEnabled,
-                    isDownloading = isDownloading,
-                    downloadProgress = downloadProgress,
-                    onToggleSmartMode = viewModel::toggleSmartMode,
-                    onResetLearning = viewModel::resetLearning,
-                    onAddBlocklistUrl = viewModel::addBlocklistUrl,
-                    onRemoveBlocklistUrl = viewModel::removeBlocklistUrl,
-                    onDownloadBlocklist = viewModel::downloadBlocklist,
-                    onAddCustomRule = viewModel::setCustomRule,
-                    onRemoveCustomRule = viewModel::removeCustomRule
-                )
-                4 -> AppsSettingsScreen(
-                    stats = stats,
-                    apps = apps,
-                    excludedPackages = excludedPackages,
-                    blockedApps = blockedApps,
-                    onToggleBlockedApp = viewModel::toggleBlockedApp,
-                    appSearch = appSearch,
-                    onAppSearchChange = viewModel::onAppSearchChange,
-                    onToggleExcludedApp = viewModel::toggleExcludedApp,
-                    onOpenBatteryOpt = onOpenBatteryOpt,
-                    onOpenVpnSettings = onOpenVpnSettings
-                )
+                1 -> {
+                    val logs by viewModel.filteredLogs.collectAsState()
+                    val traffic by viewModel.traffic.collectAsState()
+                    val searchQuery by viewModel.searchQuery.collectAsState()
+                    val onlyBlocked by viewModel.onlyBlocked.collectAsState()
+                    LogsScreen(stats, logs, traffic, otherVpnActive, searchQuery, onlyBlocked,
+                        onSearchQueryChange = viewModel::onSearchQueryChange,
+                        onToggleOnlyBlocked = viewModel::onToggleOnlyBlocked,
+                        onClearLogs = viewModel::clearLogs,
+                        onToggleRule = { entry -> viewModel.setCustomRule(entry.domain, block = !entry.isBlocked) })
+                }
+                2 -> {
+                    val activityLogs by viewModel.activityLogs.collectAsState()
+                    SecurityCenterScreen(stats, activityLogs, otherVpnActive,
+                        onOpenActivity = { selectedDestination = 1 })
+                }
+                3 -> {
+                    val customBlock by viewModel.customBlockList.collectAsState()
+                    val customAllow by viewModel.customAllowList.collectAsState()
+                    val blocklistUrls by viewModel.blocklistUrls.collectAsState()
+                    val smartModeEnabled by viewModel.smartModeEnabled.collectAsState()
+                    val isDownloading by viewModel.isDownloading.collectAsState()
+                    val downloadProgress by viewModel.downloadProgress.collectAsState()
+                    RulesScreen(stats, customBlock, customAllow, blocklistUrls, smartModeEnabled, isDownloading, downloadProgress,
+                        onToggleSmartMode = viewModel::toggleSmartMode,
+                        onResetLearning = viewModel::resetLearning,
+                        onAddBlocklistUrl = viewModel::addBlocklistUrl,
+                        onRemoveBlocklistUrl = viewModel::removeBlocklistUrl,
+                        onDownloadBlocklist = viewModel::downloadBlocklist,
+                        onAddCustomRule = viewModel::setCustomRule,
+                        onRemoveCustomRule = viewModel::removeCustomRule)
+                }
+                4 -> {
+                    val apps by viewModel.filteredApps.collectAsState()
+                    val excludedPackages by viewModel.excludedPackages.collectAsState()
+                    val blockedApps by viewModel.blockedApps.collectAsState()
+                    val appSearch by viewModel.appSearch.collectAsState()
+                    AppsSettingsScreen(stats, apps, excludedPackages, blockedApps,
+                        onToggleBlockedApp = viewModel::toggleBlockedApp,
+                        appSearch = appSearch,
+                        onAppSearchChange = viewModel::onAppSearchChange,
+                        onToggleExcludedApp = viewModel::toggleExcludedApp,
+                        onOpenBatteryOpt = onOpenBatteryOpt,
+                        onOpenVpnSettings = onOpenVpnSettings)
+                }
                 5 -> ThreatIntelligenceScreen()
             }
         }
