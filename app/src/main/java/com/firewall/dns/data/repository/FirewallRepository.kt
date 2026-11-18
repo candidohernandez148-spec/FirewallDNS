@@ -179,7 +179,6 @@ object FirewallRepository {
             hostExceptionSet.clear()
             hostExceptionSet.addAll(snapshot.exceptions)
             threatDomainsByCategory = snapshot.threatDomainsByCategory
-            _blocklistsDownloaded.value = true
             updateRulesCount()
 
             initialized = true
@@ -267,6 +266,7 @@ object FirewallRepository {
             hostExceptionSet.clear()
             hostExceptionSet.addAll(snapshot.exceptions)
             threatDomainsByCategory = snapshot.threatDomainsByCategory
+            _blocklistsDownloaded.value = true
             updateRulesCount()
             _cacheInvalidateEvent.tryEmit(Unit)
             snapshot.summary
