@@ -16,5 +16,5 @@ object ThreatFeedIntegrityPolicy {
     fun sha256(payload: ByteArray): String =
         MessageDigest.getInstance("SHA-256")
             .digest(payload)
-            .joinToString("") { byte -> "%02x".format(byte) }
+            .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
 }
