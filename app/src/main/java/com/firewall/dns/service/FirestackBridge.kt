@@ -18,6 +18,10 @@ import com.firewall.dns.domain.engine.DomainBlocker
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * Puente Firestack del servicio [FirewallVpnService]:
@@ -33,6 +37,8 @@ class FirestackBridge(
     var upstreamId: String = Backend.Default
 
     private val appLabels = ConcurrentHashMap<Int, String>()
+    private val pendingAppLabels = ConcurrentHashMap.newKeySet<Int>()
+    private val labelScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val recentConnections = ConcurrentHashMap<String, Long>()
     private val lastEvaluationFailureLog = AtomicLong(0L)
 
@@ -222,18 +228,31 @@ class FirestackBridge(
         return value.substring(0, idx).removePrefix("[").removeSuffix("]") to port
     }
 
+    // No consultar PackageManager dentro de callbacks DNS/flow: puede implicar I/O y bloquear Firestack.
+    // La primera entrada muestra el UID; las siguientes usan la etiqueta ya resuelta en Dispatchers.IO.
     private fun appLabel(uid: Int): String {
         if (uid == 0) return "Sistema (root)"
         if (uid == Process.SYSTEM_UID) return "Sistema Android"
-        return appLabels.getOrPut(uid) {
-            try {
-                val pm = vpn.packageManager
-                val pkg = pm.getPackagesForUid(uid)?.firstOrNull()
-                if (pkg != null) pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() else "UID $uid"
-            } catch (_: Exception) {
-                "UID $uid"
+        appLabels[uid]?.let { return it }
+        if (pendingAppLabels.add(uid)) {
+            labelScope.launch {
+                try {
+                    val pm = vpn.packageManager
+                    val pkg = pm.getPackagesForUid(uid)?.firstOrNull()
+                    val label = if (pkg != null) {
+                        pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
+                    } else {
+                        "UID $uid"
+                    }
+                    appLabels.putIfAbsent(uid, label)
+                } catch (_: Exception) {
+                    appLabels.putIfAbsent(uid, "UID $uid")
+                } finally {
+                    pendingAppLabels.remove(uid)
+                }
             }
         }
+        return "UID $uid"
     }
 
     override fun flowing(m: Mark?) {}
