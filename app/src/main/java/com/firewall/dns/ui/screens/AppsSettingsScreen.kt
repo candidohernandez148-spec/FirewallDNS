@@ -235,10 +235,11 @@ private fun AppIcon(app: AppInfoItem) {
             }
         }
     }
+    val loadedIcon = icon
     val shape = RoundedCornerShape(12.dp)
     val modifier = Modifier.size(46.dp).clip(shape)
-    if (icon != null) {
-        Image(bitmap = icon, contentDescription = app.label, modifier = modifier)
+    if (loadedIcon != null) {
+        Image(bitmap = loadedIcon, contentDescription = app.label, modifier = modifier)
     } else {
         Box(modifier = modifier.background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
             Text(
