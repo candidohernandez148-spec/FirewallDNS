@@ -152,6 +152,46 @@ class ThreatKnowledgeGraphTest {
         assertTrue(snapshot.none { it.provider == "www.facebook.com" })
     }
 
+    @Test fun observationEvidenceExplainsAllowedBlockedAndMixedHistory() {
+        ThreatKnowledgeGraph.updateObservations(
+            listOf(
+                ThreatKnowledgeGraph.ObservationProfile("mostly-allowed.example", 9, 1),
+                ThreatKnowledgeGraph.ObservationProfile("mostly-blocked.example", 1, 9),
+                ThreatKnowledgeGraph.ObservationProfile("mixed.example", 5, 5),
+                ThreatKnowledgeGraph.ObservationProfile("insufficient.example", 7, 0)
+            )
+        )
+        try {
+            val allowed = ThreatKnowledgeGraph.observationEvidence("mostly-allowed.example")
+            assertEquals(9L, allowed?.allowedCount)
+            assertEquals(1L, allowed?.blockedCount)
+            assertTrue(allowed?.interpretation?.contains("posible falso positivo") == true)
+
+            val blocked = ThreatKnowledgeGraph.observationEvidence("mostly-blocked.example")
+            assertTrue(blocked?.interpretation?.contains("predominan los bloqueos") == true)
+
+            val mixed = ThreatKnowledgeGraph.observationEvidence("mixed.example")
+            assertTrue(mixed?.interpretation?.contains("historial mixto") == true)
+            assertNull(ThreatKnowledgeGraph.observationEvidence("insufficient.example"))
+        } finally {
+            ThreatKnowledgeGraph.updateObservations(emptyList())
+        }
+    }
+
+    @Test fun dnsDecisionExplanationIncludesExactDomainLearningCounts() {
+        ThreatKnowledgeGraph.updateObservations(
+            listOf(ThreatKnowledgeGraph.ObservationProfile("events.mixpanel.com", 8, 2))
+        )
+        try {
+            val result = SmartDecisionEngine.evaluate("events.mixpanel.com")
+            assertEquals(SmartDecisionEngine.Level.OBSERVE, result?.level)
+            assertTrue(result?.reason?.contains("8 permisos y 2 bloqueos") == true)
+            assertTrue(result?.reason?.contains("posible falso positivo") == true)
+        } finally {
+            ThreatKnowledgeGraph.updateObservations(emptyList())
+        }
+    }
+
     @Test fun learnedProfileCountReportsOnlyQualifiedAggregates() {
         ThreatKnowledgeGraph.updateObservations(
             listOf(
