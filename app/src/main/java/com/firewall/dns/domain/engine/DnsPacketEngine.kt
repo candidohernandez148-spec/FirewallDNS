@@ -55,6 +55,66 @@ object DnsPacketEngine {
         return DnsQueryInfo(labels.joinToString("."), readU16(dns, pos), questionEnd)
     }
 
+    /**
+     * Accepts an upstream UDP response only when it matches the exact outstanding
+     * question. The response question is parsed independently because responses
+     * have QR=1 and must never be passed to parseDnsQuery().
+     */
+    fun matchesDnsResponse(request: ByteArray, response: ByteArray): Boolean {
+        val requestInfo = parseDnsQuery(request) ?: return false
+        if (response.size < 12 || readU16(response, 0) != readU16(request, 0)) return false
+
+        val requestFlags = readU16(request, 2)
+        val responseFlags = readU16(response, 2)
+        if ((responseFlags and 0x8000) == 0 || // QR must identify a response.
+            (responseFlags and 0x7800) != (requestFlags and 0x7800) ||
+            (responseFlags and 0x0200) != 0 || // Truncated UDP answers are not complete.
+            readU16(response, 4) != 1
+        ) return false
+
+        val requestQuestionEnd = requestInfo.questionEndOffset
+        val responseQuestionEnd = readQuestionEnd(response) ?: return false
+        if (responseQuestionEnd - 12 != requestQuestionEnd - 12) return false
+
+        // Compare QNAME case-insensitively, but preserve exact QTYPE and QCLASS.
+        for (index in 12 until responseQuestionEnd - 4) {
+            val a = request[index].toInt() and 0xFF
+            val b = response[index].toInt() and 0xFF
+            val lowerA = if (a in 65..90) a + 32 else a
+            val lowerB = if (b in 65..90) b + 32 else b
+            if (lowerA != lowerB) return false
+        }
+        return readU16(request, requestQuestionEnd - 4) ==
+            readU16(response, responseQuestionEnd - 4) &&
+            readU16(request, requestQuestionEnd - 2) ==
+            readU16(response, responseQuestionEnd - 2)
+    }
+
+    private fun readQuestionEnd(packet: ByteArray): Int? {
+        if (packet.size < 17 || readU16(packet, 4) != 1) return null
+        var pos = 12
+        var nameLength = 1
+        var labels = 0
+        while (pos < packet.size) {
+            val length = packet[pos].toInt() and 0xFF
+            pos++
+            if (length == 0) break
+            if ((length and 0xC0) != 0 || length > 63 ||
+                pos + length > packet.size
+            ) return null
+            nameLength += length + 1
+            if (nameLength > 255) return null
+            for (index in pos until pos + length) {
+                val octet = packet[index].toInt() and 0xFF
+                if (octet !in 0x21..0x7E || octet == '.'.code) return null
+            }
+            labels++
+            pos += length
+        }
+        if (labels == 0 || pos + 4 > packet.size) return null
+        return pos + 4
+    }
+
     fun queryTypeToString(qType: Int): String = when (qType) {
         1 -> "A"
         28 -> "AAAA"
