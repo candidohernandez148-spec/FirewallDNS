@@ -66,6 +66,30 @@ object SmartDecisionEngine {
         // Se consulta un mapa en memoria; nunca se accede a SQLite desde el hilo DNS.
         val repeatedlyAllowed = ThreatKnowledgeGraph.isRepeatedlyAllowed(clean)
 
+        // Una familia aprendida solo bloquea si varios dominios independientes acumularon
+        // evidencia histórica fuerte de bloqueo. El permiso aprendido del dominio exacto
+        // conserva prioridad y degrada la decisión a observación.
+        ThreatKnowledgeGraph.blockedAdaptivePatternFor(clean)?.let { family ->
+            val hasLearnedAllow = learnedAllow || repeatedlyAllowed
+            val level = if (hasLearnedAllow) Level.OBSERVE else Level.BLOCK
+            val label = if (level == Level.BLOCK) "Bloqueado" else "Observado; se permite"
+            val criterion = if (hasLearnedAllow) {
+                "el aprendizaje explícito de permiso del dominio exacto prevalece sobre la familia"
+            } else {
+                "familia repetida en " + family.domains.size + " dominios; " +
+                    family.blockedCount + " de " + family.totalObservations + " observaciones fueron bloqueos"
+            }
+            return Decision(
+                level,
+                if (level == Level.BLOCK) 5 else 3,
+                "$label: coincidencia con una familia local de publicidad/rastreo " +
+                    "(${family.indicators.joinToString(", ")}) | " +
+                    "Evidencia: ${family.domains.size} dominios independientes; " +
+                    "${family.blockedCount} bloqueos y ${family.allowedCount} permisos | " +
+                    "Confianza: alta | Criterio: $criterion"
+            )
+        }
+
         // El grafo aporta contexto de proveedor: publicidad conocida puede bloquearse;
         // analítica y rastreo de confianza media se observan, sin bloqueo automático.
         ThreatKnowledgeGraph.inspect(clean)?.let { evidence ->
