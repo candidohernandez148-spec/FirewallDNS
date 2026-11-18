@@ -228,6 +228,7 @@ fun RulesScreen(
                                 Text(
                                     when (progress?.phase) {
                                         "Validando" -> "Validando lista"
+                                        "Usando copia local" -> "Verificando copia local (sin volver a descargar)"
                                         "Aplicando" -> "Aplicando reglas"
                                         "Completado" -> "Actualización completada"
                                         "Preparando" -> "Preparando descarga"
