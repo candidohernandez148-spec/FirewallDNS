@@ -60,7 +60,7 @@ fun SocDashboardScreen(
                         Surface(shape = CircleShape, color = if (operational) MaterialTheme.colorScheme.primary
                             else MaterialTheme.colorScheme.error, modifier = Modifier.size(42.dp)) {
                             Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.Shield, contentDescription = null,
+                                Icon(Icons.Default.Shield, contentDescription = "Estado de protección",
                                     tint = if (operational) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onError)
                             }
                         }
