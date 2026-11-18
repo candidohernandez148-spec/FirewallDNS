@@ -263,7 +263,14 @@ object FirewallRepository {
                         if (validBatch.isNotEmpty()) smartLearningStore.recordBatch(validBatch)
                     }
                 }.isSuccess
-                if (!persisted) {
+                if (persisted) {
+                    // Publica el aprendizaje recién observado sin esperar al ciclo de snapshot.
+                    runCatching {
+                        observationPersistenceMutex.withLock { refreshObservationKnowledge() }
+                    }.onFailure { error ->
+                        Log.e(TAG, "No se pudo actualizar el conocimiento en memoria; se reintentará", error)
+                    }
+                } else {
                     Log.e(TAG, "No se pudo incorporar el lote de observaciones; se reintentará")
                     synchronized(pendingObservationLock) {
                         batch.filter { it.generation == learningGeneration.get() }
@@ -282,7 +289,6 @@ object FirewallRepository {
                 runCatching {
                     observationPersistenceMutex.withLock {
                         smartLearningStore.flush()
-                        refreshObservationKnowledge()
                     }
                 }.onFailure { error ->
                     // Keep the in-memory snapshot dirty and retry on the next interval.
