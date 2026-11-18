@@ -7,6 +7,8 @@ import com.firewall.dns.domain.engine.RuleEvaluator
 import com.firewall.dns.domain.engine.ThreatFeedCatalog
 import com.firewall.dns.domain.engine.ThreatFeedCategory
 import com.firewall.dns.domain.engine.ThreatFeedIntegrityPolicy
+import com.firewall.dns.domain.engine.ThreatFeedSignatureConfig
+import com.firewall.dns.domain.engine.ThreatFeedSignaturePolicy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -31,6 +33,7 @@ class BlocklistDataSource(context: Context) {
         private const val ADBLOCK_FILE_NAME = "adblock_rules.txt"
         private const val CATEGORY_PREFIX = "! FirewallDNS-CATEGORY\t"
         private const val MAX_SOURCE_BYTES = 8 * 1024 * 1024
+        private const val MAX_SIGNATURE_BYTES = 16 * 1024
         private const val MAX_SOURCE_LINES = 200_000
         private const val MAX_LINE_CHARS = 4_096
         private const val CONNECT_TIMEOUT_MS = 10_000
@@ -71,7 +74,8 @@ class BlocklistDataSource(context: Context) {
 
     suspend fun downloadMultipleAndSave(
         defaultDomains: List<String>,
-        urls: List<String>
+        urls: List<String>,
+        signedFeeds: Map<String, ThreatFeedSignatureConfig> = emptyMap()
     ): Result<BlocklistSnapshot> = withContext(Dispatchers.IO) {
         val uniqueUrls = urls.map(String::trim).filter(String::isNotEmpty).distinct()
         if (uniqueUrls.isEmpty()) {
@@ -85,6 +89,8 @@ class BlocklistDataSource(context: Context) {
         val completedSources = HashSet<String>()
         val sourceDigests = ArrayList<String>()
         var totalParsedRules = 0
+        var verifiedSignedSources = 0
+        var unsignedSources = 0
 
         for (targetUrl in uniqueUrls) {
             if (!BlocklistSourcePolicy.isAllowed(targetUrl)) {
@@ -120,6 +126,22 @@ class BlocklistDataSource(context: Context) {
                         output.write(buffer, 0, count)
                     }
                     output.toByteArray()
+                }
+
+                val signatureConfig = signedFeeds[targetUrl]
+                if (signatureConfig == null) {
+                    unsignedSources++
+                } else {
+                    val detachedSignature = downloadDetachedSignature(signatureConfig.signatureUrl)
+                    if (!ThreatFeedSignaturePolicy.verifyRsaSha256(
+                            payload,
+                            detachedSignature,
+                            signatureConfig.publicKeyX509
+                        )
+                    ) {
+                        throw IllegalStateException("Firma digital no válida para la fuente: $targetUrl")
+                    }
+                    verifiedSignedSources++
                 }
 
                 val sourceBlocked = HashSet<String>()
@@ -193,7 +215,7 @@ class BlocklistDataSource(context: Context) {
         val categorizedCount = categoryDomains.filterKeys { it != ThreatFeedCategory.GENERAL }.values.sumOf { it.size }
         val fingerprintInput = sourceDigests.sorted().joinToString("\\n").toByteArray(StandardCharsets.UTF_8)
         val fingerprint = ThreatFeedIntegrityPolicy.sha256(fingerprintInput).take(16)
-        val summary = "Listas HTTPS actualizadas: ${uniqueUrls.size} fuentes validadas, $totalParsedRules reglas DNS válidas, ${blocked.size} reglas activas, $categorizedCount indicadores categorizados. Huella SHA-256: $fingerprint"
+        val summary = "Listas HTTPS actualizadas: ${uniqueUrls.size} fuentes validadas ($verifiedSignedSources con firma verificada, $unsignedSources sin firma), $totalParsedRules reglas DNS válidas, ${blocked.size} reglas activas, $categorizedCount indicadores categorizados. Huella SHA-256: $fingerprint"
         Result.success(
             BlocklistSnapshot(
                 blocked = blocked,
@@ -202,5 +224,50 @@ class BlocklistDataSource(context: Context) {
                 summary = summary
             )
         )
+    }
+
+    /**
+     * Downloads a detached signature without following redirects. The signature endpoint
+     * and public key are configured independently from the feed payload.
+     */
+    private fun downloadDetachedSignature(signatureUrl: String): ByteArray {
+        if (!BlocklistSourcePolicy.isAllowed(signatureUrl)) {
+            throw IllegalArgumentException("URL de firma rechazada: se requiere HTTPS en puerto 443")
+        }
+        val connection = (URL(signatureUrl).openConnection() as HttpURLConnection).apply {
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = READ_TIMEOUT_MS
+            instanceFollowRedirects = false
+            setRequestProperty("User-Agent", "FirewallDNS/1.0")
+            setRequestProperty("Accept", "application/octet-stream")
+        }
+        try {
+            if (connection.responseCode != HttpURLConnection.HTTP_OK) {
+                throw IllegalStateException("No se pudo descargar la firma; no se siguen redirecciones")
+            }
+            val declaredLength = connection.getHeaderFieldLong("Content-Length", -1L)
+            if (declaredLength > MAX_SIGNATURE_BYTES) {
+                throw IllegalStateException("La firma digital supera 16 KiB")
+            }
+            val output = ByteArrayOutputStream()
+            connection.inputStream.use { input ->
+                val buffer = ByteArray(1024)
+                var total = 0
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    total += count
+                    if (total > MAX_SIGNATURE_BYTES) {
+                        throw IllegalStateException("La firma digital supera 16 KiB")
+                    }
+                    output.write(buffer, 0, count)
+                }
+            }
+            val signature = output.toByteArray()
+            if (signature.isEmpty()) throw IllegalStateException("La firma digital está vacía")
+            return signature
+        } finally {
+            connection.disconnect()
+        }
     }
 }
