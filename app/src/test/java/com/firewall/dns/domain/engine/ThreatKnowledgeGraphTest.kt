@@ -334,6 +334,28 @@ class ThreatKnowledgeGraphTest {
         }
     }
 
+    @Test fun adaptivePatternNeedsThreeDomainsAndStrongBlockedHistoryForHighConfidence() {
+        ThreatKnowledgeGraph.updateObservations(
+            listOf(
+                ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.alpha.example", 0, 8),
+                ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.beta.example", 0, 8),
+                ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.gamma.example", 0, 8)
+            )
+        )
+        try {
+            val family = ThreatKnowledgeGraph.adaptivePatternSnapshot().single()
+            assertEquals(ThreatKnowledgeGraph.PatternConfidence.HIGH, family.confidence)
+            assertEquals(24L, family.blockedCount)
+            assertEquals(
+                family.indicators,
+                ThreatKnowledgeGraph.blockedAdaptivePatternFor("analytics-telemetry.delta.example")?.indicators
+            )
+            assertNull(ThreatKnowledgeGraph.blockedAdaptivePatternFor("analytics-other.delta.example"))
+        } finally {
+            ThreatKnowledgeGraph.updateObservations(emptyList())
+        }
+    }
+
     @Test fun adaptivePatternIsInformationalAndDoesNotChangeDnsDecision() {
         val domainA = "analytics-telemetry.alpha.example"
         val domainB = "analytics-telemetry.beta.example"
