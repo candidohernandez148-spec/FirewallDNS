@@ -437,7 +437,10 @@ fun FirewallApp(
                     onOpenBatteryOpt = onOpenBatteryOpt,
                     onOpenVpnSettings = onOpenVpnSettings
                 )
-                5 -> ThreatIntelligenceScreen()
+                5 -> ThreatIntelligenceScreen(
+                    blockedDomains = customBlock.toSet(),
+                    onBlockDomain = { domain -> viewModel.setCustomRule(domain, block = true) }
+                )
             }
         }
     }
