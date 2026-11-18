@@ -41,6 +41,8 @@ class BlocklistDataSource(context: Context) {
         private const val READ_TIMEOUT_MS = 25_000
     }
 
+    fun hasSavedBlocklists(): Boolean = File(filesDir, ADBLOCK_FILE_NAME).isFile
+
     fun loadFromDisk(defaultDomains: List<String>): BlocklistSnapshot {
         val blocked = HashSet<String>(defaultDomains)
         val exceptions = HashSet<String>()
