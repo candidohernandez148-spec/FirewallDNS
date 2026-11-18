@@ -253,6 +253,7 @@ fun FirewallApp(
     val customBlock by viewModel.customBlockList.collectAsState()
     val customAllow by viewModel.customAllowList.collectAsState()
     val blocklistUrls by viewModel.blocklistUrls.collectAsState()
+    val blocklistsDownloaded by viewModel.blocklistsDownloaded.collectAsState()
     val smartModeEnabled by viewModel.smartModeEnabled.collectAsState()
     val isDownloading by viewModel.isDownloading.collectAsState()
     val downloadProgress by viewModel.downloadProgress.collectAsState()
@@ -367,6 +368,7 @@ fun FirewallApp(
                     stats = stats,
                     logs = activityLogs,
                     otherVpnActive = otherVpnActive,
+                    blocklistsDownloaded = blocklistsDownloaded,
                     onOpenMonitor = { selectedDestination = 1 },
                     onOpenThreats = { selectedDestination = 2 },
                     onOpenProtection = { selectedDestination = 3 }
