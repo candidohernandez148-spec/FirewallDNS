@@ -21,6 +21,13 @@ data class ThreatFeedPreset(
  * they are not a verdict on domains from unrelated/custom feeds.
  */
 object ThreatFeedCatalog {
+    /**
+     * Only feeds with an independently provisioned public key and detached-signature URL
+     * belong here. Empty by default: current upstream presets do not publish signatures
+     * that this app can independently verify, so they remain explicitly marked unsigned.
+     */
+    val signedFeedConfigs: Map<String, ThreatFeedSignatureConfig> = emptyMap()
+
     val presets = listOf(
         ThreatFeedPreset(
             name = "Phishing Army",
