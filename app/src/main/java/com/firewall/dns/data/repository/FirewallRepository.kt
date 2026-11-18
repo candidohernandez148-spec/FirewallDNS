@@ -3,8 +3,6 @@ package com.firewall.dns.data.repository
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.core.graphics.drawable.toBitmap
 import com.firewall.dns.data.local.BlocklistDataSource
 import com.firewall.dns.data.local.PreferencesDataSource
 import com.firewall.dns.domain.engine.BlocklistSourcePolicy
@@ -48,7 +46,6 @@ object FirewallRepository {
     private const val TRAFFIC_POINTS = 40
     private const val TRAFFIC_INTERVAL_MS = 2_000L
     private const val MAX_LEARNED_DOMAINS = 5000
-    private const val ICON_SIZE_PX = 96
 
     private lateinit var appContext: Context
     private lateinit var prefsDataSource: PreferencesDataSource
