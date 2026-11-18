@@ -240,7 +240,7 @@ object FirewallRepository {
                 }
                 runCatching { smartLearningStore.recordBatch(batch) }
                 val now = System.currentTimeMillis()
-                // Refresca el perfil contextual como máximo cada 30 segundos, nunca por consulta DNS.
+                // Refresca el perfil contextual cada 5 segundos en IO, nunca por consulta DNS.
                 if (now - lastGraphRefreshMs >= 5_000L) {
                     refreshObservationKnowledge()
                     lastGraphRefreshMs = now
