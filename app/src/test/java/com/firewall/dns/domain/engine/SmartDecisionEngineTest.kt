@@ -68,6 +68,43 @@ class SmartDecisionEngineTest {
         assertTrue(result?.reason?.contains("el aprendizaje local impide el bloqueo automático") == true)
     }
 
+    @Test fun highConfidenceBlockedFamilyBlocksANewRelatedDomain() {
+        ThreatKnowledgeGraph.updateObservations(
+            listOf(
+                ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.alpha.example", 0, 8),
+                ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.beta.example", 0, 8),
+                ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.gamma.example", 0, 8)
+            )
+        )
+        try {
+            val result = SmartDecisionEngine.evaluate("analytics-telemetry.delta.example")
+            assertEquals(SmartDecisionEngine.Level.BLOCK, result?.level)
+            assertTrue(result?.reason?.contains("familia local de publicidad/rastreo") == true)
+            assertTrue(result?.reason?.contains("24 bloqueos y 0 permisos") == true)
+            assertTrue(result?.reason?.contains("Confianza: alta") == true)
+        } finally {
+            ThreatKnowledgeGraph.updateObservations(emptyList())
+        }
+    }
+
+    @Test fun exactDomainPermissionOverridesLearnedBlockedFamily() {
+        ThreatKnowledgeGraph.updateObservations(
+            listOf(
+                ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.alpha.example", 0, 8),
+                ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.beta.example", 0, 8),
+                ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.gamma.example", 0, 8),
+                ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.delta.example", 8, 0)
+            )
+        )
+        try {
+            val result = SmartDecisionEngine.evaluate("analytics-telemetry.delta.example")
+            assertEquals(SmartDecisionEngine.Level.OBSERVE, result?.level)
+            assertTrue(result?.reason?.contains("permiso prevalece sobre la familia") == true)
+        } finally {
+            ThreatKnowledgeGraph.updateObservations(emptyList())
+        }
+    }
+
     @Test fun ordinaryDomainsRemainAllowed() {
         assertNull(SmartDecisionEngine.evaluate("api.example.org"))
         assertNull(SmartDecisionEngine.evaluate("mail.google.com"))
