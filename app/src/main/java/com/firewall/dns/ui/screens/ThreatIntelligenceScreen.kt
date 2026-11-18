@@ -19,6 +19,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -27,27 +28,75 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.firewall.dns.domain.engine.ThreatKnowledgeGraph
+
+private data class ThreatIntelligenceSnapshot(
+    val catalog: List<ThreatKnowledgeGraph.Evidence>,
+    val learnedCount: Int,
+    val correlations: List<ThreatKnowledgeGraph.ProviderCorrelation>,
+    val adaptivePatterns: List<ThreatKnowledgeGraph.AdaptivePattern>,
+    val unattributedCount: Int,
+    val assessments: List<ThreatKnowledgeGraph.LearnedDomainAssessment>
+)
 
 @Composable
 fun ThreatIntelligenceScreen() {
     var refreshKey by remember { mutableIntStateOf(0) }
-    val catalog = remember(refreshKey) { ThreatKnowledgeGraph.catalogSnapshot() }
-    val learnedCount = remember(refreshKey) { ThreatKnowledgeGraph.learnedProfileCount() }
-    val correlations = remember(refreshKey) { ThreatKnowledgeGraph.correlationSnapshot() }
-    val adaptivePatterns = remember(refreshKey) { ThreatKnowledgeGraph.adaptivePatternSnapshot() }
-    val unattributedCount = remember(refreshKey) { ThreatKnowledgeGraph.unattributedLearnedProfileCount() }
+    var snapshot by remember { mutableStateOf<ThreatIntelligenceSnapshot?>(null) }
+    var isRefreshing by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var expandedProvider by remember { mutableStateOf<String?>(null) }
 
-    val filtered = catalog.filter { evidence ->
-        val text = listOfNotNull(evidence.platform, evidence.provider, evidence.category.name)
-            .joinToString(" ").lowercase()
-        text.contains(query.trim().lowercase())
+    LaunchedEffect(refreshKey) {
+        isRefreshing = true
+        val result = withContext(Dispatchers.Default) {
+            ThreatIntelligenceSnapshot(
+                catalog = ThreatKnowledgeGraph.catalogSnapshot(),
+                learnedCount = ThreatKnowledgeGraph.learnedProfileCount(),
+                correlations = ThreatKnowledgeGraph.correlationSnapshot(),
+                adaptivePatterns = ThreatKnowledgeGraph.adaptivePatternSnapshot(),
+                unattributedCount = ThreatKnowledgeGraph.unattributedLearnedProfileCount(),
+                assessments = ThreatKnowledgeGraph.learnedDomainAssessments()
+            )
+        }
+        snapshot = result
+        isRefreshing = false
+    }
+
+    val current = snapshot
+    if (current == null) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text("Mapa de inteligencia", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text(
+                "Preparando el conocimiento local…",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            androidx.compose.material3.CircularProgressIndicator()
+        }
+        return
+    }
+
+    val catalog = current.catalog
+    val learnedCount = current.learnedCount
+    val correlations = current.correlations
+    val adaptivePatterns = current.adaptivePatterns
+    val unattributedCount = current.unattributedCount
+    val assessments = current.assessments
+    val filtered = remember(catalog, query) {
+        catalog.filter { evidence ->
+            val text = listOfNotNull(evidence.platform, evidence.provider, evidence.category.name)
+                .joinToString(" ").lowercase()
+            text.contains(query.trim().lowercase())
+        }
     }
     val totalListed = correlations.sumOf { it.listedDomainCount }
     val totalCorrelatedObservations = correlations.sumOf { it.totalObservations }
-    val assessments = remember(refreshKey) { ThreatKnowledgeGraph.learnedDomainAssessments() }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -62,7 +111,7 @@ fun ThreatIntelligenceScreen() {
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Button(onClick = { refreshKey++ }) { Text("Actualizar mapa") }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {\n                    Button(onClick = { refreshKey++ }, enabled = !isRefreshing) { Text("Actualizar mapa") }\n                    if (isRefreshing) androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.padding(8.dp))\n                }
             }
         }
         item {
