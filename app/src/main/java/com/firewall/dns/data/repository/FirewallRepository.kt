@@ -94,12 +94,13 @@ object FirewallRepository {
     private val learnedTokens = ConcurrentHashMap<String, Int>()
     private val learnedDomains = ConcurrentHashMap.newKeySet<String>()
     private val learningSaveScheduled = AtomicBoolean(false)
+    private val activitySaveScheduled = AtomicBoolean(false)
     private val learningScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val logCounter = AtomicLong(0L)
     private val timeFormatLocal = object : ThreadLocal<SimpleDateFormat>() {
         override fun initialValue(): SimpleDateFormat =
-            SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+            SimpleDateFormat("dd/MM HH:mm:ss", Locale.getDefault())
     }
 
     private val _traffic = MutableStateFlow(List(TRAFFIC_POINTS) { TrafficPoint(0, 0) })
@@ -155,7 +156,16 @@ object FirewallRepository {
             _observationModeEnabled.value = prefsDataSource.getObservationModeEnabled()
             learnedTokens.clear()
             learnedTokens.putAll(prefsDataSource.getLearnedTokens())
-            _stats.update { it.copy(learnedTokens = learnedTokens.size) }
+            val activitySnapshot = prefsDataSource.getActivitySnapshot()
+            _logs.value = activitySnapshot.logs
+            logCounter.set(activitySnapshot.logs.maxOfOrNull { it.id } ?: 0L)
+            _stats.update {
+                it.copy(
+                    learnedTokens = learnedTokens.size,
+                    totalAllowed = activitySnapshot.totalAllowed,
+                    totalBlocked = activitySnapshot.totalBlocked
+                )
+            }
 
             val snapshot = blocklistDataSource.loadFromDisk(defaultDomains)
             hostBlockSet.clear()
@@ -344,6 +354,7 @@ object FirewallRepository {
     fun clearLogs() {
         _logs.value = emptyList()
         _stats.update { it.copy(totalAllowed = 0, totalBlocked = 0) }
+        prefsDataSource.clearActivitySnapshot()
     }
 
     // Monitor propio de la app: funciona igual con Firestack o con el respaldo DNS.
@@ -422,6 +433,22 @@ object FirewallRepository {
         _stats.update { stats ->
             if (allowed) stats.copy(totalAllowed = stats.totalAllowed + 1)
             else stats.copy(totalBlocked = stats.totalBlocked + 1)
+        }
+        scheduleActivitySave()
+    }
+
+    // Persistencia agrupada en segundo plano: evita escrituras en el hilo de consultas DNS.
+    private fun scheduleActivitySave() {
+        if (!activitySaveScheduled.compareAndSet(false, true)) return
+        learningScope.launch {
+            delay(2_000)
+            activitySaveScheduled.set(false)
+            val currentStats = _stats.value
+            prefsDataSource.saveActivitySnapshot(
+                logs = _logs.value,
+                totalAllowed = currentStats.totalAllowed,
+                totalBlocked = currentStats.totalBlocked
+            )
         }
     }
 }
