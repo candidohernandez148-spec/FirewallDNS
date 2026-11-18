@@ -212,4 +212,42 @@ class ThreatKnowledgeGraphTest {
         )
     }
 
+
+    @Test fun providerCorrelationAggregatesOnlyCatalogLinkedEndpoints() {
+        ThreatKnowledgeGraph.updateObservations(
+            listOf(
+                ThreatKnowledgeGraph.ObservationProfile("cdn.doubleclick.net", 9, 1),
+                ThreatKnowledgeGraph.ObservationProfile("img.doubleclick.net", 1, 9),
+                ThreatKnowledgeGraph.ObservationProfile("unrelated.example", 20, 0)
+            )
+        )
+        try {
+            val correlated = ThreatKnowledgeGraph.providerObservationEvidence("cdn.doubleclick.net")
+            assertEquals("doubleclick.net", correlated?.provider)
+            assertEquals(10L, correlated?.allowedCount)
+            assertEquals(10L, correlated?.blockedCount)
+            assertTrue(correlated?.interpretation?.contains("historial mixto") == true)
+            assertNull(ThreatKnowledgeGraph.providerObservationEvidence("unrelated.example"))
+        } finally {
+            ThreatKnowledgeGraph.updateObservations(emptyList())
+        }
+    }
+
+    @Test fun providerCorrelationIsInformationalAndDoesNotChangeDnsDecision() {
+        ThreatKnowledgeGraph.updateObservations(
+            listOf(
+                ThreatKnowledgeGraph.ObservationProfile("cdn.doubleclick.net", 9, 1),
+                ThreatKnowledgeGraph.ObservationProfile("img.doubleclick.net", 1, 9)
+            )
+        )
+        try {
+            val result = SmartDecisionEngine.evaluate("cdn.doubleclick.net")
+            assertEquals(SmartDecisionEngine.Level.BLOCK, result?.level)
+            assertTrue(result?.reason?.contains("correlación local del proveedor") == true)
+            assertTrue(result?.reason?.contains("sin heredar decisiones") == true)
+        } finally {
+            ThreatKnowledgeGraph.updateObservations(emptyList())
+        }
+    }
+
 }
