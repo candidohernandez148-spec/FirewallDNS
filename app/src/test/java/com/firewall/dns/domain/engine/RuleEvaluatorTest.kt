@@ -59,4 +59,30 @@ class RuleEvaluatorTest {
         assertEquals(true, blocked.first)
         assertEquals(false, allowed.first)
     }
+    @Test
+    fun builtInThreatDomainsAreIncludedInTheSameRuleEvaluationSnapshot() {
+        val result = RuleEvaluator.evaluate(
+            domain = "pixel.facebook.com",
+            customAllow = emptySet(),
+            customBlock = emptySet(),
+            hostExceptions = emptySet(),
+            hostBlock = BuiltInThreatDomains.domains.toSet()
+        )
+        assertEquals(true, result.first)
+        assertEquals("Adblock ||^", result.second)
+    }
+
+    @Test
+    fun builtInDomainExceptionsCanOverrideSeededThreatDomains() {
+        val result = RuleEvaluator.evaluate(
+            domain = "pixel.facebook.com",
+            customAllow = emptySet(),
+            customBlock = emptySet(),
+            hostExceptions = setOf("facebook.com"),
+            hostBlock = BuiltInThreatDomains.domains.toSet()
+        )
+        assertEquals(false, result.first)
+        assertEquals("Excepción @@||", result.second)
+    }
+
 }
