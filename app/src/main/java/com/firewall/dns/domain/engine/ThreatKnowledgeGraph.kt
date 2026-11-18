@@ -65,12 +65,31 @@ object ThreatKnowledgeGraph {
     @Volatile
     private var observations: Map<String, ObservationSignal> = emptyMap()
 
+    data class ProviderObservationEvidence(
+        val provider: String,
+        val allowedCount: Long,
+        val blockedCount: Long
+    ) {
+        val total: Long get() = allowedCount + blockedCount
+        val interpretation: String
+            get() = when {
+                total > 0L && allowedCount.toDouble() / total >= ALLOWED_RATIO ->
+                    "predominan los permisos en el proveedor"
+                total > 0L && blockedCount.toDouble() / total >= ALLOWED_RATIO ->
+                    "predominan los bloqueos en el proveedor"
+                else -> "historial mixto del proveedor"
+            }
+    }
+
+    @Volatile
+    private var providerObservations: Map<String, ProviderObservationEvidence> = emptyMap()
+
     /**
      * Publica un snapshot agregado desde SQLite. Se llama fuera del hilo DNS.
      * Solo conserva perfiles con evidencia suficiente; no almacena apps ni consultas crudas.
      */
     fun updateObservations(profiles: List<ObservationProfile>) {
-        observations = profiles.asSequence()
+        val snapshot = profiles.asSequence()
             .filter { it.allowedCount >= 0L && it.blockedCount >= 0L }
             .filter { it.allowedCount + it.blockedCount >= MIN_OBSERVATIONS }
             .associate { profile ->
@@ -84,6 +103,20 @@ object ThreatKnowledgeGraph {
             }
             .filterKeys { it.isNotBlank() }
             .toMap()
+        observations = snapshot
+
+        // Correlación precalculada fuera del hilo DNS: solo agrupa dominios que
+        // el catálogo ya vincula explícitamente al mismo proveedor.
+        providerObservations = snapshot.entries.mapNotNull { (domain, signal) ->
+            val provider = inspect(domain)?.provider ?: return@mapNotNull null
+            provider to signal
+        }.groupBy({ it.first }, { it.second }).mapValues { (provider, signals) ->
+            ProviderObservationEvidence(
+                provider = provider,
+                allowedCount = signals.sumOf { it.allowedCount },
+                blockedCount = signals.sumOf { it.blockedCount }
+            )
+        }
     }
 
     /** Señal contextual exacta; evita propagar la reputación de un dominio a otros hosts. */
@@ -98,6 +131,15 @@ object ThreatKnowledgeGraph {
 
     fun hasRepeatedObservations(domain: String): Boolean =
         observations.containsKey(domain.trim().lowercase().trimEnd('.'))
+
+    /**
+     * Historial agregado de endpoints que el catálogo relaciona con el mismo proveedor.
+     * Es contexto explicativo, no reputación heredable ni señal para bloquear.
+     */
+    fun providerObservationEvidence(domain: String): ProviderObservationEvidence? {
+        val provider = inspect(domain)?.provider ?: return null
+        return providerObservations[provider]
+    }
 
     private const val MIN_OBSERVATIONS = 8L
     private const val ALLOWED_RATIO = 0.90
