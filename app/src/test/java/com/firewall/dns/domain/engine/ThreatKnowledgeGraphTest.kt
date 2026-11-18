@@ -266,4 +266,69 @@ class ThreatKnowledgeGraphTest {
         }
     }
 
+
+    @Test fun adaptivePatternsRequireRepeatedIndicatorsAcrossUnknownDomains() {
+        ThreatKnowledgeGraph.updateObservations(
+            listOf(
+                ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.alpha.example", 8, 0),
+                ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.beta.example", 7, 1),
+                ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.gamma.example", 8, 0),
+                ThreatKnowledgeGraph.ObservationProfile("pixel.isolated.example", 8, 0),
+                ThreatKnowledgeGraph.ObservationProfile("analytics.doubleclick.net", 8, 0)
+            )
+        )
+        try {
+            val pattern = ThreatKnowledgeGraph.adaptivePatternSnapshot().single()
+            assertEquals(listOf("analytics", "telemetry"), pattern.indicators)
+            assertEquals(
+                listOf(
+                    "analytics-telemetry.alpha.example",
+                    "analytics-telemetry.beta.example",
+                    "analytics-telemetry.gamma.example"
+                ),
+                pattern.domains
+            )
+            assertEquals(23L, pattern.allowedCount)
+            assertEquals(1L, pattern.blockedCount)
+            assertEquals(ThreatKnowledgeGraph.PatternConfidence.MEDIUM, pattern.confidence)
+        } finally {
+            ThreatKnowledgeGraph.updateObservations(emptyList())
+        }
+    }
+
+    @Test fun adaptivePatternsDoNotTreatSingleDomainOrSubstringsAsRepeatedSignals() {
+        ThreatKnowledgeGraph.updateObservations(
+            listOf(
+                ThreatKnowledgeGraph.ObservationProfile("myanalytics.alpha.example", 8, 0),
+                ThreatKnowledgeGraph.ObservationProfile("telemetry.beta.example", 8, 0),
+                ThreatKnowledgeGraph.ObservationProfile("api.gamma.example", 8, 0)
+            )
+        )
+        try {
+            assertTrue(ThreatKnowledgeGraph.adaptivePatternSnapshot().isEmpty())
+        } finally {
+            ThreatKnowledgeGraph.updateObservations(emptyList())
+        }
+    }
+
+    @Test fun adaptivePatternIsInformationalAndDoesNotChangeDnsDecision() {
+        val domainA = "analytics-telemetry.alpha.example"
+        val domainB = "analytics-telemetry.beta.example"
+        val before = SmartDecisionEngine.evaluate(domainA)
+        ThreatKnowledgeGraph.updateObservations(
+            listOf(
+                ThreatKnowledgeGraph.ObservationProfile(domainA, 8, 0),
+                ThreatKnowledgeGraph.ObservationProfile(domainB, 8, 0)
+            )
+        )
+        try {
+            assertTrue(ThreatKnowledgeGraph.adaptivePatternSnapshot().isNotEmpty())
+            val after = SmartDecisionEngine.evaluate(domainA)
+            assertEquals(before?.level, after?.level)
+            assertEquals(SmartDecisionEngine.Level.OBSERVE, after?.level)
+        } finally {
+            ThreatKnowledgeGraph.updateObservations(emptyList())
+        }
+    }
+
 }
