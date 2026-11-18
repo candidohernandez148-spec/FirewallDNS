@@ -17,6 +17,7 @@ import androidx.core.app.ServiceCompat
 import com.firewall.dns.MainActivity
 import com.firewall.dns.R
 import com.firewall.dns.data.repository.FirewallRepository
+import com.firewall.dns.domain.engine.AppFirewallManager
 import com.firewall.dns.domain.engine.DnsPacketEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -255,8 +256,13 @@ class DnsFirewallService : VpnService() {
 
         val dnsPayload = req.copyOfRange(ipHeaderLen + 8, ipHeaderLen + udpLength)
         val query = DnsPacketEngine.parseDnsQuery(dnsPayload) ?: return
-        val appName = resolveAppName(srcIp, srcPort, dstIp, dstPort)
-        val (ruleWouldBlock, ruleReason) = FirewallRepository.evaluateDomain(query.domain)
+        val appUid = resolveAppUid(srcIp, srcPort, dstIp, dstPort)
+        val appName = resolveAppName(appUid)
+        val (ruleWouldBlock, ruleReason) = if (appUid >= 0 && AppFirewallManager.isUidBlocked(appUid)) {
+            true to "DNS bloqueado para la aplicación (respaldo DNS-only)"
+        } else {
+            FirewallRepository.evaluateDomain(query.domain)
+        }
         val observationMode = FirewallRepository.isObservationModeEnabled()
 
         val shouldBlock = ruleWouldBlock
@@ -312,9 +318,9 @@ class DnsFirewallService : VpnService() {
         }
     }
 
-    private fun resolveAppName(srcIp: ByteArray, srcPort: Int, dstIp: ByteArray, dstPort: Int): String {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return "Sistema / Red"
-        val uid = try {
+    private fun resolveAppUid(srcIp: ByteArray, srcPort: Int, dstIp: ByteArray, dstPort: Int): Int {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return Process.INVALID_UID
+        return try {
             connectivityManager.getConnectionOwnerUid(
                 OsConstants.IPPROTO_UDP,
                 InetSocketAddress(InetAddress.getByAddress(srcIp), srcPort),
@@ -323,6 +329,9 @@ class DnsFirewallService : VpnService() {
         } catch (_: Exception) {
             Process.INVALID_UID
         }
+    }
+
+    private fun resolveAppName(uid: Int): String {
         if (uid == Process.INVALID_UID || uid < 0) return "Sistema / DNS"
         if (uid == 0) return "Sistema (root)"
         if (uid == Process.SYSTEM_UID) return "Sistema Android"
