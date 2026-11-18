@@ -61,6 +61,9 @@ object SmartDecisionEngine {
 
         val tokens = labels.flatMap { it.split('-', '_') }.toSet()
         val learnedAllow = tokens.any { (learnedWeights[it] ?: 0) <= -2 }
+        // La memoria agregada solo influye con al menos 8 observaciones y 90% de permisos.
+        // Se consulta un mapa en memoria; nunca se accede a SQLite desde el hilo DNS.
+        val repeatedlyAllowed = ThreatKnowledgeGraph.isRepeatedlyAllowed(clean)
 
         // El grafo aporta contexto de proveedor: publicidad conocida puede bloquearse;
         // analítica y rastreo de confianza media se observan, sin bloqueo automático.
@@ -71,14 +74,15 @@ object SmartDecisionEngine {
                 ThreatKnowledgeGraph.Category.ANALYTICS -> "analítica"
             }
             val highConfidence = evidence.confidence == ThreatKnowledgeGraph.Confidence.HIGH
-            val level = if (highConfidence && !learnedAllow) Level.BLOCK else Level.OBSERVE
+            val level = if (highConfidence && !learnedAllow && !repeatedlyAllowed) Level.BLOCK else Level.OBSERVE
             val score = if (highConfidence) 5 else 2
             val label = if (level == Level.BLOCK) "Bloqueado" else "Observado; se permite"
+            val learningNote = if (repeatedlyAllowed) "; permiso repetido aprendido" else ""
             return Decision(
                 level,
                 score,
                 "$label: relación del mapa de conocimiento con ${evidence.provider} " +
-                    "(${evidence.relation}; $category)"
+                    "(${evidence.relation}; $category$learningNote)"
             )
         }
 
@@ -120,7 +124,8 @@ object SmartDecisionEngine {
         }
         if (score == 0) return null
 
-        val hasLearnedAllow = tokens.any { (learnedWeights[it] ?: 0) <= -2 }
+        val hasLearnedAllow = learnedAllow || repeatedlyAllowed
+        if (repeatedlyAllowed) reasons += "Permiso repetido aprendido para este dominio"
         val level = when {
             hasLearnedAllow -> Level.OBSERVE
             strong && score >= 5 -> Level.BLOCK
