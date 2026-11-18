@@ -44,7 +44,21 @@ private data class ThreatIntelligenceSnapshot(
 @Composable
 fun ThreatIntelligenceScreen() {
     var refreshKey by remember { mutableIntStateOf(0) }
-    var snapshot by remember { mutableStateOf<ThreatIntelligenceSnapshot?>(null) }
+    // El catálogo curado es pequeño: permite mostrar contenido útil en el primer frame.
+    // Los perfiles aprendidos y sus agrupaciones se calculan después, fuera del hilo UI.
+    var snapshot by remember {
+        mutableStateOf(
+            ThreatIntelligenceSnapshot(
+                catalog = ThreatKnowledgeGraph.catalogSnapshot(),
+                learnedCount = 0,
+                correlations = emptyList(),
+                adaptivePatterns = emptyList(),
+                unattributedCount = 0,
+                assessments = emptyList()
+            )
+        )
+    }
+    var hasLoadedDetails by remember { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var expandedProvider by remember { mutableStateOf<String?>(null) }
@@ -53,7 +67,7 @@ fun ThreatIntelligenceScreen() {
         isRefreshing = true
         val result = withContext(Dispatchers.Default) {
             ThreatIntelligenceSnapshot(
-                catalog = ThreatKnowledgeGraph.catalogSnapshot(),
+                catalog = snapshot.catalog,
                 learnedCount = ThreatKnowledgeGraph.learnedProfileCount(),
                 correlations = ThreatKnowledgeGraph.correlationSnapshot(),
                 adaptivePatterns = ThreatKnowledgeGraph.adaptivePatternSnapshot(),
@@ -62,22 +76,50 @@ fun ThreatIntelligenceScreen() {
             )
         }
         snapshot = result
+        hasLoadedDetails = true
         isRefreshing = false
     }
 
     val current = snapshot
-    if (current == null) {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(24.dp),
+    if (!hasLoadedDetails) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("Mapa de inteligencia", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            Text(
-                "Preparando el conocimiento local…",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            androidx.compose.material3.CircularProgressIndicator()
+            item {
+                Text("Mapa de inteligencia", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text(
+                    "Conocimiento local que relaciona proveedores conocidos con actividad observada y reglas activas.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.padding(4.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("Cargando aprendizaje local…", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "El catálogo ya está disponible. Estamos preparando las observaciones y correlaciones.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+            item {
+                Text("Proveedores conocidos (${current.catalog.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            }
+            items(current.catalog.take(8), key = { "initial-${it.provider}" }) { evidence ->
+                Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(evidence.platform ?: "Proveedor independiente", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
+                        Text(evidence.provider, fontWeight = FontWeight.SemiBold)
+                        Text(categoryLabel(evidence.category), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
         }
         return
     }
