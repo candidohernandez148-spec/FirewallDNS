@@ -337,8 +337,14 @@ class FirewallVpnService : VpnService() {
         stopRequested = true
         val wasFallback = fallingBack
         ioScope.launch {
-            closeResources()
-            if (!wasFallback) FirewallRepository.setRunning(false)
+            try {
+                closeResources()
+                if (!wasFallback) FirewallRepository.setRunning(false)
+            } finally {
+                // This service owns a long-lived event collector. Release it only after
+                // native tunnel teardown has completed, otherwise each restart leaks a collector.
+                ioScope.cancel()
+            }
         }
         super.onDestroy()
     }
