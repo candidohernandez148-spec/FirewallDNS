@@ -41,7 +41,10 @@ private data class ThreatIntelligenceSnapshot(
 )
 
 @Composable
-fun ThreatIntelligenceScreen() {
+fun ThreatIntelligenceScreen(
+    blockedDomains: Set<String>,
+    onBlockDomain: (String) -> Unit
+) {
     var refreshKey by remember { mutableIntStateOf(0) }
     // El catálogo curado es pequeño: permite mostrar contenido útil en el primer frame.
     // Los perfiles aprendidos y sus agrupaciones se calculan después, fuera del hilo UI.
@@ -56,70 +59,29 @@ fun ThreatIntelligenceScreen() {
             )
         )
     }
-    var hasLoadedDetails by remember { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var expandedProvider by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(refreshKey) {
-        isRefreshing = true
-        val result = withContext(Dispatchers.Default) {
-            ThreatIntelligenceSnapshot(
-                catalog = snapshot.catalog,
-                learnedCount = ThreatKnowledgeGraph.learnedProfileCount(),
-                correlations = ThreatKnowledgeGraph.correlationSnapshot(),
-                adaptivePatterns = ThreatKnowledgeGraph.adaptivePatternSnapshot(),
-                unattributedCount = ThreatKnowledgeGraph.unattributedLearnedProfileCount(),
-            )
+        while (true) {
+            isRefreshing = true
+            val result = withContext(Dispatchers.Default) {
+                ThreatIntelligenceSnapshot(
+                    catalog = ThreatKnowledgeGraph.catalogSnapshot(),
+                    learnedCount = ThreatKnowledgeGraph.learnedProfileCount(),
+                    correlations = ThreatKnowledgeGraph.correlationSnapshot(),
+                    adaptivePatterns = ThreatKnowledgeGraph.adaptivePatternSnapshot(),
+                    unattributedCount = ThreatKnowledgeGraph.unattributedLearnedProfileCount(),
+                )
+            }
+            snapshot = result
+            isRefreshing = false
+            kotlinx.coroutines.delay(5_000)
         }
-        snapshot = result
-        hasLoadedDetails = true
-        isRefreshing = false
     }
 
     val current = snapshot
-    if (!hasLoadedDetails) {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            item {
-                Text("Mapa de inteligencia", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Text(
-                    "Conocimiento local que relaciona proveedores conocidos con actividad observada y reglas activas.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            item {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.padding(4.dp))
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("Cargando aprendizaje local…", fontWeight = FontWeight.SemiBold)
-                        Text(
-                            "El catálogo ya está disponible. Estamos preparando las observaciones y correlaciones.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-            item {
-                Text("Proveedores conocidos (${current.catalog.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            }
-            items(current.catalog.take(8), key = { "initial-${it.provider}" }) { evidence ->
-                Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
-                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text(evidence.platform ?: "Proveedor independiente", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
-                        Text(evidence.provider, fontWeight = FontWeight.SemiBold)
-                        Text(categoryLabel(evidence.category), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-        }
-        return
-    }
 
     val catalog = current.catalog
     val learnedCount = current.learnedCount
@@ -150,8 +112,8 @@ fun ThreatIntelligenceScreen() {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Button(onClick = { refreshKey++ }, enabled = !isRefreshing) { Text("Actualizar mapa") }
-                    if (isRefreshing) androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.padding(8.dp))
+                    Button(onClick = { refreshKey++ }) { Text("Actualizar ahora") }
+                    Text(if (isRefreshing) "Sincronizando…" else "En vivo · actualización automática", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                 }
             }
         }
@@ -209,12 +171,10 @@ fun ThreatIntelligenceScreen() {
                         style = MaterialTheme.typography.bodySmall
                     )
                     if (correlation.observedDomains.isNotEmpty()) {
-                        Text(
-                            "Dominios: ${correlation.observedDomains.take(5).joinToString(", ")}" +
-                                if (correlation.observedDomains.size > 5) " y ${correlation.observedDomains.size - 5} más" else "",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Text("Dominios observados", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                        correlation.observedDomains.take(5).forEach { domain ->
+                            DomainRuleAction(domain, blockedDomains, onBlockDomain)
+                        }
                     }
                     Text(
                         "Relación basada en catálogo explícito; no cambia la decisión DNS.",
@@ -264,12 +224,10 @@ fun ThreatIntelligenceScreen() {
                     Text(pattern.indicators.joinToString(" + "), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                     Text("${pattern.domains.size} dominios · ${pattern.totalObservations} observaciones", style = MaterialTheme.typography.bodySmall)
                     Text("Permisos: ${pattern.allowedCount} · Bloqueos: ${pattern.blockedCount}", style = MaterialTheme.typography.bodySmall)
-                    Text(
-                        "Dominios: ${pattern.domains.take(5).joinToString(", ")}" +
-                            if (pattern.domains.size > 5) " y ${pattern.domains.size - 5} más" else "",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Text("Dominios del patrón", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                    pattern.domains.take(5).forEach { domain ->
+                        DomainRuleAction(domain, blockedDomains, onBlockDomain)
+                    }
                     Text(
                         "Sin proveedor atribuido. No modifica la decisión DNS ni activa bloqueos.",
                         style = MaterialTheme.typography.labelSmall,
@@ -328,6 +286,7 @@ fun ThreatIntelligenceScreen() {
                                     style = MaterialTheme.typography.bodySmall,
                                     fontWeight = FontWeight.SemiBold
                                 )
+                                DomainRuleAction(evidence.provider, blockedDomains, onBlockDomain)
                             }
                         }
                     }
@@ -338,6 +297,27 @@ fun ThreatIntelligenceScreen() {
             item { Text("No hay coincidencias en el catálogo conocido.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 16.dp)) }
         }
         item { Spacer(Modifier.padding(bottom = 8.dp)) }
+    }
+}
+
+@Composable
+private fun DomainRuleAction(
+    domain: String,
+    blockedDomains: Set<String>,
+    onBlockDomain: (String) -> Unit
+) {
+    val normalized = domain.trim().lowercase().trimEnd('.')
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(normalized, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+        Button(
+            onClick = { onBlockDomain(normalized) },
+            enabled = normalized !in blockedDomains
+        ) {
+            Text(if (normalized in blockedDomains) "Bloqueado" else "Bloquear")
+        }
     }
 }
 
