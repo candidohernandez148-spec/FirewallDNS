@@ -60,6 +60,28 @@ object SmartDecisionEngine {
         }
 
         val tokens = labels.flatMap { it.split('-', '_') }.toSet()
+        val learnedAllow = tokens.any { (learnedWeights[it] ?: 0) <= -2 }
+
+        // El grafo aporta contexto de proveedor: publicidad conocida puede bloquearse;
+        // analítica y rastreo de confianza media se observan, sin bloqueo automático.
+        ThreatKnowledgeGraph.inspect(clean)?.let { evidence ->
+            val category = when (evidence.category) {
+                ThreatKnowledgeGraph.Category.ADVERTISING -> "publicidad"
+                ThreatKnowledgeGraph.Category.TRACKING -> "rastreo"
+                ThreatKnowledgeGraph.Category.ANALYTICS -> "analítica"
+            }
+            val highConfidence = evidence.confidence == ThreatKnowledgeGraph.Confidence.HIGH
+            val level = if (highConfidence && !learnedAllow) Level.BLOCK else Level.OBSERVE
+            val score = if (highConfidence) 5 else 2
+            val label = if (level == Level.BLOCK) "Bloqueado" else "Observado; se permite"
+            return Decision(
+                level,
+                score,
+                "$label: relación del mapa de conocimiento con ${evidence.provider} " +
+                    "(${evidence.relation}; $category)"
+            )
+        }
+
         val parts = labels.dropLast(1)
         var score = 0
         var strong = false
