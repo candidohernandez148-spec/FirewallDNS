@@ -190,9 +190,9 @@ object ThreatKnowledgeGraph {
         observations.keys.count { inspect(it) == null }
 
 
-    enum class PatternConfidence { LOW, MEDIUM }
+    enum class PatternConfidence { LOW, MEDIUM, HIGH }
 
-    /** Patrón repetido entre dominios sin proveedor conocido; nunca ordena bloquear. */
+    /** Familia observada entre dominios desconocidos, respaldada por historial agregado. */
     data class AdaptivePattern(
         val indicators: List<String>,
         val domains: List<String>,
@@ -209,19 +209,22 @@ object ThreatKnowledgeGraph {
         "monitor", "stats", "stat", "impression", "click"
     )
 
+    /** Extrae señales exactas de etiquetas; no usa subcadenas ni similitud difusa. */
+    private fun indicatorsForDomain(domain: String): List<String> = domain
+        .split(Regex("[^a-z0-9]+"))
+        .filter { it in adaptiveIndicators }
+        .distinct()
+        .sorted()
+
     /**
-     * Agrupa dominios desconocidos que repiten exactamente los mismos indicadores.
-     * Exige dos dominios y ocho observaciones por dominio. No atribuye proveedor,
-     * no demuestra malicia y no interviene en evaluate().
+     * Agrupa familias repetidas entre dominios desconocidos. La confianza alta exige
+     * al menos tres dominios, 24 eventos y 75% de bloqueos (mínimo 18 bloqueos).
+     * Solo esa evidencia permite que una familia influya en decisiones DNS.
      */
     fun adaptivePatternSnapshot(): List<AdaptivePattern> {
         val groups = observations.entries.mapNotNull { (domain, signal) ->
             if (inspect(domain) != null) return@mapNotNull null
-            val indicators = domain
-                .split(Regex("[^a-z0-9]+"))
-                .filter { it in adaptiveIndicators }
-                .distinct()
-                .sorted()
+            val indicators = indicatorsForDomain(domain)
             if (indicators.isEmpty()) return@mapNotNull null
             indicators.joinToString("+") to (domain to signal)
         }.groupBy({ it.first }, { it.second })
@@ -231,22 +234,43 @@ object ThreatKnowledgeGraph {
             val domains = entries.map { it.first }.distinct().sorted()
             val allowed = entries.sumOf { it.second.allowedCount }
             val blocked = entries.sumOf { it.second.blockedCount }
+            val total = allowed + blocked
+            val confidence = when {
+                domains.size >= MIN_HIGH_CONFIDENCE_PATTERN_DOMAINS &&
+                    total >= MIN_HIGH_CONFIDENCE_PATTERN_OBSERVATIONS &&
+                    blocked >= MIN_HIGH_CONFIDENCE_BLOCKED_OBSERVATIONS &&
+                    blocked.toDouble() / total.coerceAtLeast(1L) >= MIN_PATTERN_BLOCKED_RATIO -> PatternConfidence.HIGH
+                domains.size >= 3 && total >= 24L -> PatternConfidence.MEDIUM
+                else -> PatternConfidence.LOW
+            }
             AdaptivePattern(
                 indicators = signature.split("+"),
                 domains = domains,
                 allowedCount = allowed,
                 blockedCount = blocked,
-                confidence = if (domains.size >= 3 && allowed + blocked >= 24L) {
-                    PatternConfidence.MEDIUM
-                } else {
-                    PatternConfidence.LOW
-                }
+                confidence = confidence
             )
         }.sortedWith(
-            compareByDescending<AdaptivePattern> { it.totalObservations }
+            compareByDescending<AdaptivePattern> { it.confidence.ordinal }
+                .thenByDescending { it.totalObservations }
                 .thenByDescending { it.domains.size }
                 .thenBy { it.indicators.joinToString("+") }
         ).take(MAX_ADAPTIVE_PATTERNS)
+    }
+
+    /**
+     * Devuelve una familia únicamente cuando el dominio comparte su firma exacta
+     * con una familia de confianza alta. No atribuye un proveedor ni usa red/I-O.
+     */
+    fun blockedAdaptivePatternFor(domain: String): AdaptivePattern? {
+        val clean = domain.trim().lowercase().trimEnd('.')
+        if (clean.isBlank() || inspect(clean) != null) return null
+        val indicators = indicatorsForDomain(clean)
+        if (indicators.isEmpty()) return null
+        val signature = indicators.joinToString("+")
+        return adaptivePatternSnapshot().firstOrNull {
+            it.confidence == PatternConfidence.HIGH && it.indicators.joinToString("+") == signature
+        }
     }
 
     private const val MIN_PATTERN_DOMAINS = 2
