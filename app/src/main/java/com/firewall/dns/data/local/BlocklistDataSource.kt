@@ -19,8 +19,6 @@ import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.charset.StandardCharsets
-import java.security.MessageDigest
-import java.util.Properties
 
 data class BlocklistSnapshot(
     val blocked: Set<String>,
@@ -114,54 +112,37 @@ class BlocklistDataSource(context: Context) {
 
             var connection: HttpURLConnection? = null
             try {
-                val cacheKey = cacheKey(targetUrl)
-                val cachedPayloadFile = File(sourceCacheDir, "$cacheKey.txt")
-                val cachedMetadataFile = File(sourceCacheDir, "$cacheKey.properties")
-                val cachedMetadata = Properties().apply {
-                    if (cachedMetadataFile.isFile) cachedMetadataFile.inputStream().use(::load)
-                }
                 connection = (URL(targetUrl).openConnection() as HttpURLConnection).apply {
                     connectTimeout = CONNECT_TIMEOUT_MS
                     readTimeout = READ_TIMEOUT_MS
                     instanceFollowRedirects = false
+                    setRequestProperty("Cache-Control", "no-cache, no-store")
+                    setRequestProperty("Pragma", "no-cache")
                     setRequestProperty("User-Agent", "FirewallDNS/1.0")
                     setRequestProperty("Accept", "text/plain, application/octet-stream;q=0.9")
-                    cachedMetadata.getProperty("etag")?.takeIf(String::isNotBlank)
-                        ?.let { setRequestProperty("If-None-Match", it) }
-                    cachedMetadata.getProperty("lastModified")?.takeIf(String::isNotBlank)
-                        ?.let { setRequestProperty("If-Modified-Since", it) }
                 }
                 val status = connection.responseCode
-                val usedCache = status == HttpURLConnection.HTTP_NOT_MODIFIED
-                if (status != HttpURLConnection.HTTP_OK && !usedCache) {
+                if (status != HttpURLConnection.HTTP_OK) {
                     throw IllegalStateException("HTTP $status; no se siguen redirecciones")
                 }
-                if (usedCache && !cachedPayloadFile.isFile) {
-                    throw IllegalStateException("El servidor indicó que la lista no cambió, pero no existe una copia local válida")
-                }
-                val declaredLength = if (usedCache) cachedPayloadFile.length()
-                    else connection.getHeaderFieldLong("Content-Length", -1L)
+                val declaredLength = connection.getHeaderFieldLong("Content-Length", -1L)
                 if (declaredLength > MAX_SOURCE_BYTES) throw IllegalStateException("La lista supera 8 MiB")
                 onProgress(BlocklistDownloadProgress(sourceIndex + 1, uniqueUrls.size,
-                    if (usedCache) "Usando copia local" else "Descargando", 0L, declaredLength))
+                    "Descargando", 0L, declaredLength))
 
-                val payload = if (usedCache) {
-                    cachedPayloadFile.readBytes()
-                } else {
-                    connection.inputStream.use { input ->
-                        val output = ByteArrayOutputStream()
-                        val buffer = ByteArray(8 * 1024)
-                        var total = 0
-                        while (true) {
-                            val count = input.read(buffer)
-                            if (count < 0) break
-                            total += count
-                            if (total > MAX_SOURCE_BYTES) throw IllegalStateException("La lista supera 8 MiB")
-                            output.write(buffer, 0, count)
-                            onProgress(BlocklistDownloadProgress(sourceIndex + 1, uniqueUrls.size, "Descargando", total.toLong(), declaredLength))
-                        }
-                        output.toByteArray()
+                val payload = connection.inputStream.use { input ->
+                    val output = ByteArrayOutputStream()
+                    val buffer = ByteArray(8 * 1024)
+                    var total = 0
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        if (total > MAX_SOURCE_BYTES) throw IllegalStateException("La lista supera 8 MiB")
+                        output.write(buffer, 0, count)
+                        onProgress(BlocklistDownloadProgress(sourceIndex + 1, uniqueUrls.size, "Descargando", total.toLong(), declaredLength))
                     }
+                    output.toByteArray()
                 }
                 onProgress(BlocklistDownloadProgress(sourceIndex + 1, uniqueUrls.size, "Validando", payload.size.toLong(), declaredLength))
 
@@ -208,20 +189,6 @@ class BlocklistDataSource(context: Context) {
                 if (category != ThreatFeedCategory.GENERAL) {
                     categoryDomains.getValue(category).addAll(sourceBlocked)
                 }
-                if (!usedCache) {
-                    sourceCacheDir.mkdirs()
-                    writeCacheAtomically(cachedPayloadFile, payload)
-                    val metadata = Properties().apply {
-                        connection.getHeaderField("ETag")?.let { setProperty("etag", it) }
-                        connection.getHeaderField("Last-Modified")?.let { setProperty("lastModified", it) }
-                    }
-                    val metadataTemp = File(sourceCacheDir, "$cacheKey.properties.tmp")
-                    metadataTemp.outputStream().use { metadata.store(it, "FirewallDNS source cache") }
-                    if (!metadataTemp.renameTo(cachedMetadataFile)) {
-                        metadataTemp.delete()
-                        throw IllegalStateException("No se pudo guardar el índice de caché de la fuente")
-                    }
-                }
                 completedSources.add(targetUrl)
             } catch (error: Exception) {
                 lastError = error
@@ -261,6 +228,9 @@ class BlocklistDataSource(context: Context) {
             writer.flush()
             atomicFile.finishWrite(outputStream)
             stream = null
+            // La lista consolidada sustituye la versión anterior de forma atómica.
+            // Elimina copias temporales/cachés heredadas para que no queden descargas antiguas.
+            sourceCacheDir.deleteRecursively()
             onProgress(BlocklistDownloadProgress(uniqueUrls.size, uniqueUrls.size, "Completado", 1L, 1L))
         } catch (error: Exception) {
             stream?.let(atomicFile::failWrite)
@@ -281,20 +251,6 @@ class BlocklistDataSource(context: Context) {
         )
     }
 
-
-    private fun cacheKey(url: String): String =
-        MessageDigest.getInstance("SHA-256")
-            .digest(url.toByteArray(StandardCharsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
-
-    private fun writeCacheAtomically(destination: File, bytes: ByteArray) {
-        val temporary = File(destination.parentFile, destination.name + ".tmp")
-        temporary.outputStream().use { it.write(bytes) }
-        if (!temporary.renameTo(destination)) {
-            temporary.delete()
-            throw IllegalStateException("No se pudo guardar la copia local de la lista")
-        }
-    }
 
     /**
      * Downloads a detached signature without following redirects. The signature endpoint
