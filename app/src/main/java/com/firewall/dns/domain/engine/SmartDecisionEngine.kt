@@ -1,6 +1,6 @@
 package com.firewall.dns.domain.engine
 
-/** Motor local de evidencias: las señales débiles se observan; las fuertes pueden bloquear. */
+/** Motor local de evidencias: señales aisladas se observan; evidencia compuesta reforzada puede bloquear. */
 object SmartDecisionEngine {
     enum class Level { ALLOW, OBSERVE, BLOCK }
     data class Decision(val level: Level, val score: Int, val reason: String)
@@ -120,16 +120,26 @@ object SmartDecisionEngine {
         } else if (isTikTok && parts.any { it in tiktokMeasure }) {
             score += 5; strong = true; reasons += "Medición TikTok"
         }
-        // Dos o más indicadores débiles distintos forman un patrón compuesto.
-        // Esto eleva la prioridad de observación, nunca activa un bloqueo por sí solo.
+        // Dos señales débiles distintas solo generan observación. Tres o más señales
+        // independientes en el mismo dominio forman evidencia compuesta reforzada y
+        // pueden bloquearse; el aprendizaje explícito de permiso sigue teniendo prioridad.
         val matchedMediumSignals = tokens.filter { it in mediumTokens }.sorted()
+        var reinforcedCompound = false
         if (!strong && matchedMediumSignals.isNotEmpty()) {
-            if (matchedMediumSignals.size >= 2) {
-                score += 3
-                reasons += "Patrón compuesto de señales débiles: ${matchedMediumSignals.joinToString(", ")}"
-            } else {
-                score += 2
-                reasons += "Indicador de medición o telemetría: ${matchedMediumSignals.first()}"
+            when {
+                matchedMediumSignals.size >= 3 -> {
+                    score += 5
+                    reinforcedCompound = true
+                    reasons += "Patrón publicitario/rastreo reforzado: ${matchedMediumSignals.joinToString(", ")}"
+                }
+                matchedMediumSignals.size >= 2 -> {
+                    score += 3
+                    reasons += "Patrón compuesto de señales débiles: ${matchedMediumSignals.joinToString(", ")}"
+                }
+                else -> {
+                    score += 2
+                    reasons += "Indicador de medición o telemetría: ${matchedMediumSignals.first()}"
+                }
             }
         }
         val first = labels.first()
@@ -152,19 +162,21 @@ object SmartDecisionEngine {
         }
         val level = when {
             hasLearnedAllow -> Level.OBSERVE
-            strong && score >= 5 -> Level.BLOCK
+            (strong || reinforcedCompound) && score >= 5 -> Level.BLOCK
             score >= 2 -> Level.OBSERVE
             else -> Level.ALLOW
         }
         val label = if (level == Level.BLOCK) "Bloqueado" else "Observado; se permite"
         val confidence = when {
             strong && score >= 5 && !hasLearnedAllow -> "alta"
+            reinforcedCompound && score >= 5 && !hasLearnedAllow -> "media-alta"
             score >= 2 -> "media"
             else -> "baja"
         }
         val criterion = when {
             hasLearnedAllow -> "el aprendizaje local impide el bloqueo automático"
             strong && score >= 5 -> "señal fuerte con puntuación suficiente"
+            reinforcedCompound && score >= 5 -> "tres o más indicadores débiles independientes en el mismo dominio"
             score >= 2 -> "señales débiles: se observa sin bloquear"
             else -> "puntuación insuficiente para bloquear"
         }
