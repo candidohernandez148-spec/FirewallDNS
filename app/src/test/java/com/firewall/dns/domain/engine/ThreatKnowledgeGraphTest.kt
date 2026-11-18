@@ -192,6 +192,28 @@ class ThreatKnowledgeGraphTest {
         }
     }
 
+    @Test fun unknownLearnedDomainsAreClassifiedByRepeatedEvidenceWithoutBecomingThreats() {
+        ThreatKnowledgeGraph.updateObservations(
+            listOf(
+                ThreatKnowledgeGraph.ObservationProfile("review-candidate.example", 2, 6),
+                ThreatKnowledgeGraph.ObservationProfile("mostly-allowed.example", 9, 1),
+                ThreatKnowledgeGraph.ObservationProfile("mixed-history.example", 5, 5),
+                ThreatKnowledgeGraph.ObservationProfile("known.doubleclick.net", 1, 9),
+                ThreatKnowledgeGraph.ObservationProfile("insufficient.example", 1, 2)
+            )
+        )
+        try {
+            val assessments = ThreatKnowledgeGraph.learnedDomainAssessments().associateBy { it.domain }
+            assertEquals(3, assessments.size)
+            assertEquals(ThreatKnowledgeGraph.LearnedAssessmentStatus.REVIEW_CANDIDATE, assessments["review-candidate.example"]?.status)
+            assertEquals(ThreatKnowledgeGraph.LearnedAssessmentStatus.POSSIBLE_FALSE_POSITIVE, assessments["mostly-allowed.example"]?.status)
+            assertEquals(ThreatKnowledgeGraph.LearnedAssessmentStatus.MIXED_HISTORY, assessments["mixed-history.example"]?.status)
+            assertTrue(assessments["review-candidate.example"]?.explanation?.contains("no es una amenaza confirmada") == true)
+            assertNull(SmartDecisionEngine.evaluate("review-candidate.example"))
+        } finally {
+            ThreatKnowledgeGraph.updateObservations(emptyList())
+        }
+    }
     @Test fun learnedProfileCountReportsOnlyQualifiedAggregates() {
         ThreatKnowledgeGraph.updateObservations(
             listOf(
