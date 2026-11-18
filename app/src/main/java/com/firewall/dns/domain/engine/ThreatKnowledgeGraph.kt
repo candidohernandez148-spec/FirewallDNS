@@ -38,7 +38,7 @@ object ThreatKnowledgeGraph {
         Provider("unityads.unity3d.com", Category.ADVERTISING, Confidence.HIGH),
         Provider("appsflyer.com", Category.TRACKING, Confidence.MEDIUM),
         Provider("adjust.com", Category.TRACKING, Confidence.MEDIUM),
-        Provider(" Branch.io", Category.TRACKING, Confidence.MEDIUM),
+        Provider("branch.io", Category.TRACKING, Confidence.MEDIUM),
         Provider("mixpanel.com", Category.ANALYTICS, Confidence.MEDIUM),
         Provider("amplitude.com", Category.ANALYTICS, Confidence.MEDIUM),
         Provider("scorecardresearch.com", Category.TRACKING, Confidence.HIGH),
