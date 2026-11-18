@@ -71,22 +71,22 @@ fun SecurityCenterScreen(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 9.dp),
+        verticalArrangement = Arrangement.spacedBy(9.dp)
     ) {
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(22.dp),
+                shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = if (stats.isRunning && !otherVpnActive)
                         MaterialTheme.colorScheme.primaryContainer
                     else MaterialTheme.colorScheme.errorContainer
                 )
             ) {
-                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("CENTRO DE SEGURIDAD", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                    Text(riskTitle, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Text(riskTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text(riskDescription, style = MaterialTheme.typography.bodyMedium)
                     Text(
                         if (stats.isRunning && !otherVpnActive) "Estado operativo" else "Requiere atención",
@@ -232,8 +232,8 @@ private fun SummaryCard(label: String, value: String, modifier: Modifier = Modif
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
-        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
