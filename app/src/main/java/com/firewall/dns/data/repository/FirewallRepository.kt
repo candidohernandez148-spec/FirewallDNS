@@ -568,7 +568,10 @@ object FirewallRepository {
     }
 
     private fun updateRulesCount() {
-        _stats.update { it.copy(loadedRulesCount = hostBlockSet.size + customBlockSet.size) }
+        // Cuenta cada dominio una sola vez, incluso si aparece en una lista descargada
+        // y también en las reglas personalizadas.
+        val uniqueRuleCount = hostBlockSet.union(customBlockSet).size
+        _stats.update { it.copy(loadedRulesCount = uniqueRuleCount) }
     }
 
     private fun recordDnsDecision(domain: String, allowed: Boolean, appName: String, reason: String, queryType: String) {
