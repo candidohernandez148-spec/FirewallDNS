@@ -144,6 +144,25 @@ class ThreatKnowledgeGraphTest {
         assertNull(ThreatKnowledgeGraph.inspect("ads.unknown-social.example"))
     }
 
+    @Test fun dashboardSnapshotExposesCuratedProvidersWithoutChangingDnsDecisions() {
+        val snapshot = ThreatKnowledgeGraph.catalogSnapshot()
+        assertTrue(snapshot.isNotEmpty())
+        assertTrue(snapshot.any { it.provider == "doubleclick.net" })
+        assertTrue(snapshot.any { it.provider == "pixel.instagram.com" && it.platform == "Meta" })
+        assertTrue(snapshot.none { it.provider == "www.facebook.com" })
+    }
+
+    @Test fun learnedProfileCountReportsOnlyQualifiedAggregates() {
+        ThreatKnowledgeGraph.updateObservations(
+            listOf(
+                ThreatKnowledgeGraph.ObservationProfile("qualified.example", 8, 0),
+                ThreatKnowledgeGraph.ObservationProfile("too-few.example", 7, 0)
+            )
+        )
+        try { assertEquals(1, ThreatKnowledgeGraph.learnedProfileCount()) }
+        finally { ThreatKnowledgeGraph.updateObservations(emptyList()) }
+    }
+
     @Test fun nonSocialProviderHasNoInventedPlatformAttribution() {
         val evidence = ThreatKnowledgeGraph.inspect("cdn.doubleclick.net")
         assertNull(evidence?.platform)
