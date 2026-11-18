@@ -13,6 +13,7 @@ import com.firewall.dns.domain.engine.AppFirewallManager
 import com.firewall.dns.domain.engine.DomainBlocker
 import com.firewall.dns.domain.engine.RuleEvaluator
 import com.firewall.dns.domain.engine.SmartDomainAnalyzer
+import com.firewall.dns.domain.engine.SmartDecisionEngine
 import com.firewall.dns.domain.engine.ThreatFeedCatalog
 import com.firewall.dns.domain.engine.ThreatFeedCategory
 import com.firewall.dns.domain.model.AppInfoItem
