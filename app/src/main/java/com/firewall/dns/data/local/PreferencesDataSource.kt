@@ -1,6 +1,15 @@
 package com.firewall.dns.data.local
 
 import android.content.Context
+import com.firewall.dns.domain.model.DnsLogEntry
+import org.json.JSONArray
+import org.json.JSONObject
+
+data class ActivitySnapshot(
+    val logs: List<DnsLogEntry>,
+    val totalAllowed: Long,
+    val totalBlocked: Long
+)
 
 class PreferencesDataSource(context: Context) {
 
@@ -19,6 +28,9 @@ class PreferencesDataSource(context: Context) {
         private const val KEY_LEARNED_TOKENS = "learned_tokens"
         private const val KEY_ADBLOCK_MIGRATED = "adblock_syntax_migrated_v1"
         private const val KEY_OBSERVATION_MODE = "observation_mode_enabled"
+        private const val KEY_ACTIVITY_LOGS = "activity_logs_v1"
+        private const val KEY_TOTAL_ALLOWED = "activity_total_allowed"
+        private const val KEY_TOTAL_BLOCKED = "activity_total_blocked"
 
         const val DEFAULT_ADBLOCK_URL =
             "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/light.txt"
@@ -112,4 +124,65 @@ class PreferencesDataSource(context: Context) {
             .joinToString(sep) { "${it.key}=${it.value}" }
         prefs.edit().putString(KEY_LEARNED_TOKENS, serialized).apply()
     }
+    fun getActivitySnapshot(): ActivitySnapshot {
+        val raw = prefs.getString(KEY_ACTIVITY_LOGS, null)
+        val logs = if (raw.isNullOrBlank()) {
+            emptyList()
+        } else {
+            runCatching {
+                val array = JSONArray(raw)
+                buildList {
+                    for (index in 0 until array.length()) {
+                        val item = array.optJSONObject(index) ?: continue
+                        add(
+                            DnsLogEntry(
+                                id = item.optLong("id"),
+                                timestamp = item.optString("timestamp"),
+                                domain = item.optString("domain"),
+                                queryType = item.optString("queryType"),
+                                isBlocked = item.optBoolean("isBlocked"),
+                                reason = item.optString("reason"),
+                                appName = item.optString("appName")
+                            )
+                        )
+                    }
+                }
+            }.getOrDefault(emptyList())
+        }
+        return ActivitySnapshot(
+            logs = logs.take(400),
+            totalAllowed = prefs.getLong(KEY_TOTAL_ALLOWED, 0L).coerceAtLeast(0L),
+            totalBlocked = prefs.getLong(KEY_TOTAL_BLOCKED, 0L).coerceAtLeast(0L)
+        )
+    }
+
+    fun saveActivitySnapshot(logs: List<DnsLogEntry>, totalAllowed: Long, totalBlocked: Long) {
+        val array = JSONArray()
+        logs.take(400).forEach { entry ->
+            array.put(
+                JSONObject()
+                    .put("id", entry.id)
+                    .put("timestamp", entry.timestamp)
+                    .put("domain", entry.domain)
+                    .put("queryType", entry.queryType)
+                    .put("isBlocked", entry.isBlocked)
+                    .put("reason", entry.reason)
+                    .put("appName", entry.appName)
+            )
+        }
+        prefs.edit()
+            .putString(KEY_ACTIVITY_LOGS, array.toString())
+            .putLong(KEY_TOTAL_ALLOWED, totalAllowed.coerceAtLeast(0L))
+            .putLong(KEY_TOTAL_BLOCKED, totalBlocked.coerceAtLeast(0L))
+            .apply()
+    }
+
+    fun clearActivitySnapshot() {
+        prefs.edit()
+            .remove(KEY_ACTIVITY_LOGS)
+            .putLong(KEY_TOTAL_ALLOWED, 0L)
+            .putLong(KEY_TOTAL_BLOCKED, 0L)
+            .apply()
+    }
+
 }
