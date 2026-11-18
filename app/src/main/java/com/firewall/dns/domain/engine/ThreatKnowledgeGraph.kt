@@ -62,6 +62,24 @@ object ThreatKnowledgeGraph {
         val blockedCount: Long
     )
 
+    /** Evidencia agregada de varios hosts que pertenecen al mismo proveedor conocido. */
+    data class ProviderObservationEvidence(
+        val provider: String,
+        val allowedCount: Long,
+        val blockedCount: Long,
+        val observedDomainCount: Int
+    ) {
+        val total: Long get() = allowedCount + blockedCount
+        val interpretation: String
+            get() = when {
+                allowedCount.toDouble() / total.coerceAtLeast(1L) >= ALLOWED_RATIO ->
+                    "predominan los permisos en los hosts relacionados"
+                blockedCount.toDouble() / total.coerceAtLeast(1L) >= ALLOWED_RATIO ->
+                    "predominan los bloqueos en los hosts relacionados"
+                else -> "historial mixto entre hosts relacionados"
+            }
+    }
+
     @Volatile
     private var observations: Map<String, ObservationSignal> = emptyMap()
 
@@ -98,6 +116,28 @@ object ThreatKnowledgeGraph {
 
     fun hasRepeatedObservations(domain: String): Boolean =
         observations.containsKey(domain.trim().lowercase().trimEnd('.'))
+
+    /**
+     * Correlaciona únicamente perfiles cuyo dominio coincide con un proveedor curado
+     * o es su subdominio. No cambia decisiones ni propaga reputación a dominios externos.
+     */
+    fun relatedProviderObservationEvidence(domain: String): ProviderObservationEvidence? {
+        val providerDomain = inspect(domain)?.provider ?: return null
+        val related = observations.filterKeys {
+            it == providerDomain || it.endsWith(".$providerDomain")
+        }
+        if (related.isEmpty()) return null
+        val allowed = related.values.sumOf { it.allowedCount }
+        val blocked = related.values.sumOf { it.blockedCount }
+        val total = allowed + blocked
+        if (total < MIN_OBSERVATIONS) return null
+        return ProviderObservationEvidence(
+            provider = providerDomain,
+            allowedCount = allowed,
+            blockedCount = blocked,
+            observedDomainCount = related.size
+        )
+    }
 
     private const val MIN_OBSERVATIONS = 8L
     private const val ALLOWED_RATIO = 0.90
