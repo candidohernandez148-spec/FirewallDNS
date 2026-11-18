@@ -47,6 +47,7 @@ fun ThreatIntelligenceScreen() {
     }
     val totalListed = correlations.sumOf { it.listedDomainCount }
     val totalCorrelatedObservations = correlations.sumOf { it.totalObservations }
+    val assessments = remember(refreshKey) { ThreatKnowledgeGraph.learnedDomainAssessments() }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -92,7 +93,6 @@ fun ThreatIntelligenceScreen() {
             Text("Evaluación de dominios aprendidos", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text("Los perfiles desconocidos se ordenan por su historial. Un candidato a revisión no se considera malware confirmado ni se bloquea automáticamente.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        val assessments = remember(refreshKey) { ThreatKnowledgeGraph.learnedDomainAssessments() }
         if (assessments.isEmpty()) {
             item { Text("Aún no hay perfiles desconocidos con ocho o más observaciones.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
