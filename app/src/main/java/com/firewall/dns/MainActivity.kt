@@ -24,6 +24,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,6 +48,7 @@ import com.firewall.dns.ui.screens.AppsSettingsScreen
 import com.firewall.dns.ui.screens.LogsScreen
 import com.firewall.dns.ui.screens.RulesScreen
 import com.firewall.dns.ui.screens.SecurityCenterScreen
+import com.firewall.dns.ui.screens.SocDashboardScreen
 import com.firewall.dns.ui.theme.FirewallTheme
 import com.firewall.dns.ui.viewmodel.FirewallViewModel
 
@@ -253,7 +260,7 @@ fun FirewallApp(
     val blockedApps by viewModel.blockedApps.collectAsState()
     val appSearch by viewModel.appSearch.collectAsState()
 
-    var selectedTab by remember { mutableIntStateOf(0) }
+    var selectedDestination by remember { mutableIntStateOf(0) }
     var otherVpnActive by remember { mutableStateOf(false) }
 
     LaunchedEffect(stats.isRunning) {
@@ -263,14 +270,11 @@ fun FirewallApp(
         }
         var hits = 0
         while (true) {
-            // Dos lecturas seguidas evitan falsos positivos tras apagar nuestra VPN.
             hits = if (isOtherVpnActive(context)) hits + 1 else 0
             otherVpnActive = hits >= 2
             kotlinx.coroutines.delay(2_000)
         }
     }
-
-    val tabs = listOf("Seguridad", "Actividad", "Listas", "Apps")
 
     LaunchedEffect(Unit) {
         viewModel.toastMessage.collect { msg ->
@@ -278,71 +282,93 @@ fun FirewallApp(
         }
     }
 
+    val destinations = listOf(
+        "Inicio" to Icons.Default.Home,
+        "Monitor" to Icons.Default.Search,
+        "Amenazas" to Icons.Default.Warning,
+        "Protección" to Icons.Default.Lock,
+        "Sistema" to Icons.Default.Settings
+    )
+
     Scaffold(
         topBar = {
-            Column {
-                TopAppBar(
-                    title = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            FirewallShieldIcon()
-                            Column {
-                                Text("Firewall DNS", fontWeight = FontWeight.Bold)
-                                Text(
-                                    text = if (stats.isRunning) "Protegido · ${stats.engine}" else "Protección desactivada",
-                                    fontSize = 12.sp,
-                                    color = if (stats.isRunning) MaterialTheme.colorScheme.secondary
-                                    else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        titleContentColor = MaterialTheme.colorScheme.onSurface,
-                        actionIconContentColor = MaterialTheme.colorScheme.onSurface
-                    ),
-                    actions = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+            TopAppBar(
+                title = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        FirewallShieldIcon()
+                        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                             Text(
-                                text = if (stats.isRunning) "ON" else "OFF",
-                                fontSize = 12.sp,
+                                when (selectedDestination) {
+                                    0 -> "FirewallDNS"
+                                    1 -> "Monitor DNS"
+                                    2 -> "Centro de amenazas"
+                                    3 -> "Protección"
+                                    else -> "Sistema y aplicaciones"
+                                },
                                 fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(end = 6.dp)
+                                style = MaterialTheme.typography.titleMedium
                             )
-                            Switch(
-                                checked = stats.isRunning,
-                                onCheckedChange = onToggleVpn,
-                                modifier = Modifier.padding(end = 12.dp)
+                            Text(
+                                if (stats.isRunning) "SISTEMA ACTIVO · ${stats.engine}"
+                                else "SISTEMA EN ESPERA",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (stats.isRunning) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
-                )
-                TabRow(
-                    selectedTabIndex = selectedTab,
+                },
+                actions = {
+                    Text(
+                        if (stats.isRunning) "ON" else "OFF",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Switch(
+                        checked = stats.isRunning,
+                        onCheckedChange = onToggleVpn,
+                        modifier = Modifier.padding(start = 4.dp, end = 8.dp)
+                    )
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
-                    contentColor = MaterialTheme.colorScheme.primary
-                ) {
-                    tabs.forEachIndexed { index, title ->
-                        Tab(
-                            selected = selectedTab == index,
-                            onClick = { selectedTab = index },
-                            text = { Text(title) }
-                        )
-                    }
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
+                )
+            )
+        },
+        bottomBar = {
+            NavigationBar(
+                containerColor = MaterialTheme.colorScheme.surface,
+                tonalElevation = 3.dp
+            ) {
+                destinations.forEachIndexed { index, destination ->
+                    NavigationBarItem(
+                        selected = selectedDestination == index,
+                        onClick = { selectedDestination = index },
+                        icon = { Icon(destination.second, contentDescription = destination.first) },
+                        label = { Text(destination.first, maxLines = 1) },
+                        alwaysShowLabel = true
+                    )
                 }
             }
         }
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            when (selectedTab) {
-                0 -> SecurityCenterScreen(
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            when (selectedDestination) {
+                0 -> SocDashboardScreen(
                     stats = stats,
                     logs = activityLogs,
                     otherVpnActive = otherVpnActive,
-                    onOpenActivity = { selectedTab = 1 }
+                    onOpenMonitor = { selectedDestination = 1 },
+                    onOpenThreats = { selectedDestination = 2 },
+                    onOpenProtection = { selectedDestination = 3 }
                 )
                 1 -> LogsScreen(
                     stats = stats,
@@ -358,7 +384,13 @@ fun FirewallApp(
                         viewModel.setCustomRule(entry.domain, block = !entry.isBlocked)
                     }
                 )
-                2 -> RulesScreen(
+                2 -> SecurityCenterScreen(
+                    stats = stats,
+                    logs = activityLogs,
+                    otherVpnActive = otherVpnActive,
+                    onOpenActivity = { selectedDestination = 1 }
+                )
+                3 -> RulesScreen(
                     stats = stats,
                     customBlock = customBlock,
                     customAllow = customAllow,
@@ -373,7 +405,7 @@ fun FirewallApp(
                     onAddCustomRule = viewModel::setCustomRule,
                     onRemoveCustomRule = viewModel::removeCustomRule
                 )
-                3 -> AppsSettingsScreen(
+                else -> AppsSettingsScreen(
                     stats = stats,
                     apps = apps,
                     excludedPackages = excludedPackages,
