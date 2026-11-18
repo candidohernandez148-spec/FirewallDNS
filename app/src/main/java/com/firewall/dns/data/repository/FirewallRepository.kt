@@ -57,7 +57,6 @@ object FirewallRepository {
     private const val TRAFFIC_POINTS = 40
     private const val TRAFFIC_INTERVAL_MS = 2_000L
     private const val MAX_LEARNED_DOMAINS = 5000
-    private const val MAX_PENDING_OBSERVATION_DOMAINS = 5000
     private const val OBSERVATION_BATCH_SIZE = 2048
     private const val ACTIVITY_SAVE_INTERVAL_MS = 5_000L
 
@@ -312,13 +311,9 @@ object FirewallRepository {
             allowedCountDelta = saturatedAdd(previous.allowedCountDelta, event.allowedCountDelta),
             blockedCountDelta = saturatedAdd(previous.blockedCountDelta, event.blockedCountDelta)
         )
+        // No se descartan dominios distintos: las consultas repetidas se compactan
+        // y el worker vacía los agregados en lotes pequeños hacia el almacén local.
         pendingObservations[key] = merged
-        while (pendingObservations.size > MAX_PENDING_OBSERVATION_DOMAINS) {
-            val oldest = pendingObservations.entries.iterator()
-            if (!oldest.hasNext()) break
-            oldest.next()
-            oldest.remove()
-        }
     }
 
     private fun saturatedAdd(left: Long, right: Long): Long =
