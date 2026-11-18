@@ -38,6 +38,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.firewall.dns.domain.model.FirewallStats
+import com.firewall.dns.domain.engine.ThreatFeedCatalog
 
 @Composable
 fun RulesScreen(
@@ -151,6 +152,33 @@ fun RulesScreen(
                                 shape = RoundedCornerShape(12.dp)
                             ) {
                                 Text(name, fontSize = 12.sp, maxLines = 1)
+                            }
+                        }
+                    }
+                    Text("Protección contra amenazas", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Feeds especializados. Al actualizar, FirewallDNS identificará la categoría de los dominios bloqueados.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    ThreatFeedCatalog.presets.forEach { preset ->
+                        OutlinedButton(
+                            onClick = { onAddBlocklistUrl(preset.url) },
+                            modifier = Modifier.fillMaxWidth(),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.Start,
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text(preset.name, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    preset.description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                         }
                     }
