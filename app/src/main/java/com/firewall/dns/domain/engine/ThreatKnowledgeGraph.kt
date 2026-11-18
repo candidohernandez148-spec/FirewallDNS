@@ -137,6 +137,12 @@ object ThreatKnowledgeGraph {
         )
     }
 
+    /** Snapshot de solo lectura para la interfaz; no se consulta desde el motor DNS. */
+    fun catalogSnapshot(): List<Evidence> = providers.mapNotNull { inspect(it.domain) }
+
+    /** Número de perfiles agregados con evidencia mínima; nunca expone datos crudos. */
+    fun learnedProfileCount(): Int = observations.size
+
     /** Relaciones explícitas del catálogo; no se infieren por palabras del dominio. */
     fun relationsFor(domain: String): List<KnowledgeRelation> {
         val evidence = inspect(domain) ?: return emptyList()
