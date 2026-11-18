@@ -87,6 +87,26 @@ class SmartDecisionEngineTest {
         }
     }
 
+    @Test fun adaptiveFamilyIndexIsRebuiltWhenLearningSnapshotChanges() {
+        val profiles = listOf(
+            ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.alpha.example", 0, 8),
+            ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.beta.example", 0, 8),
+            ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.gamma.example", 0, 8)
+        )
+        try {
+            ThreatKnowledgeGraph.updateObservations(profiles)
+            assertTrue(ThreatKnowledgeGraph.adaptivePatternSnapshot().any {
+                it.confidence == ThreatKnowledgeGraph.PatternConfidence.HIGH &&
+                    it.indicators == listOf("analytics", "telemetry")
+            })
+            ThreatKnowledgeGraph.updateObservations(emptyList())
+            assertTrue(ThreatKnowledgeGraph.adaptivePatternSnapshot().isEmpty())
+            assertNull(ThreatKnowledgeGraph.blockedAdaptivePatternFor("analytics-telemetry.delta.example"))
+        } finally {
+            ThreatKnowledgeGraph.updateObservations(emptyList())
+        }
+    }
+
     @Test fun exactDomainPermissionOverridesLearnedBlockedFamily() {
         ThreatKnowledgeGraph.updateObservations(
             listOf(
