@@ -20,6 +20,7 @@ import com.firewall.dns.domain.model.DnsLogEntry
 import com.firewall.dns.domain.model.FirewallStats
 import com.firewall.dns.domain.model.TrafficPoint
 import com.firewall.dns.service.NetworkDns
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -101,6 +102,8 @@ object FirewallRepository {
     private val activitySaveScheduled = AtomicBoolean(false)
     private val activityVersion = AtomicLong(0L)
     private val learningScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val initialBlocklistLoad = CompletableDeferred<Unit>()
+    private val blocklistGeneration = AtomicLong(0L)
 
     private val logCounter = AtomicLong(0L)
     private val timeFormatLocal = object : ThreadLocal<SimpleDateFormat>() {
@@ -173,16 +176,38 @@ object FirewallRepository {
                 )
             }
 
-            val snapshot = blocklistDataSource.loadFromDisk(defaultDomains)
+            // Publica las reglas semilla y deja la lectura del archivo persistido en IO.
+            // Así la interfaz puede mostrarse sin esperar a analizar listas grandes.
             hostBlockSet.clear()
-            hostBlockSet.addAll(snapshot.blocked)
+            hostBlockSet.addAll(defaultDomains)
             hostExceptionSet.clear()
-            hostExceptionSet.addAll(snapshot.exceptions)
-            threatDomainsByCategory = snapshot.threatDomainsByCategory
             updateRulesCount()
-
             initialized = true
+
+            val generationAtStart = blocklistGeneration.get()
+            learningScope.launch {
+                try {
+                    val snapshot = blocklistDataSource.loadFromDisk(defaultDomains)
+                    if (blocklistGeneration.get() == generationAtStart) {
+                        hostBlockSet.clear()
+                        hostBlockSet.addAll(snapshot.blocked)
+                        hostExceptionSet.clear()
+                        hostExceptionSet.addAll(snapshot.exceptions)
+                        threatDomainsByCategory = snapshot.threatDomainsByCategory
+                        updateRulesCount()
+                        _cacheInvalidateEvent.tryEmit(Unit)
+                    }
+                } catch (_: Exception) {
+                    // Las reglas semilla permanecen activas si falla la lectura local.
+                } finally {
+                    initialBlocklistLoad.complete(Unit)
+                }
+            }
         }
+    }
+
+    suspend fun awaitInitialBlocklistLoad() {
+        initialBlocklistLoad.await()
     }
 
     fun getShouldRun(): Boolean = prefsDataSource.getShouldRun()
@@ -256,11 +281,13 @@ object FirewallRepository {
     suspend fun downloadBlocklist(
         onProgress: (BlocklistDownloadProgress) -> Unit = {}
     ): Result<String> {
+        awaitInitialBlocklistLoad()
         val urls = _blocklistUrls.value
         val result = blocklistDataSource.downloadMultipleAndSave(
             defaultDomains, urls, ThreatFeedCatalog.signedFeedConfigs, onProgress
         )
         return result.map { snapshot ->
+            blocklistGeneration.incrementAndGet()
             hostBlockSet.clear()
             hostBlockSet.addAll(snapshot.blocked)
             hostExceptionSet.clear()
