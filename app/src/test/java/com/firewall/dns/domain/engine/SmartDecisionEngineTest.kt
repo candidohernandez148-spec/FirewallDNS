@@ -42,6 +42,23 @@ class SmartDecisionEngineTest {
         assertTrue(result?.reason?.contains("Patrón compuesto") != true)
     }
 
+    @Test fun threeIndependentWeakSignalsTriggerAnExplainableBlock() {
+        val result = SmartDecisionEngine.evaluate("ads-pixel-analytics.example.org")
+        assertEquals(SmartDecisionEngine.Level.BLOCK, result?.level)
+        assertTrue(result?.reason?.contains("Patrón publicitario/rastreo reforzado") == true)
+        assertTrue(result?.reason?.contains("Confianza: media-alta") == true)
+        assertTrue(result?.reason?.contains("tres o más indicadores débiles independientes") == true)
+    }
+
+    @Test fun reinforcedCompoundSignalsDoNotOverrideLearnedAllowEvidence() {
+        val result = SmartDecisionEngine.evaluate(
+            "ads-pixel-analytics.example.org",
+            mapOf("analytics" to -2)
+        )
+        assertEquals(SmartDecisionEngine.Level.OBSERVE, result?.level)
+        assertTrue(result?.reason?.contains("el aprendizaje local impide el bloqueo automático") == true)
+    }
+
     @Test fun compoundWeakSignalsNeverOverrideAnActiveAllowLearningSignal() {
         val result = SmartDecisionEngine.evaluate(
             "analytics-telemetry.example.org",
