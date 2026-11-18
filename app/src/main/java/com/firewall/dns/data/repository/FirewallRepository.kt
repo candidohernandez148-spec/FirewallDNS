@@ -15,6 +15,7 @@ import com.firewall.dns.domain.engine.SmartDomainAnalyzer
 import com.firewall.dns.domain.engine.ThreatFeedCatalog
 import com.firewall.dns.domain.engine.ThreatFeedCategory
 import com.firewall.dns.domain.model.AppInfoItem
+import com.firewall.dns.domain.model.BlocklistDownloadProgress
 import com.firewall.dns.domain.model.DnsLogEntry
 import com.firewall.dns.domain.model.FirewallStats
 import com.firewall.dns.domain.model.TrafficPoint
@@ -248,9 +249,13 @@ object FirewallRepository {
         }
     }
 
-    suspend fun downloadBlocklist(): Result<String> {
+    suspend fun downloadBlocklist(
+        onProgress: (BlocklistDownloadProgress) -> Unit = {}
+    ): Result<String> {
         val urls = _blocklistUrls.value
-        val result = blocklistDataSource.downloadMultipleAndSave(defaultDomains, urls, ThreatFeedCatalog.signedFeedConfigs)
+        val result = blocklistDataSource.downloadMultipleAndSave(
+            defaultDomains, urls, ThreatFeedCatalog.signedFeedConfigs, onProgress
+        )
         return result.map { snapshot ->
             hostBlockSet.clear()
             hostBlockSet.addAll(snapshot.blocked)
@@ -402,15 +407,16 @@ object FirewallRepository {
 
     suspend fun getInstalledUserApps(): List<AppInfoItem> = withContext(Dispatchers.IO) {
         val pm = appContext.packageManager
-        pm.getInstalledApplications(PackageManager.GET_META_DATA)
-            .filter { it.packageName != appContext.packageName && (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 }
+        pm.getInstalledApplications(0)
+            .filter { it.packageName != appContext.packageName }
             .map {
-                val icon = try {
-                    pm.getApplicationIcon(it).toBitmap(ICON_SIZE_PX, ICON_SIZE_PX).asImageBitmap()
-                } catch (_: Exception) {
-                    null
-                }
-                AppInfoItem(pm.getApplicationLabel(it).toString(), it.packageName, icon, it.uid)
+                AppInfoItem(
+                    label = pm.getApplicationLabel(it).toString(),
+                    packageName = it.packageName,
+                    icon = null,
+                    uid = it.uid,
+                    isSystemApp = (it.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                )
             }
             .sortedBy { it.label.lowercase() }
     }
