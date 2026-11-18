@@ -111,7 +111,7 @@ object FirewallRepository {
     private val activitySaveScheduled = AtomicBoolean(false)
     private val activityVersion = AtomicLong(0L)
     private val learningScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    // Cola acotada: nunca espera a SQLite dentro de la consulta DNS.
+    // Cola acotada: nunca espera a operaciones de disco dentro de la consulta DNS.
     private val observationQueue = Channel<DomainObservationEvent>(
         capacity = 2048,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
