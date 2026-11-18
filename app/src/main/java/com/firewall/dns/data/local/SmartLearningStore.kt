@@ -90,8 +90,8 @@ class SmartLearningStore(context: Context) {
             val old = observations[domain]
             observations[domain] = DomainObservationSummary(
                 domain = domain,
-                allowedCount = (old?.allowedCount ?: 0L) + if (event.blocked) 0L else 1L,
-                blockedCount = (old?.blockedCount ?: 0L) + if (event.blocked) 1L else 0L,
+                allowedCount = incrementCounter(old?.allowedCount ?: 0L, increment = !event.blocked),
+                blockedCount = incrementCounter(old?.blockedCount ?: 0L, increment = event.blocked),
                 firstSeen = old?.firstSeen ?: timestamp,
                 lastSeen = maxOf(old?.lastSeen ?: 0L, timestamp),
                 lastBlocked = event.blocked
@@ -105,6 +105,9 @@ class SmartLearningStore(context: Context) {
         }
         dirty = true
     }
+
+    private fun incrementCounter(value: Long, increment: Boolean): Long =
+        if (!increment || value == Long.MAX_VALUE) value else value + 1L
 
     @Synchronized
     fun getSnapshot(): List<DomainObservationSummary> =
