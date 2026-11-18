@@ -88,9 +88,11 @@ class BlocklistDataSource(context: Context) {
         if (configuredUrls.isEmpty()) {
             return@withContext Result.failure(IllegalArgumentException("Agrega al menos una URL HTTPS en sintaxis Adblock"))
         }
-        val normalizedUrls = configuredUrls.map { raw ->
-            BlocklistSourcePolicy.canonicalize(raw)
+        val normalizedUrls = ArrayList<String>(configuredUrls.size)
+        for (raw in configuredUrls) {
+            val normalized = BlocklistSourcePolicy.canonicalize(raw)
                 ?: return@withContext Result.failure(IllegalArgumentException("Fuente HTTPS inválida: $raw"))
+            normalizedUrls.add(normalized)
         }
         val uniqueUrls = normalizedUrls.distinct()
 
