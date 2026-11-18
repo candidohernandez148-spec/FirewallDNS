@@ -11,6 +11,7 @@ import com.firewall.dns.data.local.SmartLearningStore
 import com.firewall.dns.data.local.DomainObservationEvent
 import com.firewall.dns.data.local.DomainObservationSummary
 import com.firewall.dns.domain.engine.BlocklistSourcePolicy
+import com.firewall.dns.domain.engine.BuiltInThreatDomains
 import com.firewall.dns.domain.engine.AppFirewallManager
 import com.firewall.dns.domain.engine.RuleEvaluator
 import com.firewall.dns.domain.engine.SmartDomainAnalyzer
