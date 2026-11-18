@@ -65,12 +65,16 @@ object ThreatKnowledgeGraph {
     @Volatile
     private var observations: Map<String, ObservationSignal> = emptyMap()
 
+    // Índice inmutable de familias bloqueables: consulta O(1) desde el hilo DNS.
+    @Volatile
+    private var highConfidenceAdaptivePatterns: Map<String, AdaptivePattern> = emptyMap()
+
     /**
      * Publica un snapshot agregado desde SQLite. Se llama fuera del hilo DNS.
      * Solo conserva perfiles con evidencia suficiente; no almacena apps ni consultas crudas.
      */
     fun updateObservations(profiles: List<ObservationProfile>) {
-        observations = profiles.asSequence()
+        val snapshot = profiles.asSequence()
             .filter { it.allowedCount >= 0L && it.blockedCount >= 0L }
             .filter { it.allowedCount + it.blockedCount >= MIN_OBSERVATIONS }
             .associate { profile ->
@@ -84,6 +88,13 @@ object ThreatKnowledgeGraph {
             }
             .filterKeys { it.isNotBlank() }
             .toMap()
+
+        // El agrupamiento de hasta 5.000 perfiles se realiza aquí, durante la
+        // publicación del aprendizaje (fuera del callback DNS), no por consulta.
+        highConfidenceAdaptivePatterns = buildAdaptivePatternSnapshot(snapshot)
+            .filter { it.confidence == PatternConfidence.HIGH }
+            .associateBy { it.indicators.joinToString("+") }
+        observations = snapshot
     }
 
     /** Señal contextual exacta; evita propagar la reputación de un dominio a otros hosts. */
@@ -221,8 +232,17 @@ object ThreatKnowledgeGraph {
      * al menos tres dominios, 24 eventos y 75% de bloqueos (mínimo 18 bloqueos).
      * Solo esa evidencia permite que una familia influya en decisiones DNS.
      */
-    fun adaptivePatternSnapshot(): List<AdaptivePattern> {
-        val groups = observations.entries.mapNotNull { (domain, signal) ->
+    fun adaptivePatternSnapshot(): List<AdaptivePattern> =
+        buildAdaptivePatternSnapshot(observations)
+
+    /**
+     * Construye el resumen completo solo al publicar un nuevo snapshot de aprendizaje.
+     * Esta función nunca se invoca desde una evaluación DNS.
+     */
+    private fun buildAdaptivePatternSnapshot(
+        source: Map<String, ObservationSignal>
+    ): List<AdaptivePattern> {
+        val groups = source.entries.mapNotNull { (domain, signal) ->
             if (inspect(domain) != null) return@mapNotNull null
             val indicators = indicatorsForDomain(domain)
             if (indicators.isEmpty()) return@mapNotNull null
@@ -259,18 +279,15 @@ object ThreatKnowledgeGraph {
     }
 
     /**
-     * Devuelve una familia únicamente cuando el dominio comparte su firma exacta
-     * con una familia de confianza alta. No atribuye un proveedor ni usa red/I-O.
+     * Coincidencia O(1): normaliza y extrae señales del dominio consultado,
+     * y consulta el índice precalculado. No recorre perfiles ni agrupa familias.
      */
     fun blockedAdaptivePatternFor(domain: String): AdaptivePattern? {
         val clean = domain.trim().lowercase().trimEnd('.')
         if (clean.isBlank() || inspect(clean) != null) return null
         val indicators = indicatorsForDomain(clean)
         if (indicators.isEmpty()) return null
-        val signature = indicators.joinToString("+")
-        return adaptivePatternSnapshot().firstOrNull {
-            it.confidence == PatternConfidence.HIGH && it.indicators.joinToString("+") == signature
-        }
+        return highConfidenceAdaptivePatterns[indicators.joinToString("+")]
     }
 
     private const val MIN_PATTERN_DOMAINS = 2
