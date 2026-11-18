@@ -12,6 +12,8 @@ import com.firewall.dns.domain.engine.AppFirewallManager
 import com.firewall.dns.domain.engine.DomainBlocker
 import com.firewall.dns.domain.engine.RuleEvaluator
 import com.firewall.dns.domain.engine.SmartDomainAnalyzer
+import com.firewall.dns.domain.engine.ThreatFeedCatalog
+import com.firewall.dns.domain.engine.ThreatFeedCategory
 import com.firewall.dns.domain.model.AppInfoItem
 import com.firewall.dns.domain.model.DnsLogEntry
 import com.firewall.dns.domain.model.FirewallStats
@@ -85,6 +87,8 @@ object FirewallRepository {
 
     private val hostBlockSet = ConcurrentHashMap.newKeySet<String>()
     private val hostExceptionSet = ConcurrentHashMap.newKeySet<String>()
+    @Volatile
+    private var threatDomainsByCategory: Map<ThreatFeedCategory, Set<String>> = emptyMap()
     private val customBlockSet = ConcurrentHashMap.newKeySet<String>()
     private val customAllowSet = ConcurrentHashMap.newKeySet<String>()
     private val learnedTokens = ConcurrentHashMap<String, Int>()
@@ -153,11 +157,12 @@ object FirewallRepository {
             learnedTokens.putAll(prefsDataSource.getLearnedTokens())
             _stats.update { it.copy(learnedTokens = learnedTokens.size) }
 
-            val (loadedBlocked, loadedExceptions) = blocklistDataSource.loadFromDisk(defaultDomains)
+            val snapshot = blocklistDataSource.loadFromDisk(defaultDomains)
             hostBlockSet.clear()
-            hostBlockSet.addAll(loadedBlocked)
+            hostBlockSet.addAll(snapshot.blocked)
             hostExceptionSet.clear()
-            hostExceptionSet.addAll(loadedExceptions)
+            hostExceptionSet.addAll(snapshot.exceptions)
+            threatDomainsByCategory = snapshot.threatDomainsByCategory
             updateRulesCount()
 
             initialized = true
@@ -235,14 +240,15 @@ object FirewallRepository {
     suspend fun downloadBlocklist(): Result<String> {
         val urls = _blocklistUrls.value
         val result = blocklistDataSource.downloadMultipleAndSave(defaultDomains, urls)
-        return result.map { (newBlocked, newExceptions, summary) ->
+        return result.map { snapshot ->
             hostBlockSet.clear()
-            hostBlockSet.addAll(newBlocked)
+            hostBlockSet.addAll(snapshot.blocked)
             hostExceptionSet.clear()
-            hostExceptionSet.addAll(newExceptions)
+            hostExceptionSet.addAll(snapshot.exceptions)
+            threatDomainsByCategory = snapshot.threatDomainsByCategory
             updateRulesCount()
             _cacheInvalidateEvent.tryEmit(Unit)
-            summary
+            snapshot.summary
         }
     }
 
@@ -259,8 +265,16 @@ object FirewallRepository {
             return baseEval
         }
         if (baseEval.first) {
-            if (baseEval.second.startsWith("Adblock")) learnFromActivity(domain, blocked = true, step = 1)
-            return baseEval
+            val category = if (baseEval.second.startsWith("Adblock")) {
+                threatDomainsByCategory.entries.firstOrNull { (_, domains) ->
+                    ThreatFeedCatalog.matchesDomainOrParent(domain, domains)
+                }?.key
+            } else null
+            val reason = category?.let(ThreatFeedCatalog::reasonFor) ?: baseEval.second
+            if (reason.startsWith("Adblock") || category != null) {
+                learnFromActivity(domain, blocked = true, step = 1)
+            }
+            return true to reason
         }
         if (DomainBlocker.isBlocked(domain)) {
             learnFromActivity(domain, blocked = true, step = 1)
