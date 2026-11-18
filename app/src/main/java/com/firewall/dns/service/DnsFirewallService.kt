@@ -272,12 +272,13 @@ class DnsFirewallService : VpnService() {
         } else {
             val cacheKey = "${query.domain.lowercase()}:${query.qType}:${FirewallRepository.getUpstreamDns()}"
             val now = System.currentTimeMillis()
-            val cached = dnsCache[cacheKey]
-            if (cached != null && cached.expiresAt > now) {
-                dnsResponse = cached.response.copyOf().apply {
-                    this[0] = dnsPayload[0]
-                    this[1] = dnsPayload[1]
-                }
+            val cached = dnsCache[cacheKey]?.takeIf { it.expiresAt > now }
+            val cachedResponse = cached?.response?.copyOf()?.apply {
+                this[0] = dnsPayload[0]
+                this[1] = dnsPayload[1]
+            }?.takeIf { DnsPacketEngine.matchesDnsResponse(dnsPayload, it) }
+            if (cachedResponse != null) {
+                dnsResponse = cachedResponse
             } else {
                 dnsResponse = forwardDnsQuery(dnsPayload)
                 if (dnsResponse != null) {
@@ -343,11 +344,15 @@ class DnsFirewallService : VpnService() {
             socket.soTimeout = 3500
             if (!protect(socket)) return null
             val addr = InetAddress.getByName(FirewallRepository.getUpstreamDns())
-            socket.send(DatagramPacket(dnsPayload, dnsPayload.size, addr, 53))
+            // A connected UDP socket accepts datagrams only from this upstream endpoint.
+            socket.connect(addr, 53)
+            socket.send(DatagramPacket(dnsPayload, dnsPayload.size))
             val buf = ByteArray(4096)
             val response = DatagramPacket(buf, buf.size)
             socket.receive(response)
-            if (response.length >= 12) buf.copyOf(response.length) else null
+            if (response.length < 12) return null
+            val answer = buf.copyOf(response.length)
+            answer.takeIf { DnsPacketEngine.matchesDnsResponse(dnsPayload, it) }
         } catch (_: Exception) {
             null
         } finally {
