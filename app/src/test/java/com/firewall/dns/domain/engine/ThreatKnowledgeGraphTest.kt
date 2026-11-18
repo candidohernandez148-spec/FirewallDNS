@@ -117,4 +117,40 @@ class ThreatKnowledgeGraphTest {
             ThreatKnowledgeGraph.updateObservations(emptyList())
         }
     }
+
+    @Test fun socialProviderEvidenceExplainsItsPlatformAndKnowledgePath() {
+        val evidence = ThreatKnowledgeGraph.inspect("pixel.instagram.com")
+        assertEquals("Meta", evidence?.platform)
+        assertEquals(
+            listOf("plataforma: Meta", "proveedor: pixel.instagram.com"),
+            evidence?.knowledgePath
+        )
+        assertEquals("catálogo local curado", evidence?.source)
+    }
+
+    @Test fun graphExposesOnlyExplicitPlatformProviderAndEndpointRelations() {
+        val relations = ThreatKnowledgeGraph.relationsFor("cdn.pangle.io")
+        assertEquals(2, relations.size)
+        assertEquals("ByteDance / Pangle", relations[0].from)
+        assertEquals("pangle.io", relations[0].to)
+        assertEquals(ThreatKnowledgeGraph.RelationType.OPERATES_PROVIDER, relations[0].type)
+        assertEquals("pangle.io", relations[1].from)
+        assertEquals("cdn.pangle.io", relations[1].to)
+        assertEquals(ThreatKnowledgeGraph.RelationType.PROVIDES_ENDPOINT, relations[1].type)
+    }
+
+    @Test fun unknownDomainsDoNotReceiveInventedPlatformRelations() {
+        assertTrue(ThreatKnowledgeGraph.relationsFor("ads.unknown-social.example").isEmpty())
+        assertNull(ThreatKnowledgeGraph.inspect("ads.unknown-social.example"))
+    }
+
+    @Test fun nonSocialProviderHasNoInventedPlatformAttribution() {
+        val evidence = ThreatKnowledgeGraph.inspect("cdn.doubleclick.net")
+        assertNull(evidence?.platform)
+        assertEquals(
+            listOf("proveedor: doubleclick.net", "dominio consultado: cdn.doubleclick.net"),
+            evidence?.knowledgePath
+        )
+    }
+
 }
