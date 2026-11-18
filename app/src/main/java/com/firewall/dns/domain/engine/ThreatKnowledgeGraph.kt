@@ -13,13 +13,25 @@ object ThreatKnowledgeGraph {
         val provider: String,
         val category: Category,
         val confidence: Confidence,
-        val relation: String
+        val relation: String,
+        val platform: String? = null,
+        val knowledgePath: List<String> = emptyList(),
+        val source: String = "catálogo local curado"
+    )
+
+    enum class RelationType { OPERATES_PROVIDER, PROVIDES_ENDPOINT }
+
+    data class KnowledgeRelation(
+        val from: String,
+        val to: String,
+        val type: RelationType
     )
 
     private data class Provider(
         val domain: String,
         val category: Category,
-        val confidence: Confidence
+        val confidence: Confidence,
+        val platform: String? = null
     )
 
     data class ObservationProfile(
@@ -85,13 +97,13 @@ object ThreatKnowledgeGraph {
         Provider("pubmatic.com", Category.ADVERTISING, Confidence.HIGH),
         Provider("openx.net", Category.ADVERTISING, Confidence.HIGH),
         Provider("unityads.unity3d.com", Category.ADVERTISING, Confidence.HIGH),
-        Provider("ads.facebook.com", Category.ADVERTISING, Confidence.HIGH),
-        Provider("pixel.facebook.com", Category.ADVERTISING, Confidence.HIGH),
-        Provider("pixel.instagram.com", Category.ADVERTISING, Confidence.HIGH),
-        Provider("pangle.io", Category.ADVERTISING, Confidence.HIGH),
-        Provider("pangleglobal.com", Category.ADVERTISING, Confidence.HIGH),
-        Provider("snapads.com", Category.ADVERTISING, Confidence.HIGH),
-        Provider("ads-twitter.com", Category.ADVERTISING, Confidence.HIGH),
+        Provider("ads.facebook.com", Category.ADVERTISING, Confidence.HIGH, "Meta"),
+        Provider("pixel.facebook.com", Category.ADVERTISING, Confidence.HIGH, "Meta"),
+        Provider("pixel.instagram.com", Category.ADVERTISING, Confidence.HIGH, "Meta"),
+        Provider("pangle.io", Category.ADVERTISING, Confidence.HIGH, "ByteDance / Pangle"),
+        Provider("pangleglobal.com", Category.ADVERTISING, Confidence.HIGH, "ByteDance / Pangle"),
+        Provider("snapads.com", Category.ADVERTISING, Confidence.HIGH, "Snap"),
+        Provider("ads-twitter.com", Category.ADVERTISING, Confidence.HIGH, "X"),
         Provider("facebook.net", Category.TRACKING, Confidence.MEDIUM),
         Provider("appsflyer.com", Category.TRACKING, Confidence.MEDIUM),
         Provider("adjust.com", Category.TRACKING, Confidence.MEDIUM),
@@ -109,11 +121,34 @@ object ThreatKnowledgeGraph {
         val provider = providers.firstOrNull {
             clean == it.domain || clean.endsWith(".${it.domain}")
         } ?: return null
+        val domainRelation = if (clean == provider.domain) "dominio proveedor" else "subdominio de proveedor"
+        val path = buildList {
+            provider.platform?.let { add("plataforma: $it") }
+            add("proveedor: ${provider.domain}")
+            if (clean != provider.domain) add("dominio consultado: $clean")
+        }
         return Evidence(
             provider = provider.domain,
             category = provider.category,
             confidence = provider.confidence,
-            relation = if (clean == provider.domain) "dominio proveedor" else "subdominio de proveedor"
+            relation = domainRelation,
+            platform = provider.platform,
+            knowledgePath = path
         )
+    }
+
+    /** Relaciones explícitas del catálogo; no se infieren por palabras del dominio. */
+    fun relationsFor(domain: String): List<KnowledgeRelation> {
+        val evidence = inspect(domain) ?: return emptyList()
+        val relations = mutableListOf<KnowledgeRelation>()
+        evidence.platform?.let { platform ->
+            relations += KnowledgeRelation(platform, evidence.provider, RelationType.OPERATES_PROVIDER)
+        }
+        relations += KnowledgeRelation(
+            evidence.provider,
+            domain.trim().lowercase().trimEnd('.'),
+            RelationType.PROVIDES_ENDPOINT
+        )
+        return relations
     }
 }
