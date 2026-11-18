@@ -9,6 +9,7 @@ import com.firewall.dns.domain.engine.ThreatFeedCategory
 import com.firewall.dns.domain.engine.ThreatFeedIntegrityPolicy
 import com.firewall.dns.domain.engine.ThreatFeedSignatureConfig
 import com.firewall.dns.domain.engine.ThreatFeedSignaturePolicy
+import com.firewall.dns.domain.model.BlocklistDownloadProgress
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -75,7 +76,8 @@ class BlocklistDataSource(context: Context) {
     suspend fun downloadMultipleAndSave(
         defaultDomains: List<String>,
         urls: List<String>,
-        signedFeeds: Map<String, ThreatFeedSignatureConfig> = emptyMap()
+        signedFeeds: Map<String, ThreatFeedSignatureConfig> = emptyMap(),
+        onProgress: (BlocklistDownloadProgress) -> Unit = {}
     ): Result<BlocklistSnapshot> = withContext(Dispatchers.IO) {
         val uniqueUrls = urls.map(String::trim).filter(String::isNotEmpty).distinct()
         if (uniqueUrls.isEmpty()) {
@@ -92,7 +94,7 @@ class BlocklistDataSource(context: Context) {
         var verifiedSignedSources = 0
         var unsignedSources = 0
 
-        for (targetUrl in uniqueUrls) {
+        for ((sourceIndex, targetUrl) in uniqueUrls.withIndex()) {
             if (!BlocklistSourcePolicy.isAllowed(targetUrl)) {
                 lastError = IllegalArgumentException("Fuente rechazada: solo HTTPS en puerto 443, sin credenciales ni fragmentos")
                 continue
@@ -113,6 +115,7 @@ class BlocklistDataSource(context: Context) {
                 }
                 val declaredLength = connection.getHeaderFieldLong("Content-Length", -1L)
                 if (declaredLength > MAX_SOURCE_BYTES) throw IllegalStateException("La lista supera 8 MiB")
+                onProgress(BlocklistDownloadProgress(sourceIndex + 1, uniqueUrls.size, "Descargando", 0L, declaredLength))
 
                 val payload = connection.inputStream.use { input ->
                     val output = ByteArrayOutputStream()
@@ -124,9 +127,11 @@ class BlocklistDataSource(context: Context) {
                         total += count
                         if (total > MAX_SOURCE_BYTES) throw IllegalStateException("La lista supera 8 MiB")
                         output.write(buffer, 0, count)
+                        onProgress(BlocklistDownloadProgress(sourceIndex + 1, uniqueUrls.size, "Descargando", total.toLong(), declaredLength))
                     }
                     output.toByteArray()
                 }
+                onProgress(BlocklistDownloadProgress(sourceIndex + 1, uniqueUrls.size, "Validando", payload.size.toLong(), declaredLength))
 
                 val signatureConfig = signedFeeds[targetUrl]
                 if (signatureConfig == null) {
@@ -181,6 +186,7 @@ class BlocklistDataSource(context: Context) {
             return@withContext Result.failure(lastError ?: IllegalStateException("No se pudieron validar todas las listas; se conserva la versión anterior"))
         }
 
+        onProgress(BlocklistDownloadProgress(uniqueUrls.size, uniqueUrls.size, "Aplicando", 1L, 1L))
         val outputFile = File(filesDir, ADBLOCK_FILE_NAME)
         val atomicFile = AtomicFile(outputFile)
         var stream: FileOutputStream? = null
@@ -207,6 +213,7 @@ class BlocklistDataSource(context: Context) {
             writer.flush()
             atomicFile.finishWrite(outputStream)
             stream = null
+            onProgress(BlocklistDownloadProgress(uniqueUrls.size, uniqueUrls.size, "Completado", 1L, 1L))
         } catch (error: Exception) {
             stream?.let(atomicFile::failWrite)
             return@withContext Result.failure(error)
