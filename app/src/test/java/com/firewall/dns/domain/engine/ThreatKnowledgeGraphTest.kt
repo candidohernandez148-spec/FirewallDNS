@@ -240,13 +240,13 @@ class ThreatKnowledgeGraphTest {
 
     @Test fun correlationDoesNotInventRelationsForLookalikesOrChangeDnsDecision() {
         ThreatKnowledgeGraph.updateObservations(
-            listOf(ThreatKnowledgeGraph.ObservationProfile("ads.notdoubleclick.net", 12, 0))
+            listOf(ThreatKnowledgeGraph.ObservationProfile("cdn.notdoubleclick.net", 12, 0))
         )
         try {
             assertTrue(ThreatKnowledgeGraph.correlationSnapshot().isEmpty())
             assertEquals(1, ThreatKnowledgeGraph.unattributedLearnedProfileCount())
-            assertNull(ThreatKnowledgeGraph.inspect("ads.notdoubleclick.net"))
-            assertEquals(SmartDecisionEngine.Level.OBSERVE, SmartDecisionEngine.evaluate("ads.notdoubleclick.net")?.level)
+            assertNull(ThreatKnowledgeGraph.inspect("cdn.notdoubleclick.net"))
+            assertEquals(SmartDecisionEngine.Level.OBSERVE, SmartDecisionEngine.evaluate("cdn.notdoubleclick.net")?.level)
         } finally {
             ThreatKnowledgeGraph.updateObservations(emptyList())
         }
