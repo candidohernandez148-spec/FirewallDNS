@@ -246,7 +246,7 @@ class ThreatKnowledgeGraphTest {
             assertTrue(ThreatKnowledgeGraph.correlationSnapshot().isEmpty())
             assertEquals(1, ThreatKnowledgeGraph.unattributedLearnedProfileCount())
             assertNull(ThreatKnowledgeGraph.inspect("cdn.notdoubleclick.net"))
-            assertEquals(SmartDecisionEngine.Level.OBSERVE, SmartDecisionEngine.evaluate("cdn.notdoubleclick.net")?.level)
+            assertNull(SmartDecisionEngine.evaluate("cdn.notdoubleclick.net"))
         } finally {
             ThreatKnowledgeGraph.updateObservations(emptyList())
         }
