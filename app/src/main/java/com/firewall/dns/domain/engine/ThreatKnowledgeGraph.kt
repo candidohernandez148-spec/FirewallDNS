@@ -282,8 +282,8 @@ object ThreatKnowledgeGraph {
         val indicators = indicatorsForDomain(clean)
         if (indicators.isEmpty()) return null
         val signature = indicators.joinToString("+")
-        return adaptivePatternSnapshot().firstOrNull {
-            it.confidence == PatternConfidence.HIGH && it.indicators.joinToString("+") == signature
+        return adaptivePatternIndex[signature]?.takeIf {
+            it.confidence == PatternConfidence.HIGH
         }
     }
 
