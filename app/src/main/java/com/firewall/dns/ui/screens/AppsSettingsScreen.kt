@@ -57,9 +57,9 @@ fun AppsSettingsScreen(
     onOpenVpnSettings: () -> Unit
 ) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 14.dp),
-        contentPadding = PaddingValues(bottom = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 9.dp),
+        contentPadding = PaddingValues(bottom = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(9.dp)
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -71,10 +71,10 @@ fun AppsSettingsScreen(
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(22.dp),
+                shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
-                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Acceso y continuidad", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text("Opciones del sistema para mantener la VPN disponible.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Surface(
@@ -164,14 +164,14 @@ fun AppsSettingsScreen(
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(15.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                 ) {
-                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column(modifier = Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             AppIcon(app)
-                            Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
+                            Column(modifier = Modifier.weight(1f).padding(start = 9.dp)) {
                                 Text(app.label, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Text(
                                     "UID ${app.uid} · ${app.packageName}",
@@ -255,7 +255,7 @@ private fun AppIcon(app: AppInfoItem) {
     }
     val loadedIcon = icon
     val shape = RoundedCornerShape(12.dp)
-    val modifier = Modifier.size(46.dp).clip(shape)
+    val modifier = Modifier.size(40.dp).clip(shape)
     if (loadedIcon != null) {
         Image(bitmap = loadedIcon, contentDescription = app.label, modifier = modifier)
     } else {
