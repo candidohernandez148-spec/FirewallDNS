@@ -36,6 +36,18 @@ object SmartDomainAnalyzer {
         "taboola", "outbrain", "criteo", "pubmatic", "openx", "rubiconproject"
     )
 
+    // Conocimiento inicial integrado: proveedores y plataformas conocidos de publicidad,
+    // pujas, medición publicitaria y rastreo. Son indicadores fuertes, no una lista exhaustiva
+    // de malware; se evalúan como señales de dominio y nunca como prueba única de infección.
+    private val BASELINE_AD_TECH_TOKENS = setOf(
+        "adsrvr", "amazon-adsystem", "scorecardresearch", "quantserve", "moatads",
+        "demdex", "everesttech", "bluekai", "krxd", "adform", "smartadserver",
+        "adcolony", "smaato", "bidswitch", "casalemedia", "contextweb",
+        "indexexchange", "33across", "sharethrough", "triplelift", "gumgum",
+        "yieldmo", "pubnative", "mediavine", "undertone", "lijit", "openx",
+        "pubmatic", "rubiconproject", "criteo", "taboola", "outbrain"
+    )
+
     private val MEDIUM_TOKENS = setOf(
         "ad", "metrics", "click", "clicks", "impression", "impressions",
         "collect", "events", "log", "logs", "mon", "stat", "stats", "ping", "report"
@@ -87,7 +99,7 @@ object SmartDomainAnalyzer {
             }
         }
 
-        if (parts.any { it in HIGH_CONFIDENCE_TOKENS }) {
+        if (parts.any { it in HIGH_CONFIDENCE_TOKENS || it in BASELINE_AD_TECH_TOKENS }) {
             score += 3
             if (category == "Heurística") category = "Ads/Tracker"
         } else if (parts.any { it in MEDIUM_TOKENS }) {
