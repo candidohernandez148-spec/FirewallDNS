@@ -14,7 +14,7 @@ object SmartDecisionEngine {
         "samsungcloud.com", "paypal.com", "stripe.com", "mercadolibre.com"
     )
     private val strongTokens = setOf(
-        "ads", "adserver", "adservice", "adsystem", "adtech", "adnxs",
+        "adserver", "adservice", "adsystem", "adtech", "adnxs",
         "doubleclick", "googlesyndication", "googleadservices", "app-measurement",
         "adsrvr", "amazon-adsystem", "scorecardresearch", "quantserve", "moatads",
         "demdex", "everesttech", "bluekai", "krxd", "adform", "smartadserver",
@@ -25,7 +25,7 @@ object SmartDecisionEngine {
         "unityads", "applovin", "ironsource", "vungle", "chartboost"
     )
     private val mediumTokens = setOf(
-        "ad", "pixel", "beacon", "telemetry", "analytics", "tracking", "tracker",
+        "ad", "ads", "pixel", "beacon", "telemetry", "analytics", "tracking", "tracker",
         "metrics", "click", "impression", "collect", "events", "log", "logs",
         "monitor", "stat", "stats", "ping", "report", "measurement"
     )
