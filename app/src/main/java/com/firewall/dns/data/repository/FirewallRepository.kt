@@ -3,8 +3,6 @@ package com.firewall.dns.data.repository
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.core.graphics.drawable.toBitmap
 import com.firewall.dns.data.local.BlocklistDataSource
 import com.firewall.dns.data.local.PreferencesDataSource
 import com.firewall.dns.domain.engine.BlocklistSourcePolicy
@@ -15,10 +13,12 @@ import com.firewall.dns.domain.engine.SmartDomainAnalyzer
 import com.firewall.dns.domain.engine.ThreatFeedCatalog
 import com.firewall.dns.domain.engine.ThreatFeedCategory
 import com.firewall.dns.domain.model.AppInfoItem
+import com.firewall.dns.domain.model.BlocklistDownloadProgress
 import com.firewall.dns.domain.model.DnsLogEntry
 import com.firewall.dns.domain.model.FirewallStats
 import com.firewall.dns.domain.model.TrafficPoint
 import com.firewall.dns.service.NetworkDns
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -46,7 +46,6 @@ object FirewallRepository {
     private const val TRAFFIC_POINTS = 40
     private const val TRAFFIC_INTERVAL_MS = 2_000L
     private const val MAX_LEARNED_DOMAINS = 5000
-    private const val ICON_SIZE_PX = 96
 
     private lateinit var appContext: Context
     private lateinit var prefsDataSource: PreferencesDataSource
@@ -73,6 +72,9 @@ object FirewallRepository {
     private val _blocklistUrls = MutableStateFlow<List<String>>(emptyList())
     val blocklistUrls: StateFlow<List<String>> = _blocklistUrls.asStateFlow()
 
+    private val _blocklistsDownloaded = MutableStateFlow(false)
+    val blocklistsDownloaded: StateFlow<Boolean> = _blocklistsDownloaded.asStateFlow()
+
     private val _smartModeEnabled = MutableStateFlow(true)
     val smartModeEnabled: StateFlow<Boolean> = _smartModeEnabled.asStateFlow()
 
@@ -97,6 +99,8 @@ object FirewallRepository {
     private val activitySaveScheduled = AtomicBoolean(false)
     private val activityVersion = AtomicLong(0L)
     private val learningScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val initialBlocklistLoad = CompletableDeferred<Unit>()
+    private val blocklistGeneration = AtomicLong(0L)
 
     private val logCounter = AtomicLong(0L)
     private val timeFormatLocal = object : ThreadLocal<SimpleDateFormat>() {
@@ -140,6 +144,7 @@ object FirewallRepository {
             startNetworkTypeMonitor()
             prefsDataSource = PreferencesDataSource(appContext)
             blocklistDataSource = BlocklistDataSource(appContext)
+            _blocklistsDownloaded.value = blocklistDataSource.hasSavedBlocklists()
 
             customBlockSet.clear()
             customBlockSet.addAll(prefsDataSource.getCustomBlockSet())
@@ -168,16 +173,38 @@ object FirewallRepository {
                 )
             }
 
-            val snapshot = blocklistDataSource.loadFromDisk(defaultDomains)
+            // Publica las reglas semilla y deja la lectura del archivo persistido en IO.
+            // Así la interfaz puede mostrarse sin esperar a analizar listas grandes.
             hostBlockSet.clear()
-            hostBlockSet.addAll(snapshot.blocked)
+            hostBlockSet.addAll(defaultDomains)
             hostExceptionSet.clear()
-            hostExceptionSet.addAll(snapshot.exceptions)
-            threatDomainsByCategory = snapshot.threatDomainsByCategory
             updateRulesCount()
-
             initialized = true
+
+            val generationAtStart = blocklistGeneration.get()
+            learningScope.launch {
+                try {
+                    val snapshot = blocklistDataSource.loadFromDisk(defaultDomains)
+                    if (blocklistGeneration.get() == generationAtStart) {
+                        hostBlockSet.clear()
+                        hostBlockSet.addAll(snapshot.blocked)
+                        hostExceptionSet.clear()
+                        hostExceptionSet.addAll(snapshot.exceptions)
+                        threatDomainsByCategory = snapshot.threatDomainsByCategory
+                        updateRulesCount()
+                        _cacheInvalidateEvent.tryEmit(Unit)
+                    }
+                } catch (_: Exception) {
+                    // Las reglas semilla permanecen activas si falla la lectura local.
+                } finally {
+                    initialBlocklistLoad.complete(Unit)
+                }
+            }
         }
+    }
+
+    suspend fun awaitInitialBlocklistLoad() {
+        initialBlocklistLoad.await()
     }
 
     fun getShouldRun(): Boolean = prefsDataSource.getShouldRun()
@@ -248,15 +275,22 @@ object FirewallRepository {
         }
     }
 
-    suspend fun downloadBlocklist(): Result<String> {
+    suspend fun downloadBlocklist(
+        onProgress: (BlocklistDownloadProgress) -> Unit = {}
+    ): Result<String> {
+        awaitInitialBlocklistLoad()
         val urls = _blocklistUrls.value
-        val result = blocklistDataSource.downloadMultipleAndSave(defaultDomains, urls, ThreatFeedCatalog.signedFeedConfigs)
+        val result = blocklistDataSource.downloadMultipleAndSave(
+            defaultDomains, urls, ThreatFeedCatalog.signedFeedConfigs, onProgress
+        )
         return result.map { snapshot ->
+            blocklistGeneration.incrementAndGet()
             hostBlockSet.clear()
             hostBlockSet.addAll(snapshot.blocked)
             hostExceptionSet.clear()
             hostExceptionSet.addAll(snapshot.exceptions)
             threatDomainsByCategory = snapshot.threatDomainsByCategory
+            _blocklistsDownloaded.value = true
             updateRulesCount()
             _cacheInvalidateEvent.tryEmit(Unit)
             snapshot.summary
@@ -402,15 +436,16 @@ object FirewallRepository {
 
     suspend fun getInstalledUserApps(): List<AppInfoItem> = withContext(Dispatchers.IO) {
         val pm = appContext.packageManager
-        pm.getInstalledApplications(PackageManager.GET_META_DATA)
-            .filter { it.packageName != appContext.packageName && (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 }
+        pm.getInstalledApplications(0)
+            .filter { it.packageName != appContext.packageName }
             .map {
-                val icon = try {
-                    pm.getApplicationIcon(it).toBitmap(ICON_SIZE_PX, ICON_SIZE_PX).asImageBitmap()
-                } catch (_: Exception) {
-                    null
-                }
-                AppInfoItem(pm.getApplicationLabel(it).toString(), it.packageName, icon, it.uid)
+                AppInfoItem(
+                    label = pm.getApplicationLabel(it).toString(),
+                    packageName = it.packageName,
+                    icon = null,
+                    uid = it.uid,
+                    isSystemApp = (it.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                )
             }
             .sortedBy { it.label.lowercase() }
     }

@@ -25,6 +25,13 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.graphics.drawable.toBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -157,6 +164,13 @@ fun AppsSettingsScreen(
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
+                                if (app.isSystemApp) {
+                                    Text(
+                                        "Aplicación del sistema",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.tertiary
+                                    )
+                                }
                             }
                             StatusChip(text = chipText, color = chipColor)
                         }
@@ -210,10 +224,23 @@ fun AppsSettingsScreen(
 
 @Composable
 private fun AppIcon(app: AppInfoItem) {
+    val context = LocalContext.current
+    val icon by produceState(initialValue = app.icon, key1 = app.packageName) {
+        value = withContext(Dispatchers.IO) {
+            try {
+                context.packageManager.getApplicationIcon(app.packageName)
+                    .toBitmap(96, 96)
+                    .asImageBitmap()
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+    val loadedIcon = icon
     val shape = RoundedCornerShape(12.dp)
     val modifier = Modifier.size(46.dp).clip(shape)
-    if (app.icon != null) {
-        Image(bitmap = app.icon, contentDescription = app.label, modifier = modifier)
+    if (loadedIcon != null) {
+        Image(bitmap = loadedIcon, contentDescription = app.label, modifier = modifier)
     } else {
         Box(modifier = modifier.background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
             Text(

@@ -10,7 +10,7 @@ object SmartDomainAnalyzer {
         "tiktokcdn-eu.com", "byteoversea.com", "ibyteimg.com", "ibytedtos.com",
         "whatsapp.net", "whatsapp.com", "telegram.org", "t.me",
         "googlevideo.com", "ytimg.com", "googleapis.com", "gstatic.com",
-        "googleusercontent.com", "google.com", "android.com", "samsung.com",
+        "googleusercontent.com", "android.com", "samsung.com",
         "samsungcloud.com", "paypal.com", "stripe.com", "mercadopago.com", "mercadolibre.com"
     )
 

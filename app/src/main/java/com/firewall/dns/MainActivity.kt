@@ -42,6 +42,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+import com.firewall.dns.data.repository.FirewallRepository
 import com.firewall.dns.service.DnsFirewallService
 import com.firewall.dns.service.FirewallVpnService
 import com.firewall.dns.ui.screens.AppsSettingsScreen
@@ -55,6 +58,7 @@ import com.firewall.dns.ui.viewmodel.FirewallViewModel
 class MainActivity : ComponentActivity() {
 
     private lateinit var firewallViewModel: FirewallViewModel
+    private var vpnStartRequestId = 0
 
     private val vpnPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -173,11 +177,18 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startFirewallService() {
-        android.util.Log.d("MainActivity", "Encendiendo VPN")
-        FirewallVpnService.start(this)
+        val requestId = ++vpnStartRequestId
+        lifecycleScope.launch {
+            FirewallRepository.awaitInitialBlocklistLoad()
+            if (requestId == vpnStartRequestId && !isFinishing && !isDestroyed) {
+                android.util.Log.d("MainActivity", "Encendiendo VPN")
+                FirewallVpnService.start(this@MainActivity)
+            }
+        }
     }
 
     private fun stopFirewallService() {
+        vpnStartRequestId++
         val activeEngine = firewallViewModel.stats.value.engine
         android.util.Log.d("MainActivity", "Apagando VPN (motor=$activeEngine)")
         if (activeEngine == "DNS clásico") {
@@ -253,8 +264,10 @@ fun FirewallApp(
     val customBlock by viewModel.customBlockList.collectAsState()
     val customAllow by viewModel.customAllowList.collectAsState()
     val blocklistUrls by viewModel.blocklistUrls.collectAsState()
+    val blocklistsDownloaded by viewModel.blocklistsDownloaded.collectAsState()
     val smartModeEnabled by viewModel.smartModeEnabled.collectAsState()
     val isDownloading by viewModel.isDownloading.collectAsState()
+    val downloadProgress by viewModel.downloadProgress.collectAsState()
     val apps by viewModel.filteredApps.collectAsState()
     val excludedPackages by viewModel.excludedPackages.collectAsState()
     val blockedApps by viewModel.blockedApps.collectAsState()
@@ -366,6 +379,7 @@ fun FirewallApp(
                     stats = stats,
                     logs = activityLogs,
                     otherVpnActive = otherVpnActive,
+                    blocklistsDownloaded = blocklistsDownloaded,
                     onOpenMonitor = { selectedDestination = 1 },
                     onOpenThreats = { selectedDestination = 2 },
                     onOpenProtection = { selectedDestination = 3 }
@@ -397,6 +411,7 @@ fun FirewallApp(
                     blocklistUrls = blocklistUrls,
                     smartModeEnabled = smartModeEnabled,
                     isDownloading = isDownloading,
+                    downloadProgress = downloadProgress,
                     onToggleSmartMode = viewModel::toggleSmartMode,
                     onResetLearning = viewModel::resetLearning,
                     onAddBlocklistUrl = viewModel::addBlocklistUrl,

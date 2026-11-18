@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.firewall.dns.data.repository.FirewallRepository
 import com.firewall.dns.domain.model.AppInfoItem
+import com.firewall.dns.domain.model.BlocklistDownloadProgress
 import com.firewall.dns.domain.model.DnsLogEntry
 import com.firewall.dns.domain.model.FirewallStats
 import com.firewall.dns.domain.model.TrafficPoint
@@ -28,6 +29,7 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
     val customAllowList: StateFlow<List<String>> = FirewallRepository.customAllowList
     val excludedPackages: StateFlow<Set<String>> = FirewallRepository.excludedPackages
     val blocklistUrls: StateFlow<List<String>> = FirewallRepository.blocklistUrls
+    val blocklistsDownloaded: StateFlow<Boolean> = FirewallRepository.blocklistsDownloaded
     val smartModeEnabled: StateFlow<Boolean> = FirewallRepository.smartModeEnabled
     val observationModeEnabled: StateFlow<Boolean> = FirewallRepository.observationModeEnabled
     val blockedApps: StateFlow<Set<String>> = FirewallRepository.blockedApps
@@ -43,6 +45,9 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
 
     private val _isDownloading = MutableStateFlow(false)
     val isDownloading: StateFlow<Boolean> = _isDownloading.asStateFlow()
+
+    private val _downloadProgress = MutableStateFlow<BlocklistDownloadProgress?>(null)
+    val downloadProgress: StateFlow<BlocklistDownloadProgress?> = _downloadProgress.asStateFlow()
 
     private val _installedApps = MutableStateFlow<List<AppInfoItem>>(emptyList())
 
@@ -145,11 +150,15 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             _isDownloading.value = true
             try {
-                val result = FirewallRepository.downloadBlocklist()
+                _downloadProgress.value = BlocklistDownloadProgress(0, blocklistUrls.value.size, "Preparando")
+                val result = FirewallRepository.downloadBlocklist { progress ->
+                    _downloadProgress.value = progress
+                }
                 result.onSuccess { summary -> _toastMessage.tryEmit(summary) }
                     .onFailure { err -> _toastMessage.tryEmit("Error: ${err.message}") }
             } finally {
                 _isDownloading.value = false
+                _downloadProgress.value = null
             }
         }
     }

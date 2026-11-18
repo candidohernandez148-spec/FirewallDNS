@@ -35,5 +35,20 @@ data class AppInfoItem(
     val label: String,
     val packageName: String,
     val icon: ImageBitmap? = null,
-    val uid: Int = -1
+    val uid: Int = -1,
+    val isSystemApp: Boolean = false
 )
+
+
+data class BlocklistDownloadProgress(
+    val currentSource: Int,
+    val totalSources: Int,
+    val phase: String,
+    val downloadedBytes: Long = 0L,
+    val totalBytes: Long = -1L
+) {
+    val percent: Int?
+        get() = if (totalBytes > 0L) {
+            ((downloadedBytes.coerceAtMost(totalBytes) * 100L) / totalBytes).toInt()
+        } else null
+}

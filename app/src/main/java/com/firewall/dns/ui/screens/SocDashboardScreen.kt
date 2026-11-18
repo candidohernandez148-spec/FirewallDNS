@@ -26,6 +26,7 @@ fun SocDashboardScreen(
     stats: FirewallStats,
     logs: List<DnsLogEntry>,
     otherVpnActive: Boolean,
+    blocklistsDownloaded: Boolean,
     onOpenMonitor: () -> Unit,
     onOpenThreats: () -> Unit,
     onOpenProtection: () -> Unit
@@ -95,26 +96,52 @@ fun SocDashboardScreen(
                 MetricCard("Tasa de bloqueo", "$blockRate%", MaterialTheme.colorScheme.onSurface, Modifier.weight(1f))
             }
         }
-        item {
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        Text("  Señales de seguridad", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    }
-                    Text(when {
-                        otherVpnActive -> "Comprueba los ajustes de VPN: se detectó otra VPN activa."
-                        !stats.isRunning -> "Activa FirewallDNS para aplicar las reglas DNS."
-                        stats.loadedRulesCount == 0 -> "No hay reglas cargadas. Revisa las listas de protección."
-                        threatMatches > 0 -> "$threatMatches coincidencias clasificadas por el motivo de bloqueo en el historial."
-                        else -> "No hay coincidencias clasificadas como amenaza en los eventos recientes."
-                    }, style = MaterialTheme.typography.bodyMedium)
-                    Text("Datos locales basados en eventos DNS; no equivale a un análisis completo del dispositivo.",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    OutlinedButton(onClick = onOpenThreats, modifier = Modifier.fillMaxWidth()) {
-                        Text("Abrir centro de amenazas"); Spacer(Modifier.weight(1f))
-                        Icon(Icons.Default.ArrowForward, contentDescription = null)
+        if (!operational || !blocklistsDownloaded || threatMatches > 0) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Lock,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                "  Señales de seguridad",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Text(
+                            when {
+                                otherVpnActive -> "Comprueba los ajustes de VPN: se detectó otra VPN activa."
+                                !stats.isRunning -> "Activa FirewallDNS para aplicar las reglas DNS."
+                                !blocklistsDownloaded -> "Descarga y actualiza las listas para completar la protección."
+                                threatMatches > 0 -> "$threatMatches coincidencias clasificadas como amenaza en el historial DNS."
+                                else -> "Revisa el estado de protección."
+                            },
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            "Datos locales basados en eventos DNS; no equivale a un análisis completo del dispositivo.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        OutlinedButton(
+                            onClick = onOpenThreats,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Abrir centro de amenazas")
+                            Spacer(Modifier.weight(1f))
+                            Icon(Icons.Default.ArrowForward, contentDescription = null)
+                        }
                     }
                 }
             }
