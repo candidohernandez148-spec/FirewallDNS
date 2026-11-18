@@ -40,8 +40,8 @@ fun SocDashboardScreen(
     // Keep the primary status, metrics, alerts and shortcuts visible without scrolling.
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val compact = maxHeight < 620.dp
-        val sectionGap = if (compact) 6.dp else 9.dp
-        val cardPadding = if (compact) 10.dp else 12.dp
+        val sectionGap = if (compact) 5.dp else 7.dp
+        val cardPadding = if (compact) 9.dp else 11.dp
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -58,7 +58,7 @@ fun SocDashboardScreen(
                     )
                     Text(
                         "Resumen de seguridad",
-                        style = MaterialTheme.typography.titleLarge,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -78,7 +78,7 @@ fun SocDashboardScreen(
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = if (operational) MaterialTheme.colorScheme.primaryContainer
                     else MaterialTheme.colorScheme.errorContainer
@@ -251,7 +251,7 @@ private fun MetricCard(
     compact: Boolean
 ) {
     Card(
-        modifier = modifier.height(if (compact) 58.dp else 66.dp),
+        modifier = modifier.height(if (compact) 54.dp else 60.dp),
         shape = RoundedCornerShape(15.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
