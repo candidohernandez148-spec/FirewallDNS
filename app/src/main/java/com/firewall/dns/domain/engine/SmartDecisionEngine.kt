@@ -5,11 +5,13 @@ object SmartDecisionEngine {
     enum class Level { ALLOW, OBSERVE, BLOCK }
     data class Decision(val level: Level, val score: Int, val reason: String)
 
-    private val safeRoots = setOf(
-        "facebook.com", "instagram.com", "tiktok.com", "tiktokv.com",
-        "whatsapp.com", "whatsapp.net", "telegram.org", "googlevideo.com",
-        "youtube.com", "googleapis.com", "gstatic.com", "android.com",
-        "samsung.com", "paypal.com", "stripe.com", "mercadolibre.com"
+    private val safeHosts = setOf(
+        "www.facebook.com", "m.facebook.com", "web.facebook.com", "graph.facebook.com",
+        "edge-mqtt.facebook.com", "www.instagram.com", "i.instagram.com", "graph.instagram.com",
+        "www.tiktok.com", "m.tiktok.com", "www.whatsapp.com", "web.whatsapp.com",
+        "whatsapp.net", "telegram.org", "t.me", "googlevideo.com", "youtube.com",
+        "googleapis.com", "gstatic.com", "android.com", "samsung.com",
+        "samsungcloud.com", "paypal.com", "stripe.com", "mercadolibre.com"
     )
     private val strongTokens = setOf(
         "ads", "adserver", "adservice", "adsystem", "adtech", "adnxs",
@@ -39,9 +41,7 @@ object SmartDecisionEngine {
         if (clean.isEmpty() || clean.length > 253) return null
         val labels = clean.split('.')
         if (labels.size < 2 || labels.any { it.isEmpty() || it.length > 63 }) return null
-        val root2 = labels.takeLast(2).joinToString(".")
-        val root3 = if (labels.size >= 3) labels.takeLast(3).joinToString(".") else root2
-        if (root2 in safeRoots || root3 in safeRoots) return null
+        if (clean in safeHosts) return null
 
         val tokens = labels.flatMap { it.split('-', '_') }.toSet()
         val parts = labels.dropLast(1)
