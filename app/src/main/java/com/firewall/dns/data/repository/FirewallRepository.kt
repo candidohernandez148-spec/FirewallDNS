@@ -189,7 +189,10 @@ object FirewallRepository {
             _smartModeEnabled.value = prefsDataSource.getSmartModeEnabled()
             _observationModeEnabled.value = prefsDataSource.getObservationModeEnabled()
             learnedTokens.clear()
-            learnedTokens.putAll(prefsDataSource.getLearnedTokens())
+            // Descarta pesos antiguos por token: podían afectar dominios no relacionados.
+            learnedTokens.putAll(
+                prefsDataSource.getLearnedTokens().filterKeys { it.startsWith("domain:") }
+            )
             val activitySnapshot = prefsDataSource.getActivitySnapshot()
             _logs.value = activitySnapshot.logs
             logCounter.set(activitySnapshot.logs.maxOfOrNull { it.id } ?: 0L)
@@ -245,12 +248,18 @@ object FirewallRepository {
                     val next = observationQueue.tryReceive().getOrNull() ?: break
                     batch.add(next)
                 }
-                runCatching {
+                val persisted = runCatching {
                     observationPersistenceMutex.withLock {
                         // Recheck after acquiring the lock so a reset cannot be undone by an old batch.
                         val validBatch = batch.filter { it.generation == learningGeneration.get() }
                         if (validBatch.isNotEmpty()) smartLearningStore.recordBatch(validBatch)
                     }
+                }.isSuccess
+                if (!persisted) {
+                    // No perder el lote por un error temporal de persistencia; se reintentará en IO.
+                    batch.filter { it.generation == learningGeneration.get() }
+                        .forEach { observationQueue.trySend(it) }
+                    delay(1_000)
                 }
             }
         }
