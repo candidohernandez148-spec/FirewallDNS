@@ -71,7 +71,7 @@ class ThreatKnowledgeGraphTest {
         try {
             val result = SmartDecisionEngine.evaluate("cdn.doubleclick.net")
             assertEquals(SmartDecisionEngine.Level.OBSERVE, result?.level)
-            assertTrue(result?.reason?.contains("permiso repetido aprendido") == true)
+            assertTrue(result?.reason?.contains("8 permisos y 0 bloqueos") == true)
             assertEquals(
                 SmartDecisionEngine.Level.BLOCK,
                 SmartDecisionEngine.evaluate("other.doubleclick.net")?.level
@@ -180,12 +180,12 @@ class ThreatKnowledgeGraphTest {
 
     @Test fun dnsDecisionExplanationIncludesExactDomainLearningCounts() {
         ThreatKnowledgeGraph.updateObservations(
-            listOf(ThreatKnowledgeGraph.ObservationProfile("events.mixpanel.com", 8, 2))
+            listOf(ThreatKnowledgeGraph.ObservationProfile("events.mixpanel.com", 9, 1))
         )
         try {
             val result = SmartDecisionEngine.evaluate("events.mixpanel.com")
             assertEquals(SmartDecisionEngine.Level.OBSERVE, result?.level)
-            assertTrue(result?.reason?.contains("8 permisos y 2 bloqueos") == true)
+            assertTrue(result?.reason?.contains("9 permisos y 1 bloqueos") == true)
             assertTrue(result?.reason?.contains("posible falso positivo") == true)
         } finally {
             ThreatKnowledgeGraph.updateObservations(emptyList())
