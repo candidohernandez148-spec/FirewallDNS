@@ -18,6 +18,7 @@ import com.firewall.dns.domain.model.DnsLogEntry
 import com.firewall.dns.domain.model.FirewallStats
 import com.firewall.dns.domain.model.TrafficPoint
 import com.firewall.dns.service.NetworkDns
+import com.firewall.dns.service.FirewallTileService
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -425,6 +426,7 @@ object FirewallRepository {
 
     fun setRunning(running: Boolean, engine: String = "") {
         _stats.update { it.copy(isRunning = running, engine = if (running) engine else "") }
+        appContext.let(FirewallTileService::requestSync)
     }
 
     fun addLog(domain: String, qType: String, isBlocked: Boolean, reason: String, appName: String) {

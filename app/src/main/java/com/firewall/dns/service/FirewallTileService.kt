@@ -27,7 +27,7 @@ class FirewallTileService : TileService() {
         val running = FirewallRepository.stats.value.isRunning
 
         if (running) {
-            if (FirewallRepository.stats.value.engine == "DNS clásico") {
+            if (FirewallRepository.stats.value.engine.startsWith("DNS clásico")) {
                 startService(Intent(this, DnsFirewallService::class.java).apply {
                     action = DnsFirewallService.ACTION_STOP
                 })
@@ -39,8 +39,9 @@ class FirewallTileService : TileService() {
         } else {
             if (VpnService.prepare(this) == null) {
                 FirewallVpnService.start(this)
-                setTile(active = true, subtitle = "Activando…")
+                setTile(active = false, subtitle = "Activando…")
             } else {
+                setTile(active = false, subtitle = "Requiere permiso")
                 val wrapper = PendingIntentActivityWrapper(
                     this, 0, Intent(this, MainActivity::class.java),
                     PendingIntent.FLAG_UPDATE_CURRENT, false
