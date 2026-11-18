@@ -52,7 +52,6 @@ import com.firewall.dns.ui.screens.LogsScreen
 import com.firewall.dns.ui.screens.RulesScreen
 import com.firewall.dns.ui.screens.SecurityCenterScreen
 import com.firewall.dns.ui.screens.SocDashboardScreen
-import com.firewall.dns.ui.screens.ThreatIntelligenceScreen
 import com.firewall.dns.ui.theme.FirewallTheme
 import com.firewall.dns.ui.viewmodel.FirewallViewModel
 import com.firewall.dns.work.BlocklistUpdateScheduler
@@ -303,8 +302,7 @@ fun FirewallApp(
         "Monitor" to Icons.Default.Search,
         "Amenazas" to Icons.Default.Warning,
         "Protección" to Icons.Default.Lock,
-        "Sistema" to Icons.Default.Settings,
-        "Mapa" to Icons.Default.Search
+        "Sistema" to Icons.Default.Settings
     )
 
     Scaffold(
@@ -323,8 +321,7 @@ fun FirewallApp(
                                     1 -> "Monitor DNS"
                                     2 -> "Centro de amenazas"
                                     3 -> "Protección"
-                                    4 -> "Sistema y aplicaciones"
-                                    else -> "Mapa de inteligencia"
+                                    else -> "Sistema y aplicaciones"
                                 },
                                 fontWeight = FontWeight.Bold,
                                 style = MaterialTheme.typography.titleMedium
@@ -436,10 +433,6 @@ fun FirewallApp(
                     onToggleExcludedApp = viewModel::toggleExcludedApp,
                     onOpenBatteryOpt = onOpenBatteryOpt,
                     onOpenVpnSettings = onOpenVpnSettings
-                )
-                5 -> ThreatIntelligenceScreen(
-                    blockedDomains = customBlock.toSet(),
-                    onBlockDomain = { domain -> viewModel.setCustomRule(domain, block = true) }
                 )
             }
         }
