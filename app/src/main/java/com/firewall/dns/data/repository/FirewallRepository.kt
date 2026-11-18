@@ -95,6 +95,7 @@ object FirewallRepository {
     private val learnedDomains = ConcurrentHashMap.newKeySet<String>()
     private val learningSaveScheduled = AtomicBoolean(false)
     private val activitySaveScheduled = AtomicBoolean(false)
+    private val activityVersion = AtomicLong(0L)
     private val learningScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val logCounter = AtomicLong(0L)
@@ -354,6 +355,7 @@ object FirewallRepository {
     fun clearLogs() {
         _logs.value = emptyList()
         _stats.update { it.copy(totalAllowed = 0, totalBlocked = 0) }
+        activityVersion.incrementAndGet()
         prefsDataSource.clearActivitySnapshot()
     }
 
@@ -434,6 +436,7 @@ object FirewallRepository {
             if (allowed) stats.copy(totalAllowed = stats.totalAllowed + 1)
             else stats.copy(totalBlocked = stats.totalBlocked + 1)
         }
+        activityVersion.incrementAndGet()
         scheduleActivitySave()
     }
 
@@ -441,14 +444,23 @@ object FirewallRepository {
     private fun scheduleActivitySave() {
         if (!activitySaveScheduled.compareAndSet(false, true)) return
         learningScope.launch {
-            delay(2_000)
-            activitySaveScheduled.set(false)
-            val currentStats = _stats.value
-            prefsDataSource.saveActivitySnapshot(
-                logs = _logs.value,
-                totalAllowed = currentStats.totalAllowed,
-                totalBlocked = currentStats.totalBlocked
-            )
+            var persistedVersion = -1L
+            try {
+                do {
+                    delay(2_000)
+                    val version = activityVersion.get()
+                    val currentStats = _stats.value
+                    prefsDataSource.saveActivitySnapshot(
+                        logs = _logs.value,
+                        totalAllowed = currentStats.totalAllowed,
+                        totalBlocked = currentStats.totalBlocked
+                    )
+                    persistedVersion = version
+                } while (activityVersion.get() != persistedVersion)
+            } finally {
+                activitySaveScheduled.set(false)
+                if (activityVersion.get() != persistedVersion) scheduleActivitySave()
+            }
         }
     }
 }
