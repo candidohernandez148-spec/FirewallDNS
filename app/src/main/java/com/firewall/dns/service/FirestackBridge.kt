@@ -67,9 +67,15 @@ class FirestackBridge(
             opts.tidcsv = upstreamId
             return opts
         }
-        val (blocked, reason) = evaluate(qname)
-        opts.tidcsv = if (blocked) Backend.BlockAll else upstreamId
         val numericUid = uid?.toIntOrNull()
+        val appBlocked = numericUid != null && numericUid >= 0 &&
+            AppFirewallManager.isUidBlocked(numericUid)
+        val (blocked, reason) = if (appBlocked) {
+            true to "Internet bloqueado para la app"
+        } else {
+            evaluate(qname)
+        }
+        opts.tidcsv = if (blocked) Backend.BlockAll else upstreamId
         val appName = if (numericUid != null && numericUid >= 0) appLabel(numericUid) else "Sistema / DNS"
         FirewallRepository.addLog(
             domain = qname,
