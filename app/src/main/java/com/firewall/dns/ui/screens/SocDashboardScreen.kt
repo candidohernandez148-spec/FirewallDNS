@@ -2,14 +2,11 @@ package com.firewall.dns.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Lock
-
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -32,186 +29,296 @@ fun SocDashboardScreen(
     onOpenProtection: () -> Unit
 ) {
     val operational = stats.isRunning && !otherVpnActive
-    val threatMatches = logs.count { e -> e.isBlocked &&
-        listOf("phishing", "malware", "ransomware", "botnet", "tracker", "rastreo", "sospech")
-            .any(e.reason.lowercase()::contains) }
+    val threatMatches = logs.count { e ->
+        e.isBlocked && listOf("phishing", "malware", "ransomware", "botnet", "tracker", "rastreo", "sospech")
+            .any(e.reason.lowercase()::contains)
+    }
     val total = stats.totalAllowed + stats.totalBlocked
     val blockRate = if (total > 0) stats.totalBlocked * 100 / total else 0L
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("CENTRO DE OPERACIONES", style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                Text("Resumen de seguridad", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Text("Supervisa el filtrado DNS y el estado de protección de este dispositivo.",
-                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-        item {
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = if (operational)
-                    MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer)) {
-                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Surface(shape = CircleShape, color = if (operational) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.error, modifier = Modifier.size(42.dp)) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.Lock, contentDescription = "Estado de protección",
-                                    tint = if (operational) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onError)
-                            }
-                        }
-                        Column(Modifier.weight(1f)) {
-                            Text(if (operational) "Protección operativa" else "Atención requerida",
-                                style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                            Text(when {
-                                otherVpnActive -> "Otra VPN está ocupando la conexión VPN de Android."
-                                !stats.isRunning -> "El filtrado DNS está desactivado."
-                                else -> "Motor activo: ${stats.engine.ifBlank { "DNS" }}."
-                            }, style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        StatePill(if (stats.isRunning) "Firewall activo" else "Firewall apagado")
-                        StatePill(if (otherVpnActive) "Conflicto VPN" else "VPN del sistema")
-                    }
-                    Text("Red actual: ${stats.networkType.ifBlank { "No disponible" }}",
-                        style = MaterialTheme.typography.labelLarge)
+    // The A34's portrait layout has enough room for a compact operational overview.
+    // Keep the primary status, metrics, alerts and shortcuts visible without scrolling.
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val compact = maxHeight < 620.dp
+        val sectionGap = if (compact) 6.dp else 9.dp
+        val cardPadding = if (compact) 10.dp else 12.dp
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 12.dp, vertical = if (compact) 7.dp else 10.dp),
+            verticalArrangement = Arrangement.spacedBy(sectionGap)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Text(
+                        "CENTRO DE OPERACIONES",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        "Resumen de seguridad",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = if (operational) MaterialTheme.colorScheme.primaryContainer
+                    else MaterialTheme.colorScheme.errorContainer
+                ) {
+                    Text(
+                        if (operational) "PROTEGIDO" else "REVISAR",
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
-        }
-        item {
-            Text("Actividad de red", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                MetricCard("Bloqueados", stats.totalBlocked.toString(), MaterialTheme.colorScheme.error, Modifier.weight(1f))
-                MetricCard("Permitidos", stats.totalAllowed.toString(), MaterialTheme.colorScheme.primary, Modifier.weight(1f))
-            }
-            Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                MetricCard("Reglas cargadas", stats.loadedRulesCount.toString(), MaterialTheme.colorScheme.onSurface, Modifier.weight(1f))
-                MetricCard("Tasa de bloqueo", "$blockRate%", MaterialTheme.colorScheme.onSurface, Modifier.weight(1f))
-            }
-        }
-        if (!operational || !blocklistsDownloaded || threatMatches > 0) {
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (operational) MaterialTheme.colorScheme.primaryContainer
+                    else MaterialTheme.colorScheme.errorContainer
+                )
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(cardPadding),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    Surface(
+                        shape = CircleShape,
+                        color = if (operational) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(38.dp)
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 Icons.Default.Lock,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                "  Señales de seguridad",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
+                                contentDescription = "Estado de protección",
+                                tint = if (operational) MaterialTheme.colorScheme.onPrimary
+                                else MaterialTheme.colorScheme.onError
                             )
                         }
+                    }
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            if (operational) "Protección operativa" else "Atención requerida",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                         Text(
                             when {
-                                otherVpnActive -> "Comprueba los ajustes de VPN: se detectó otra VPN activa."
-                                !stats.isRunning -> "Activa FirewallDNS para aplicar las reglas DNS."
-                                !blocklistsDownloaded -> "Descarga y actualiza las listas para completar la protección."
-                                threatMatches > 0 -> "$threatMatches coincidencias clasificadas como amenaza en el historial DNS."
-                                else -> "Revisa el estado de protección."
+                                otherVpnActive -> "Otra VPN ocupa la conexión VPN de Android."
+                                !stats.isRunning -> "El filtrado DNS está desactivado."
+                                else -> "Motor activo: ${stats.engine.ifBlank { "DNS" }}."
                             },
-                            style = MaterialTheme.typography.bodyMedium
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            "Datos locales basados en eventos DNS; no equivale a un análisis completo del dispositivo.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            "Red: ${stats.networkType.ifBlank { "No disponible" }}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1
                         )
-                        OutlinedButton(
-                            onClick = onOpenThreats,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Abrir centro de amenazas")
-                            Spacer(Modifier.weight(1f))
-                            Icon(Icons.Default.ArrowForward, contentDescription = null)
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            if (stats.isRunning) "ON" else "OFF",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Black
+                        )
+                        Text(
+                            if (otherVpnActive) "VPN en conflicto" else "Firewall",
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Actividad de red", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    MetricCard("Bloqueados", stats.totalBlocked.toString(), MaterialTheme.colorScheme.error, Modifier.weight(1f), compact)
+                    MetricCard("Permitidos", stats.totalAllowed.toString(), MaterialTheme.colorScheme.primary, Modifier.weight(1f), compact)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    MetricCard("Reglas cargadas", stats.loadedRulesCount.toString(), MaterialTheme.colorScheme.onSurface, Modifier.weight(1f), compact)
+                    MetricCard("Tasa de bloqueo", "$blockRate%", MaterialTheme.colorScheme.onSurface, Modifier.weight(1f), compact)
+                }
+            }
+
+            if (!operational || !blocklistsDownloaded || threatMatches > 0) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                            Text("Señal de seguridad", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                            Text(
+                                when {
+                                    otherVpnActive -> "Se detectó otra VPN activa."
+                                    !stats.isRunning -> "Activa FirewallDNS para filtrar DNS."
+                                    !blocklistsDownloaded -> "Falta descargar las listas de bloqueo."
+                                    threatMatches > 0 -> "$threatMatches coincidencias de amenaza en el historial DNS."
+                                    else -> "Revisa el estado de protección."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        IconButton(onClick = onOpenThreats) {
+                            Icon(Icons.Default.ArrowForward, contentDescription = "Abrir amenazas")
                         }
                     }
                 }
             }
-        }
-        item {
+
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Actividad reciente", style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                OutlinedButton(onClick = onOpenMonitor, contentPadding = PaddingValues(horizontal = 12.dp)) {
+                Text(
+                    "Actividad reciente",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = onOpenMonitor, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
                     Text("Ver todo")
                 }
             }
-        }
-        if (logs.isEmpty()) {
-            item {
-                Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
-                    Text("Todavía no hay eventos DNS registrados.", Modifier.padding(16.dp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+            if (logs.isEmpty()) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    Text(
+                        "Todavía no hay eventos DNS registrados.",
+                        modifier = Modifier.padding(11.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                logs.take(if (compact) 1 else 2).forEach { entry ->
+                    RecentDnsEvent(entry, compact)
                 }
             }
-        } else {
-            items(logs.take(5), key = { it.id }) { entry ->
-                RecentDnsEvent(entry)
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = onOpenMonitor,
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 9.dp)
+                ) {
+                    Text("Monitor DNS", maxLines = 1, style = MaterialTheme.typography.labelMedium)
+                }
+                Button(
+                    onClick = onOpenProtection,
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 9.dp)
+                ) {
+                    Text("Protección", maxLines = 1, style = MaterialTheme.typography.labelMedium)
+                    Spacer(Modifier.width(4.dp))
+                    Icon(Icons.Default.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp))
+                }
             }
         }
-        item {
-            Button(onClick = onOpenProtection, modifier = Modifier.fillMaxWidth(),
-                contentPadding = PaddingValues(vertical = 14.dp)) {
-                Text("Administrar protección y listas"); Spacer(Modifier.weight(1f))
-                Icon(Icons.Default.ArrowForward, contentDescription = null)
-            }
+    }
+}
+
+@Composable
+private fun MetricCard(
+    label: String,
+    value: String,
+    valueColor: Color,
+    modifier: Modifier = Modifier,
+    compact: Boolean
+) {
+    Card(
+        modifier = modifier.height(if (compact) 58.dp else 66.dp),
+        shape = RoundedCornerShape(15.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            Modifier.fillMaxSize().padding(horizontal = 11.dp, vertical = 7.dp),
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                value,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = valueColor,
+                maxLines = 1
+            )
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
 
 @Composable
-private fun MetricCard(label: String, value: String, valueColor: Color, modifier: Modifier = Modifier) {
-    Card(modifier, shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-        Column(Modifier.fillMaxWidth().padding(15.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = valueColor)
-            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-    }
-}
-
-@Composable
-private fun StatePill(label: String) {
-    Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)) {
-        Text(label, Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
-    }
-}
-
-@Composable
-private fun RecentDnsEvent(entry: DnsLogEntry) {
+private fun RecentDnsEvent(entry: DnsLogEntry, compact: Boolean) {
     val blocked = entry.isBlocked
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-        Row(Modifier.padding(13.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
-            Box(Modifier.size(9.dp).background(if (blocked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, CircleShape))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(entry.domain, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("${entry.appName} · ${entry.timestamp}", style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    Card(
+        Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(13.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Row(
+            Modifier.padding(horizontal = 10.dp, vertical = if (compact) 7.dp else 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(9.dp)
+        ) {
+            Box(
+                Modifier.size(8.dp).background(
+                    if (blocked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                    CircleShape
+                )
+            )
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                Text(
+                    entry.domain,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    "${entry.appName} · ${entry.timestamp}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
-            Text(if (blocked) "BLOQUEADO" else "PERMITIDO", style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold, color = if (blocked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+            Text(
+                if (blocked) "BLOQUEADO" else "PERMITIDO",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = if (blocked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                maxLines = 1
+            )
         }
     }
 }
