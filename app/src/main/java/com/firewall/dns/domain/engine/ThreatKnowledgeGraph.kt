@@ -22,7 +22,6 @@ object ThreatKnowledgeGraph {
         val confidence: Confidence
     )
 
-    // Nodos semilla: dominios de proveedor conocidos y su relación semántica.
     data class ObservationProfile(
         val domain: String,
         val allowedCount: Long,
@@ -58,7 +57,7 @@ object ThreatKnowledgeGraph {
 
     /** Señal contextual exacta; evita propagar la reputación de un dominio a otros hosts. */
     fun isRepeatedlyAllowed(domain: String): Boolean =
-        observations[domain.trim().lowercase().trimEnd('.') ]?.let { it.allowed } == true
+        observations[domain.trim().lowercase().trimEnd('.')]?.let { it.allowed } == true
 
     fun hasRepeatedObservations(domain: String): Boolean =
         observations.containsKey(domain.trim().lowercase().trimEnd('.'))
@@ -66,6 +65,13 @@ object ThreatKnowledgeGraph {
     private const val MIN_OBSERVATIONS = 8L
     private const val ALLOWED_RATIO = 0.90
 
+    /**
+     * Catálogo semilla conservador:
+     * - Los endpoints publicitarios específicos de plataformas sociales tienen confianza alta.
+     * - facebook.net se mantiene como rastreo de confianza media porque también aloja SDKs
+     *   y funciones de integración; por sí solo no provoca bloqueo automático.
+     * - No se añaden raíces completas de Facebook, Instagram o TikTok como proveedores.
+     */
     private val providers = listOf(
         Provider("doubleclick.net", Category.ADVERTISING, Confidence.HIGH),
         Provider("googlesyndication.com", Category.ADVERTISING, Confidence.HIGH),
@@ -79,6 +85,14 @@ object ThreatKnowledgeGraph {
         Provider("pubmatic.com", Category.ADVERTISING, Confidence.HIGH),
         Provider("openx.net", Category.ADVERTISING, Confidence.HIGH),
         Provider("unityads.unity3d.com", Category.ADVERTISING, Confidence.HIGH),
+        Provider("ads.facebook.com", Category.ADVERTISING, Confidence.HIGH),
+        Provider("pixel.facebook.com", Category.ADVERTISING, Confidence.HIGH),
+        Provider("pixel.instagram.com", Category.ADVERTISING, Confidence.HIGH),
+        Provider("pangle.io", Category.ADVERTISING, Confidence.HIGH),
+        Provider("pangleglobal.com", Category.ADVERTISING, Confidence.HIGH),
+        Provider("snapads.com", Category.ADVERTISING, Confidence.HIGH),
+        Provider("ads-twitter.com", Category.ADVERTISING, Confidence.HIGH),
+        Provider("facebook.net", Category.TRACKING, Confidence.MEDIUM),
         Provider("appsflyer.com", Category.TRACKING, Confidence.MEDIUM),
         Provider("adjust.com", Category.TRACKING, Confidence.MEDIUM),
         Provider("branch.io", Category.TRACKING, Confidence.MEDIUM),

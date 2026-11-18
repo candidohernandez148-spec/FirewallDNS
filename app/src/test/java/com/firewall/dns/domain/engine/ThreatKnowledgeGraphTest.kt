@@ -13,8 +13,40 @@ class ThreatKnowledgeGraphTest {
         assertEquals("subdominio de proveedor", evidence?.relation)
     }
 
+    @Test fun socialPlatformAdEndpointsAreKnownWithoutClassifyingPlatformRoots() {
+        val cases = mapOf(
+            "ads.facebook.com" to "ads.facebook.com",
+            "pixel.instagram.com" to "pixel.instagram.com",
+            "cdn.pangle.io" to "pangle.io",
+            "sdk.snapads.com" to "snapads.com",
+            "pixel.ads-twitter.com" to "ads-twitter.com"
+        )
+        cases.forEach { (domain, provider) ->
+            val evidence = ThreatKnowledgeGraph.inspect(domain)
+            assertEquals(provider, evidence?.provider)
+            assertEquals(ThreatKnowledgeGraph.Category.ADVERTISING, evidence?.category)
+            assertEquals(ThreatKnowledgeGraph.Confidence.HIGH, evidence?.confidence)
+        }
+
+        assertNull(ThreatKnowledgeGraph.inspect("www.facebook.com"))
+        assertNull(ThreatKnowledgeGraph.inspect("www.instagram.com"))
+        assertNull(ThreatKnowledgeGraph.inspect("www.tiktok.com"))
+    }
+
+    @Test fun sharedSocialSdkDomainIsObservedRatherThanAutomaticallyBlocked() {
+        val evidence = ThreatKnowledgeGraph.inspect("connect.facebook.net")
+        assertEquals("facebook.net", evidence?.provider)
+        assertEquals(ThreatKnowledgeGraph.Category.TRACKING, evidence?.category)
+        assertEquals(ThreatKnowledgeGraph.Confidence.MEDIUM, evidence?.confidence)
+        assertEquals(
+            SmartDecisionEngine.Level.OBSERVE,
+            SmartDecisionEngine.evaluate("connect.facebook.net")?.level
+        )
+    }
+
     @Test fun unrelatedLookalikeDoesNotMatchProviderNode() {
         assertNull(ThreatKnowledgeGraph.inspect("notdoubleclick.net"))
+        assertNull(ThreatKnowledgeGraph.inspect("notpangle.io"))
     }
 
     @Test fun smartEngineBlocksHighConfidenceAdvertisingAndObservesAnalytics() {
@@ -31,21 +63,15 @@ class ThreatKnowledgeGraphTest {
         val result = SmartDecisionEngine.evaluate("cdn.doubleclick.net", mapOf("cdn" to -2))
         assertEquals(SmartDecisionEngine.Level.OBSERVE, result?.level)
     }
+
     @Test fun repeatedAllowedObservationsDowngradeExactProviderDomain() {
         ThreatKnowledgeGraph.updateObservations(
-            listOf(
-                ThreatKnowledgeGraph.ObservationProfile(
-                    domain = "cdn.doubleclick.net",
-                    allowedCount = 8,
-                    blockedCount = 0
-                )
-            )
+            listOf(ThreatKnowledgeGraph.ObservationProfile("cdn.doubleclick.net", 8, 0))
         )
         try {
             val result = SmartDecisionEngine.evaluate("cdn.doubleclick.net")
             assertEquals(SmartDecisionEngine.Level.OBSERVE, result?.level)
             assertTrue(result?.reason?.contains("permiso repetido aprendido") == true)
-            // La evidencia no se propaga a otros dominios del mismo proveedor.
             assertEquals(
                 SmartDecisionEngine.Level.BLOCK,
                 SmartDecisionEngine.evaluate("other.doubleclick.net")?.level
@@ -58,16 +84,8 @@ class ThreatKnowledgeGraphTest {
     @Test fun contextualLearningRequiresEightObservationsAndNinetyPercentAllowed() {
         ThreatKnowledgeGraph.updateObservations(
             listOf(
-                ThreatKnowledgeGraph.ObservationProfile(
-                    domain = "cdn.doubleclick.net",
-                    allowedCount = 7,
-                    blockedCount = 0
-                ),
-                ThreatKnowledgeGraph.ObservationProfile(
-                    domain = "pixel.doubleclick.net",
-                    allowedCount = 8,
-                    blockedCount = 1
-                )
+                ThreatKnowledgeGraph.ObservationProfile("cdn.doubleclick.net", 7, 0),
+                ThreatKnowledgeGraph.ObservationProfile("pixel.doubleclick.net", 8, 1)
             )
         )
         try {
@@ -87,13 +105,7 @@ class ThreatKnowledgeGraphTest {
     @Test fun repeatedAllowedSignalDoesNotOverrideActiveBlocklistKnowledge() {
         SmartDecisionEngine.updateBlocklistKnowledge(setOf("cdn.doubleclick.net"))
         ThreatKnowledgeGraph.updateObservations(
-            listOf(
-                ThreatKnowledgeGraph.ObservationProfile(
-                    domain = "cdn.doubleclick.net",
-                    allowedCount = 20,
-                    blockedCount = 0
-                )
-            )
+            listOf(ThreatKnowledgeGraph.ObservationProfile("cdn.doubleclick.net", 20, 0))
         )
         try {
             assertEquals(
@@ -105,5 +117,4 @@ class ThreatKnowledgeGraphTest {
             ThreatKnowledgeGraph.updateObservations(emptyList())
         }
     }
-
 }
