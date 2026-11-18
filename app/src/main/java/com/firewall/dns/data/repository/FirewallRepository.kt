@@ -113,8 +113,8 @@ object FirewallRepository {
     private val activitySaveScheduled = AtomicBoolean(false)
     private val activityVersion = AtomicLong(0L)
     private val learningScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    // Señal conflada + agregación por dominio: la ruta DNS nunca espera al disco y el
-    // número de observaciones pendientes queda acotado al mismo máximo del almacén local.
+    // Señal conflada + agregación por dominio: la ruta DNS nunca espera al disco y las
+    // consultas repetidas no generan una entrada independiente en la cola de persistencia.
     private val observationQueue = Channel<Unit>(Channel.CONFLATED)
     private val pendingObservationLock = Any()
     private val pendingObservations = LinkedHashMap<String, DomainObservationEvent>()
