@@ -140,11 +140,12 @@ class SmartDecisionEngineTest {
             mapOf("domain:ads.example.org" to -2)
         )
         val unrelatedDomain = SmartDecisionEngine.evaluate(
-            "ads.other.org",
+            "adserver.other.org",
             mapOf("domain:ads.example.org" to -2)
         )
         assertEquals(SmartDecisionEngine.Level.OBSERVE, allowedDomain?.level)
         assertEquals(SmartDecisionEngine.Level.BLOCK, unrelatedDomain?.level)
+        assertTrue(unrelatedDomain?.reason?.contains("el aprendizaje local impide") != true)
     }
 
     @Test fun heuristicDecisionsExposeSignalsScoreConfidenceAndCriterion() {
