@@ -54,6 +54,7 @@ import com.firewall.dns.ui.screens.SecurityCenterScreen
 import com.firewall.dns.ui.screens.SocDashboardScreen
 import com.firewall.dns.ui.theme.FirewallTheme
 import com.firewall.dns.ui.viewmodel.FirewallViewModel
+import com.firewall.dns.work.BlocklistUpdateScheduler
 
 class MainActivity : ComponentActivity() {
 
@@ -79,6 +80,7 @@ class MainActivity : ComponentActivity() {
             prevHandler?.uncaughtException(thread, throwable)
         }
         super.onCreate(savedInstanceState)
+        BlocklistUpdateScheduler.schedule(this)
 
         if (!savedCrash.isNullOrBlank()) {
             showCrashScreen(savedCrash, crashPrefs)

@@ -31,6 +31,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -100,6 +102,7 @@ object FirewallRepository {
     private val activityVersion = AtomicLong(0L)
     private val learningScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val initialBlocklistLoad = CompletableDeferred<Unit>()
+    private val blocklistDownloadMutex = Mutex()
     private val blocklistGeneration = AtomicLong(0L)
 
     private val logCounter = AtomicLong(0L)
@@ -277,13 +280,13 @@ object FirewallRepository {
 
     suspend fun downloadBlocklist(
         onProgress: (BlocklistDownloadProgress) -> Unit = {}
-    ): Result<String> {
+    ): Result<String> = blocklistDownloadMutex.withLock {
         awaitInitialBlocklistLoad()
         val urls = _blocklistUrls.value
         val result = blocklistDataSource.downloadMultipleAndSave(
             defaultDomains, urls, ThreatFeedCatalog.signedFeedConfigs, onProgress
         )
-        return result.map { snapshot ->
+        result.map { snapshot ->
             blocklistGeneration.incrementAndGet()
             hostBlockSet.clear()
             hostBlockSet.addAll(snapshot.blocked)
