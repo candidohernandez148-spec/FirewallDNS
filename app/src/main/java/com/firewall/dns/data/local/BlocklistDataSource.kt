@@ -6,6 +6,7 @@ import com.firewall.dns.domain.engine.BlocklistSourcePolicy
 import com.firewall.dns.domain.engine.RuleEvaluator
 import com.firewall.dns.domain.engine.ThreatFeedCatalog
 import com.firewall.dns.domain.engine.ThreatFeedCategory
+import com.firewall.dns.domain.engine.ThreatFeedIntegrityPolicy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -82,6 +83,8 @@ class BlocklistDataSource(context: Context) {
         val categoryDomains = ThreatFeedCategory.values().associateWith { HashSet<String>() }.toMutableMap()
         var lastError: Exception? = null
         val completedSources = HashSet<String>()
+        val sourceDigests = ArrayList<String>()
+        var totalParsedRules = 0
 
         for (targetUrl in uniqueUrls) {
             if (!BlocklistSourcePolicy.isAllowed(targetUrl)) {
@@ -122,15 +125,22 @@ class BlocklistDataSource(context: Context) {
                 val sourceBlocked = HashSet<String>()
                 val sourceExceptions = HashSet<String>()
                 var lineCount = 0
+                var parsedRuleCount = 0
                 String(payload, StandardCharsets.UTF_8).lineSequence().forEach { line ->
                     lineCount++
                     if (lineCount > MAX_SOURCE_LINES) throw IllegalStateException("La lista supera 200,000 líneas")
                     if (line.length > MAX_LINE_CHARS) throw IllegalStateException("La lista contiene una línea demasiado larga")
                     RuleEvaluator.parseAdblockLine(line)?.let { parsed ->
+                        parsedRuleCount++
                         if (parsed.isException) sourceExceptions.add(parsed.domain) else sourceBlocked.add(parsed.domain)
                     }
                 }
+                ThreatFeedIntegrityPolicy.validateSource(payload.size, parsedRuleCount)?.let { message ->
+                    throw IllegalStateException("$message: $targetUrl")
+                }
 
+                totalParsedRules += parsedRuleCount
+                sourceDigests += ThreatFeedIntegrityPolicy.sha256(payload)
                 blocked.addAll(sourceBlocked)
                 exceptions.addAll(sourceExceptions)
                 val category = ThreatFeedCatalog.categoryForUrl(targetUrl)
@@ -181,7 +191,9 @@ class BlocklistDataSource(context: Context) {
         }
 
         val categorizedCount = categoryDomains.filterKeys { it != ThreatFeedCategory.GENERAL }.values.sumOf { it.size }
-        val summary = "Listas HTTPS actualizadas: ${uniqueUrls.size} fuentes, ${blocked.size} reglas, ${categorizedCount} indicadores categorizados"
+        val fingerprintInput = sourceDigests.sorted().joinToString("\\n").toByteArray(StandardCharsets.UTF_8)
+        val fingerprint = ThreatFeedIntegrityPolicy.sha256(fingerprintInput).take(16)
+        val summary = "Listas HTTPS actualizadas: ${uniqueUrls.size} fuentes validadas, $totalParsedRules reglas DNS válidas, ${blocked.size} reglas activas, $categorizedCount indicadores categorizados. Huella SHA-256: $fingerprint"
         Result.success(
             BlocklistSnapshot(
                 blocked = blocked,
