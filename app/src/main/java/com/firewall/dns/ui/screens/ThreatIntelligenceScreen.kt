@@ -88,6 +88,29 @@ fun ThreatIntelligenceScreen() {
             }
         }
         item {
+            Text("Evaluación de dominios aprendidos", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("Los perfiles desconocidos se ordenan por su historial. Un candidato a revisión no se considera malware confirmado ni se bloquea automáticamente.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        val assessments = remember(refreshKey) { ThreatKnowledgeGraph.learnedDomainAssessments() }
+        if (assessments.isEmpty()) {
+            item { Text("Aún no hay perfiles desconocidos con ocho o más observaciones.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+        items(assessments.take(50), key = { "learned-${it.domain}" }) { assessment ->
+            val (statusLabel, statusColor) = when (assessment.status) {
+                ThreatKnowledgeGraph.LearnedAssessmentStatus.REVIEW_CANDIDATE -> "REVISAR" to MaterialTheme.colorScheme.error
+                ThreatKnowledgeGraph.LearnedAssessmentStatus.POSSIBLE_FALSE_POSITIVE -> "POSIBLE FALSO POSITIVO" to MaterialTheme.colorScheme.tertiary
+                ThreatKnowledgeGraph.LearnedAssessmentStatus.MIXED_HISTORY -> "EVIDENCIA MIXTA" to MaterialTheme.colorScheme.secondary
+            }
+            Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(statusLabel, style = MaterialTheme.typography.labelSmall, color = statusColor, fontWeight = FontWeight.Bold)
+                    Text(assessment.domain, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text("Permisos: ${assessment.allowedCount} · Bloqueos: ${assessment.blockedCount} · Total: ${assessment.totalObservations}", style = MaterialTheme.typography.bodySmall)
+                    Text(assessment.explanation, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        item {
             Text("Correlaciones activas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         }
         if (correlations.isEmpty()) {
