@@ -82,6 +82,16 @@ object SmartDecisionEngine {
                 "; aprendizaje local: ${it.allowedCount} permisos y ${it.blockedCount} bloqueos " +
                     "de ${it.total} observaciones (${it.interpretation})"
             }.orEmpty()
+            val relatedProviderNote =
+                ThreatKnowledgeGraph.relatedProviderObservationEvidence(clean)
+                    ?.takeIf { it.observedDomainCount > 1 }
+                    ?.let {
+                        "; correlación local del proveedor ${it.provider}: " +
+                            "${it.observedDomainCount} dominios relacionados, " +
+                            "${it.allowedCount} permisos y ${it.blockedCount} bloqueos " +
+                            "de ${it.total} observaciones (${it.interpretation}); " +
+                            "contexto informativo, no cambia el nivel de decisión"
+                    }.orEmpty()
             val criterion = when {
                 level == Level.BLOCK -> "proveedor publicitario de confianza alta"
                 repeatedlyAllowed -> "el permiso repetido evita el bloqueo heurístico"
@@ -91,7 +101,7 @@ object SmartDecisionEngine {
                 level,
                 score,
                 "$label: relación del mapa de conocimiento con ${evidence.provider} " +
-                    "(${evidence.relation}; $category$learningNote) | " +
+                    "(${evidence.relation}; $category$learningNote$relatedProviderNote) | " +
                     "Evidencia: ${evidence.knowledgePath.joinToString(" → ")} | " +
                     "Confianza: $confidenceLabel | Criterio: $criterion"
             )
