@@ -111,7 +111,10 @@ fun ThreatIntelligenceScreen() {
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {\n                    Button(onClick = { refreshKey++ }, enabled = !isRefreshing) { Text("Actualizar mapa") }\n                    if (isRefreshing) androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.padding(8.dp))\n                }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(onClick = { refreshKey++ }, enabled = !isRefreshing) { Text("Actualizar mapa") }
+                    if (isRefreshing) androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.padding(8.dp))
+                }
             }
         }
         item {
