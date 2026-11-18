@@ -368,7 +368,7 @@ fun FirewallApp(
                         onClick = { selectedDestination = index },
                         icon = { Icon(destination.second, contentDescription = destination.first) },
                         label = { Text(destination.first, maxLines = 1) },
-                        alwaysShowLabel = true
+                        alwaysShowLabel = false
                     )
                 }
             }
