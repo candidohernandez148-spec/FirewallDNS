@@ -56,6 +56,7 @@ object FirewallRepository {
     private const val TRAFFIC_POINTS = 40
     private const val TRAFFIC_INTERVAL_MS = 2_000L
     private const val MAX_LEARNED_DOMAINS = 5000
+    private const val ACTIVITY_SAVE_INTERVAL_MS = 5_000L
 
     private lateinit var appContext: Context
     private lateinit var prefsDataSource: PreferencesDataSource
@@ -556,7 +557,7 @@ object FirewallRepository {
             var persistedVersion = -1L
             try {
                 do {
-                    delay(2_000)
+                    delay(ACTIVITY_SAVE_INTERVAL_MS)
                     val version = activityVersion.get()
                     val currentStats = _stats.value
                     prefsDataSource.saveActivitySnapshot(
