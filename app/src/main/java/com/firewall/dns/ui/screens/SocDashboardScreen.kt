@@ -8,8 +8,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Lock
+
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -60,7 +60,7 @@ fun SocDashboardScreen(
                         Surface(shape = CircleShape, color = if (operational) MaterialTheme.colorScheme.primary
                             else MaterialTheme.colorScheme.error, modifier = Modifier.size(42.dp)) {
                             Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.Shield, contentDescription = "Estado de protección",
+                                Icon(Icons.Default.Lock, contentDescription = "Estado de protección",
                                     tint = if (operational) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onError)
                             }
                         }
@@ -100,7 +100,7 @@ fun SocDashboardScreen(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Security, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Text("  Señales de seguridad", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     }
                     Text(when {
