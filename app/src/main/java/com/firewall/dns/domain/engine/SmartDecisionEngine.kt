@@ -61,7 +61,8 @@ object SmartDecisionEngine {
         }
 
         val tokens = labels.flatMap { it.split('-', '_') }.toSet()
-        val learnedAllow = tokens.any { (learnedWeights[it] ?: 0) <= -2 }
+        val exactLearnedWeight = learnedWeights["domain:$clean"] ?: 0
+        val learnedAllow = exactLearnedWeight <= -2
         // La memoria agregada solo influye con al menos 8 observaciones y 90% de permisos.
         // Se consulta un mapa en memoria; nunca se accede a almacenamiento local desde el hilo DNS.
         val repeatedlyAllowed = ThreatKnowledgeGraph.isRepeatedlyAllowed(clean)
@@ -171,7 +172,7 @@ object SmartDecisionEngine {
             score += 1
             reasons += "Subdominio de apariencia automatizada"
         }
-        val learned = tokens.maxOfOrNull { learnedWeights[it] ?: 0 } ?: 0
+        val learned = exactLearnedWeight
         if (learned >= 2) {
             score += 1
             reasons += "Coincidencia con aprendizaje local"
