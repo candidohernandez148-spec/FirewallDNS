@@ -26,6 +26,31 @@ class SmartDecisionEngineTest {
         assertTrue(result?.reason?.contains("se permite") == true)
     }
 
+    @Test fun multipleDistinctWeakSignalsFormAnObservableCompoundPattern() {
+        val result = SmartDecisionEngine.evaluate("analytics-telemetry.example.org")
+        assertEquals(SmartDecisionEngine.Level.OBSERVE, result?.level)
+        assertTrue(result?.reason?.contains("Patrón compuesto de señales débiles") == true)
+        assertTrue(result?.reason?.contains("analytics") == true)
+        assertTrue(result?.reason?.contains("telemetry") == true)
+        assertTrue(result?.reason?.contains("Confianza: media") == true)
+    }
+
+    @Test fun aSingleWeakSignalRemainsAnOrdinaryObservation() {
+        val result = SmartDecisionEngine.evaluate("analytics.example.org")
+        assertEquals(SmartDecisionEngine.Level.OBSERVE, result?.level)
+        assertTrue(result?.reason?.contains("Indicador de medición o telemetría: analytics") == true)
+        assertTrue(result?.reason?.contains("Patrón compuesto") != true)
+    }
+
+    @Test fun compoundWeakSignalsNeverOverrideAnActiveAllowLearningSignal() {
+        val result = SmartDecisionEngine.evaluate(
+            "analytics-telemetry.example.org",
+            mapOf("analytics" to -2)
+        )
+        assertEquals(SmartDecisionEngine.Level.OBSERVE, result?.level)
+        assertTrue(result?.reason?.contains("el aprendizaje local impide el bloqueo automático") == true)
+    }
+
     @Test fun ordinaryDomainsRemainAllowed() {
         assertNull(SmartDecisionEngine.evaluate("api.example.org"))
         assertNull(SmartDecisionEngine.evaluate("mail.google.com"))
