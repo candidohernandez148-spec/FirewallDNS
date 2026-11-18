@@ -57,6 +57,8 @@ object FirewallRepository {
     private const val TRAFFIC_POINTS = 40
     private const val TRAFFIC_INTERVAL_MS = 2_000L
     private const val MAX_LEARNED_DOMAINS = 5000
+    private const val MAX_PENDING_OBSERVATION_DOMAINS = 5000
+    private const val OBSERVATION_BATCH_SIZE = 2048
     private const val ACTIVITY_SAVE_INTERVAL_MS = 5_000L
 
     private lateinit var appContext: Context
@@ -112,9 +114,11 @@ object FirewallRepository {
     private val activitySaveScheduled = AtomicBoolean(false)
     private val activityVersion = AtomicLong(0L)
     private val learningScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    // Cola sin descarte: las consultas DNS nunca esperan al disco y las observaciones
-    // pendientes se procesan por lotes en Dispatchers.IO.
-    private val observationQueue = Channel<DomainObservationEvent>(Channel.UNLIMITED)
+    // Señal conflada + agregación por dominio: la ruta DNS nunca espera al disco y el
+    // número de observaciones pendientes queda acotado al mismo máximo del almacén local.
+    private val observationQueue = Channel<Unit>(Channel.CONFLATED)
+    private val pendingObservationLock = Any()
+    private val pendingObservations = LinkedHashMap<String, DomainObservationEvent>()
     private val learningStoreReady = CompletableDeferred<Unit>()
     private val learningGeneration = AtomicLong(0L)
     private val observationPersistenceMutex = Mutex()
@@ -249,14 +253,10 @@ object FirewallRepository {
     private fun startObservationWorker() {
         learningScope.launch {
             learningStoreReady.await()
-            for (first in observationQueue) {
-                val batch = ArrayList<DomainObservationEvent>(256)
-                batch.add(first)
+            for (ignored in observationQueue) {
                 delay(100)
-                while (batch.size < 2048) {
-                    val next = observationQueue.tryReceive().getOrNull() ?: break
-                    batch.add(next)
-                }
+                val batch = drainPendingObservations()
+                if (batch.isEmpty()) continue
                 val persisted = runCatching {
                     observationPersistenceMutex.withLock {
                         // Recheck after acquiring the lock so a reset cannot be undone by an old batch.
@@ -266,9 +266,11 @@ object FirewallRepository {
                 }.isSuccess
                 if (!persisted) {
                     Log.e(TAG, "No se pudo incorporar el lote de observaciones; se reintentará")
-                    // No perder el lote por un error temporal de persistencia; se reintentará en IO.
-                    batch.filter { it.generation == learningGeneration.get() }
-                        .forEach { observationQueue.trySend(it) }
+                    synchronized(pendingObservationLock) {
+                        batch.filter { it.generation == learningGeneration.get() }
+                            .forEach(::mergePendingObservationLocked)
+                        if (pendingObservations.isNotEmpty()) observationQueue.trySend(Unit)
+                    }
                     delay(1_000)
                 }
             }
@@ -290,6 +292,49 @@ object FirewallRepository {
             }
         }
     }
+
+    private fun enqueueObservation(event: DomainObservationEvent) {
+        synchronized(pendingObservationLock) {
+            mergePendingObservationLocked(event)
+            observationQueue.trySend(Unit)
+        }
+    }
+
+    // Se conserva el conteo exacto por dominio, pero múltiples consultas iguales se compactan.
+    private fun mergePendingObservationLocked(event: DomainObservationEvent) {
+        if (event.generation != learningGeneration.get()) return
+        val key = "${event.generation}|${event.domain}"
+        val previous = pendingObservations.remove(key)
+        val merged = if (previous == null) event else previous.copy(
+            blocked = if (event.observedAt >= previous.observedAt) event.blocked else previous.blocked,
+            observedAt = maxOf(previous.observedAt, event.observedAt),
+            firstObservedAt = minOf(previous.firstObservedAt, event.firstObservedAt),
+            allowedCountDelta = saturatedAdd(previous.allowedCountDelta, event.allowedCountDelta),
+            blockedCountDelta = saturatedAdd(previous.blockedCountDelta, event.blockedCountDelta)
+        )
+        pendingObservations[key] = merged
+        while (pendingObservations.size > MAX_PENDING_OBSERVATION_DOMAINS) {
+            val oldest = pendingObservations.entries.iterator()
+            if (!oldest.hasNext()) break
+            oldest.next()
+            oldest.remove()
+        }
+    }
+
+    private fun saturatedAdd(left: Long, right: Long): Long =
+        if (Long.MAX_VALUE - left < right) Long.MAX_VALUE else left + right
+
+    private fun drainPendingObservations(): List<DomainObservationEvent> =
+        synchronized(pendingObservationLock) {
+            val batch = ArrayList<DomainObservationEvent>(OBSERVATION_BATCH_SIZE)
+            val iterator = pendingObservations.entries.iterator()
+            while (iterator.hasNext() && batch.size < OBSERVATION_BATCH_SIZE) {
+                batch.add(iterator.next().value)
+                iterator.remove()
+            }
+            if (pendingObservations.isNotEmpty()) observationQueue.trySend(Unit)
+            batch
+        }
 
     suspend fun getSmartLearningMemory(): List<DomainObservationSummary> =
         withContext(Dispatchers.IO) { smartLearningStore.getSnapshot() }
@@ -458,8 +503,11 @@ object FirewallRepository {
         learnedDomains.clear()
         prefsDataSource.saveLearnedTokens(emptyMap())
         val resetGeneration = learningGeneration.incrementAndGet()
-        // Discard queued observations from the previous learning generation.
-        while (observationQueue.tryReceive().isSuccess) Unit
+        // Discard pending aggregates and wake-up signals from the previous generation.
+        synchronized(pendingObservationLock) {
+            pendingObservations.clear()
+            while (observationQueue.tryReceive().isSuccess) Unit
+        }
         learningScope.launch {
             learningStoreReady.await()
             observationPersistenceMutex.withLock {
@@ -593,12 +641,14 @@ object FirewallRepository {
         }
         activityVersion.incrementAndGet()
         // Se registra únicamente el dominio y contadores agregados; no se guarda la app ni el historial crudo.
-        observationQueue.trySend(
+        enqueueObservation(
             DomainObservationEvent(
                 domain = domain,
                 blocked = !allowed,
                 observedAt = System.currentTimeMillis(),
-                generation = learningGeneration.get()
+                generation = learningGeneration.get(),
+                allowedCountDelta = if (allowed) 1L else 0L,
+                blockedCountDelta = if (allowed) 0L else 1L
             )
         )
         scheduleActivitySave()
