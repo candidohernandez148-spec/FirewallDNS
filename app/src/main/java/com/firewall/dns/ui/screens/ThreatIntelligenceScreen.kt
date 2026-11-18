@@ -82,48 +82,6 @@ fun ThreatIntelligenceScreen(
     }
 
     val current = snapshot
-    if (false) {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            item {
-                Text("Mapa de inteligencia", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Text(
-                    "Conocimiento local que relaciona proveedores conocidos con actividad observada y reglas activas.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            item {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.padding(4.dp))
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("Preparando datos en segundo plano…", fontWeight = FontWeight.SemiBold)
-                        Text(
-                            "El catálogo ya está disponible. Estamos preparando las observaciones y correlaciones.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-            item {
-                Text("Proveedores conocidos (${current.catalog.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            }
-            items(current.catalog.take(8), key = { "initial-${it.provider}" }) { evidence ->
-                Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
-                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text(evidence.platform ?: "Proveedor independiente", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
-                        Text(evidence.provider, fontWeight = FontWeight.SemiBold)
-                        Text(categoryLabel(evidence.category), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-        }
-        return
-    }
 
     val catalog = current.catalog
     val learnedCount = current.learnedCount
@@ -213,12 +171,10 @@ fun ThreatIntelligenceScreen(
                         style = MaterialTheme.typography.bodySmall
                     )
                     if (correlation.observedDomains.isNotEmpty()) {
-                        Text(
-                            "Dominios: ${correlation.observedDomains.take(5).joinToString(", ")}" +
-                                if (correlation.observedDomains.size > 5) " y ${correlation.observedDomains.size - 5} más" else "",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Text("Dominios observados", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                        correlation.observedDomains.take(5).forEach { domain ->
+                            DomainRuleAction(domain, blockedDomains, onBlockDomain)
+                        }
                     }
                     Text(
                         "Relación basada en catálogo explícito; no cambia la decisión DNS.",
@@ -268,12 +224,10 @@ fun ThreatIntelligenceScreen(
                     Text(pattern.indicators.joinToString(" + "), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                     Text("${pattern.domains.size} dominios · ${pattern.totalObservations} observaciones", style = MaterialTheme.typography.bodySmall)
                     Text("Permisos: ${pattern.allowedCount} · Bloqueos: ${pattern.blockedCount}", style = MaterialTheme.typography.bodySmall)
-                    Text(
-                        "Dominios: ${pattern.domains.take(5).joinToString(", ")}" +
-                            if (pattern.domains.size > 5) " y ${pattern.domains.size - 5} más" else "",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Text("Dominios del patrón", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                    pattern.domains.take(5).forEach { domain ->
+                        DomainRuleAction(domain, blockedDomains, onBlockDomain)
+                    }
                     Text(
                         "Sin proveedor atribuido. No modifica la decisión DNS ni activa bloqueos.",
                         style = MaterialTheme.typography.labelSmall,
@@ -332,6 +286,7 @@ fun ThreatIntelligenceScreen(
                                     style = MaterialTheme.typography.bodySmall,
                                     fontWeight = FontWeight.SemiBold
                                 )
+                                DomainRuleAction(evidence.provider, blockedDomains, onBlockDomain)
                             }
                         }
                     }
@@ -342,6 +297,27 @@ fun ThreatIntelligenceScreen(
             item { Text("No hay coincidencias en el catálogo conocido.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 16.dp)) }
         }
         item { Spacer(Modifier.padding(bottom = 8.dp)) }
+    }
+}
+
+@Composable
+private fun DomainRuleAction(
+    domain: String,
+    blockedDomains: Set<String>,
+    onBlockDomain: (String) -> Unit
+) {
+    val normalized = domain.trim().lowercase().trimEnd('.')
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(normalized, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+        Button(
+            onClick = { onBlockDomain(normalized) },
+            enabled = normalized !in blockedDomains
+        ) {
+            Text(if (normalized in blockedDomains) "Bloqueado" else "Bloquear")
+        }
     }
 }
 
