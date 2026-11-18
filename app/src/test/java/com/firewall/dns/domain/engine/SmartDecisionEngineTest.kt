@@ -35,4 +35,15 @@ class SmartDecisionEngineTest {
         val result = SmartDecisionEngine.evaluate("ads.example.org", mapOf("ads" to -2))
         assertEquals(SmartDecisionEngine.Level.OBSERVE, result?.level)
     }
+    @Test fun downloadedBlocklistBecomesHighConfidenceEngineKnowledge() {
+        SmartDecisionEngine.updateBlocklistKnowledge(setOf("known-tracker.example"))
+        try {
+            val result = SmartDecisionEngine.evaluate("cdn.known-tracker.example")
+            assertEquals(SmartDecisionEngine.Level.BLOCK, result?.level)
+            assertTrue(result?.reason?.contains("listas de protección") == true)
+        } finally {
+            SmartDecisionEngine.updateBlocklistKnowledge(emptySet())
+        }
+    }
+
 }
