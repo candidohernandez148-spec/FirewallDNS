@@ -250,7 +250,7 @@ object FirewallRepository {
 
     suspend fun downloadBlocklist(): Result<String> {
         val urls = _blocklistUrls.value
-        val result = blocklistDataSource.downloadMultipleAndSave(defaultDomains, urls)
+        val result = blocklistDataSource.downloadMultipleAndSave(defaultDomains, urls, ThreatFeedCatalog.signedFeedConfigs)
         return result.map { snapshot ->
             hostBlockSet.clear()
             hostBlockSet.addAll(snapshot.blocked)
