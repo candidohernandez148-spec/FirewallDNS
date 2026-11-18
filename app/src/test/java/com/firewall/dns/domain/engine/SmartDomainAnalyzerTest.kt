@@ -35,4 +35,30 @@ class SmartDomainAnalyzerTest {
     fun keepsExplicitCoreSafeHostsOutOfSmartBlocking() {
         assertFalse(SmartDomainAnalyzer.evaluate("www.instagram.com", emptyMap())?.first == true)
     }
+
+    @Test
+    fun detectsMetaAdvertisingSubdomainsWithoutBlockingTheWholePlatform() {
+        val facebookAds = SmartDomainAnalyzer.evaluate("ads.facebook.com", emptyMap())
+        val instagramPixel = SmartDomainAnalyzer.evaluate("pixel.instagram.com", emptyMap())
+
+        assertTrue(facebookAds?.first == true)
+        assertTrue(facebookAds?.second?.contains("Publicidad Meta") == true)
+        assertTrue(instagramPixel?.first == true)
+        assertTrue(instagramPixel?.second?.contains("Publicidad Meta") == true)
+        assertNull(SmartDomainAnalyzer.evaluate("api.facebook.com", emptyMap()))
+        assertFalse(SmartDomainAnalyzer.evaluate("www.instagram.com", emptyMap())?.first == true)
+    }
+
+    @Test
+    fun detectsTikTokAdvertisingAndMeasurementSubdomains() {
+        val ads = SmartDomainAnalyzer.evaluate("ads.tiktok.com", emptyMap())
+        val analytics = SmartDomainAnalyzer.evaluate("analytics.tiktok.com", emptyMap())
+
+        assertTrue(ads?.first == true)
+        assertTrue(ads?.second?.contains("Publicidad TikTok") == true)
+        assertTrue(analytics?.first == true)
+        assertTrue(analytics?.second?.contains("Medición TikTok") == true)
+        assertNull(SmartDomainAnalyzer.evaluate("www.tiktok.com", emptyMap()))
+    }
+
 }
