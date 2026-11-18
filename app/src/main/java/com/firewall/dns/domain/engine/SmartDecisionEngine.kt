@@ -78,7 +78,10 @@ object SmartDecisionEngine {
             val score = if (highConfidence) 5 else 2
             val label = if (level == Level.BLOCK) "Bloqueado" else "Observado; se permite"
             val confidenceLabel = if (highConfidence) "alta" else "media"
-            val learningNote = if (repeatedlyAllowed) "; permiso repetido aprendido" else ""
+            val learningNote = ThreatKnowledgeGraph.observationEvidence(clean)?.let {
+                "; aprendizaje local: ${it.allowedCount} permisos y ${it.blockedCount} bloqueos " +
+                    "de ${it.total} observaciones (${it.interpretation})"
+            }.orEmpty()
             val criterion = when {
                 level == Level.BLOCK -> "proveedor publicitario de confianza alta"
                 repeatedlyAllowed -> "el permiso repetido evita el bloqueo heurístico"
@@ -133,7 +136,11 @@ object SmartDecisionEngine {
         if (score == 0) return null
 
         val hasLearnedAllow = learnedAllow || repeatedlyAllowed
-        if (repeatedlyAllowed) reasons += "Permiso repetido aprendido para este dominio"
+        ThreatKnowledgeGraph.observationEvidence(clean)?.let { learning ->
+            reasons += "Aprendizaje local: ${learning.allowedCount} permisos y " +
+                "${learning.blockedCount} bloqueos de ${learning.total} observaciones " +
+                "(${learning.interpretation})"
+        }
         val level = when {
             hasLearnedAllow -> Level.OBSERVE
             strong && score >= 5 -> Level.BLOCK

@@ -40,9 +40,26 @@ object ThreatKnowledgeGraph {
         val blockedCount: Long
     )
 
+    data class ObservationEvidence(
+        val allowedCount: Long,
+        val blockedCount: Long
+    ) {
+        val total: Long get() = allowedCount + blockedCount
+        val allowedRatio: Double get() = allowedCount.toDouble() / total.coerceAtLeast(1L)
+        val blockedRatio: Double get() = blockedCount.toDouble() / total.coerceAtLeast(1L)
+        val interpretation: String
+            get() = when {
+                allowedRatio >= ALLOWED_RATIO -> "posible falso positivo: predominan los permisos"
+                blockedRatio >= ALLOWED_RATIO -> "predominan los bloqueos"
+                else -> "historial mixto: requiere más evidencia"
+            }
+    }
+
     private data class ObservationSignal(
         val allowed: Boolean,
-        val total: Long
+        val total: Long,
+        val allowedCount: Long,
+        val blockedCount: Long
     )
 
     @Volatile
@@ -60,7 +77,9 @@ object ThreatKnowledgeGraph {
                 profile.domain.trim().lowercase().trimEnd('.') to ObservationSignal(
                     allowed = profile.allowedCount.toDouble() /
                         (profile.allowedCount + profile.blockedCount).coerceAtLeast(1L) >= ALLOWED_RATIO,
-                    total = profile.allowedCount + profile.blockedCount
+                    total = profile.allowedCount + profile.blockedCount,
+                    allowedCount = profile.allowedCount,
+                    blockedCount = profile.blockedCount
                 )
             }
             .filterKeys { it.isNotBlank() }
@@ -70,6 +89,12 @@ object ThreatKnowledgeGraph {
     /** Señal contextual exacta; evita propagar la reputación de un dominio a otros hosts. */
     fun isRepeatedlyAllowed(domain: String): Boolean =
         observations[domain.trim().lowercase().trimEnd('.')]?.let { it.allowed } == true
+
+    /** Resumen explicable del aprendizaje local; solo perfiles con al menos ocho eventos. */
+    fun observationEvidence(domain: String): ObservationEvidence? =
+        observations[domain.trim().lowercase().trimEnd('.')]?.let {
+            ObservationEvidence(it.allowedCount, it.blockedCount)
+        }
 
     fun hasRepeatedObservations(domain: String): Boolean =
         observations.containsKey(domain.trim().lowercase().trimEnd('.'))
