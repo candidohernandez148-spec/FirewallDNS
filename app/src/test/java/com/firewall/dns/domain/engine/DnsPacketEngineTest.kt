@@ -121,7 +121,7 @@ class DnsPacketEngineTest {
         assertNullIfFalse(query, valid.copyOf().apply { this[0] = 0x7F })
         assertNullIfFalse(query, valid.copyOf().apply { this[13] = 'x'.code.toByte() })
         assertNullIfFalse(query, query.copyOf())
-        assertNullIfFalse(query, valid.copyOf().apply { this[2] = 0x83.toByte() })
+        assertNullIfFalse(query, valid.copyOf().apply { this[2] = 0x89.toByte() })
         assertNullIfFalse(query, valid.copyOf().apply { this[5] = 2 })
         assertNullIfFalse(query, valid.copyOf().apply { this[valid.lastIndex] = 3 })
     }
