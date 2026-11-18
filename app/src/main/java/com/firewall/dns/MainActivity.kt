@@ -258,15 +258,14 @@ fun FirewallApp(
     onOpenVpnSettings: () -> Unit
 ) {
     val context = LocalContext.current
-    // Only the global protection state stays subscribed at the app shell.
-    // Screen-specific streams are collected while their destination is visible.
+    // Keep the global protection state live; subscribe to heavier streams only on their screen.
     val stats by viewModel.stats.collectAsState()
 
     var selectedDestination by remember { mutableIntStateOf(0) }
     var otherVpnActive by remember { mutableStateOf(false) }
 
-    LaunchedEffect(stats.isRunning) {
-        if (stats.isRunning) {
+    LaunchedEffect(stats.isRunning, selectedDestination) {
+        if (stats.isRunning || selectedDestination !in 0..2) {
             otherVpnActive = false
             return@LaunchedEffect
         }
@@ -297,14 +296,52 @@ fun FirewallApp(
         topBar = {
             TopAppBar(
                 title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         FirewallShieldIcon()
                         Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                             Text(
                                 when (selectedDestination) {
+                                    0 -> "FirewallDNS"
+                                    1 -> "Monitor DNS"
+                                    2 -> "Centro de amenazas"
+                                    3 -> "Protección"
+                                    4 -> "Sistema y aplicaciones"
+                                    else -> "Mapa de inteligencia"
+                                },
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Text(
+                                if (stats.isRunning) "SISTEMA ACTIVO · ${stats.engine}" else "SISTEMA EN ESPERA",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (stats.isRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                },
+                actions = {
+                    Text(if (stats.isRunning) "ON" else "OFF", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    Switch(checked = stats.isRunning, onCheckedChange = onToggleVpn, modifier = Modifier.padding(start = 4.dp, end = 8.dp))
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface, titleContentColor = MaterialTheme.colorScheme.onSurface)
+            )
+        },
+        bottomBar = {
+            NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 3.dp) {
+                destinations.forEachIndexed { index, destination ->
+                    NavigationBarItem(
+                        selected = selectedDestination == index,
+                        onClick = { selectedDestination = index },
+                        icon = { Icon(destination.second, contentDescription = destination.first) },
+                        label = { Text(destination.first, maxLines = 1) },
+                        alwaysShowLabel = false
+                    )
+                }
+            }
+        }
+    ) { padding ->
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+            when (selectedDestination) {
                 0 -> {
                     val activityLogs by viewModel.activityLogs.collectAsState()
                     val blocklistsDownloaded by viewModel.blocklistsDownloaded.collectAsState()
@@ -326,8 +363,7 @@ fun FirewallApp(
                 }
                 2 -> {
                     val activityLogs by viewModel.activityLogs.collectAsState()
-                    SecurityCenterScreen(stats, activityLogs, otherVpnActive,
-                        onOpenActivity = { selectedDestination = 1 })
+                    SecurityCenterScreen(stats, activityLogs, otherVpnActive, onOpenActivity = { selectedDestination = 1 })
                 }
                 3 -> {
                     val customBlock by viewModel.customBlockList.collectAsState()
@@ -363,7 +399,6 @@ fun FirewallApp(
         }
     }
 }
-
 private fun isOtherVpnActive(context: android.content.Context): Boolean = try {
     val cm = context.getSystemService(android.net.ConnectivityManager::class.java)
     val vpnUp = cm.getNetworkCapabilities(cm.activeNetwork)
