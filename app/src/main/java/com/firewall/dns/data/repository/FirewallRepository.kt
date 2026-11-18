@@ -5,6 +5,7 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.util.Log
 import com.firewall.dns.data.local.BlocklistDataSource
+import com.firewall.dns.data.local.BlocklistSnapshot
 import com.firewall.dns.data.local.PreferencesDataSource
 import com.firewall.dns.data.local.SmartLearningStore
 import com.firewall.dns.data.local.DomainObservationEvent
