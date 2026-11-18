@@ -289,6 +289,7 @@ object FirewallRepository {
                 runCatching {
                     observationPersistenceMutex.withLock {
                         smartLearningStore.flush()
+                        refreshObservationKnowledge()
                     }
                 }.onFailure { error ->
                     // Keep the in-memory snapshot dirty and retry on the next interval.
