@@ -56,7 +56,7 @@ object SmartDecisionEngine {
         // Las listas verificadas son conocimiento de alta confianza. La coincidencia
         // incluye el dominio y sus subdominios, igual que el evaluador de reglas.
         if (matchesDomainOrParent(clean, blocklistKnowledge)) {
-            return Decision(Level.BLOCK, 5, "Bloqueado: dominio conocido por las listas de protección")
+            return Decision(Level.BLOCK, 5, "Bloqueado: dominio conocido por las listas de protección | Evidencia: coincidencia con una regla activa o un subdominio suyo | Confianza: muy alta | Criterio: las listas verificadas tienen prioridad sobre las heurísticas")
         }
 
         val tokens = labels.flatMap { it.split('-', '_') }.toSet()
@@ -77,12 +77,20 @@ object SmartDecisionEngine {
             val level = if (highConfidence && !learnedAllow && !repeatedlyAllowed) Level.BLOCK else Level.OBSERVE
             val score = if (highConfidence) 5 else 2
             val label = if (level == Level.BLOCK) "Bloqueado" else "Observado; se permite"
+            val confidenceLabel = if (highConfidence) "alta" else "media"
             val learningNote = if (repeatedlyAllowed) "; permiso repetido aprendido" else ""
+            val criterion = when {
+                level == Level.BLOCK -> "proveedor publicitario de confianza alta"
+                repeatedlyAllowed -> "el permiso repetido evita el bloqueo heurístico"
+                else -> "la evidencia no alcanza el umbral de bloqueo automático"
+            }
             return Decision(
                 level,
                 score,
                 "$label: relación del mapa de conocimiento con ${evidence.provider} " +
-                    "(${evidence.relation}; $category$learningNote)"
+                    "(${evidence.relation}; $category$learningNote) | " +
+                    "Evidencia: ${evidence.knowledgePath.joinToString(" → ")} | " +
+                    "Confianza: $confidenceLabel | Criterio: $criterion"
             )
         }
 
@@ -133,7 +141,24 @@ object SmartDecisionEngine {
             else -> Level.ALLOW
         }
         val label = if (level == Level.BLOCK) "Bloqueado" else "Observado; se permite"
-        return Decision(level, score, "$label: ${reasons.joinToString(" + ")} (${score} pts)")
+        val confidence = when {
+            strong && score >= 5 && !hasLearnedAllow -> "alta"
+            score >= 2 -> "media"
+            else -> "baja"
+        }
+        val criterion = when {
+            hasLearnedAllow -> "el aprendizaje local impide el bloqueo automático"
+            strong && score >= 5 -> "señal fuerte con puntuación suficiente"
+            score >= 2 -> "señales débiles: se observa sin bloquear"
+            else -> "puntuación insuficiente para bloquear"
+        }
+        return Decision(
+            level,
+            score,
+            "$label: ${reasons.joinToString(" + ")} | " +
+                "Señales: ${reasons.size} | Puntuación: $score | " +
+                "Confianza: $confidence | Criterio: $criterion"
+        )
     }
 
     private fun matchesDomainOrParent(domain: String, domains: Set<String>): Boolean {

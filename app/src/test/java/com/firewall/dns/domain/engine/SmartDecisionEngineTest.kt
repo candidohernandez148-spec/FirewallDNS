@@ -35,6 +35,27 @@ class SmartDecisionEngineTest {
         val result = SmartDecisionEngine.evaluate("ads.example.org", mapOf("ads" to -2))
         assertEquals(SmartDecisionEngine.Level.OBSERVE, result?.level)
     }
+    @Test fun heuristicDecisionsExposeSignalsScoreConfidenceAndCriterion() {
+        val result = SmartDecisionEngine.evaluate("analytics.example.org")
+        assertEquals(SmartDecisionEngine.Level.OBSERVE, result?.level)
+        assertTrue(result?.reason?.contains("Señales:") == true)
+        assertTrue(result?.reason?.contains("Puntuación:") == true)
+        assertTrue(result?.reason?.contains("Confianza: media") == true)
+        assertTrue(result?.reason?.contains("señales débiles") == true)
+    }
+
+    @Test fun blocklistDecisionExplainsItsPriorityAndEvidence() {
+        SmartDecisionEngine.updateBlocklistKnowledge(setOf("known-tracker.example"))
+        try {
+            val result = SmartDecisionEngine.evaluate("cdn.known-tracker.example")
+            assertTrue(result?.reason?.contains("Evidencia:") == true)
+            assertTrue(result?.reason?.contains("Confianza: muy alta") == true)
+            assertTrue(result?.reason?.contains("prioridad") == true)
+        } finally {
+            SmartDecisionEngine.updateBlocklistKnowledge(emptySet())
+        }
+    }
+
     @Test fun downloadedBlocklistBecomesHighConfidenceEngineKnowledge() {
         SmartDecisionEngine.updateBlocklistKnowledge(setOf("known-tracker.example"))
         try {
