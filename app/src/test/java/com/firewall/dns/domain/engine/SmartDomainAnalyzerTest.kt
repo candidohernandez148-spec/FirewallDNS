@@ -1,5 +1,6 @@
 package com.firewall.dns.domain.engine
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -11,6 +12,18 @@ class SmartDomainAnalyzerTest {
     fun detectsAdSubdomainUnderGoogleWithoutWhitelistingWholeGoogleDomain() {
         val result = SmartDomainAnalyzer.evaluate("ads.google.com", emptyMap())
         assertTrue(result?.first == true)
+    }
+
+    @Test
+    fun learnedWeightsUseOnlyTheExactFullyQualifiedDomain() {
+        assertEquals(
+            listOf("domain:ads.example.com"),
+            SmartDomainAnalyzer.learnableTokens("ADS.Example.COM.")
+        )
+        assertTrue(
+            SmartDomainAnalyzer.learnableTokens("ads.example.com")
+                .none { it == "ads" || it == "example" || it == "com" }
+        )
     }
 
     @Test

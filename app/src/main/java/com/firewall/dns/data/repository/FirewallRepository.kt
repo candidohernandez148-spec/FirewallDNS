@@ -25,7 +25,6 @@ import com.firewall.dns.domain.model.TrafficPoint
 import com.firewall.dns.service.NetworkDns
 import com.firewall.dns.service.FirewallTileService
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -111,11 +110,9 @@ object FirewallRepository {
     private val activitySaveScheduled = AtomicBoolean(false)
     private val activityVersion = AtomicLong(0L)
     private val learningScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    // Cola acotada: nunca espera a operaciones de disco dentro de la consulta DNS.
-    private val observationQueue = Channel<DomainObservationEvent>(
-        capacity = 2048,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST
-    )
+    // Cola sin descarte: las consultas DNS nunca esperan al disco y las observaciones
+    // pendientes se procesan por lotes en Dispatchers.IO.
+    private val observationQueue = Channel<DomainObservationEvent>(Channel.UNLIMITED)
     private val learningStoreReady = CompletableDeferred<Unit>()
     private val learningGeneration = AtomicLong(0L)
     private val observationPersistenceMutex = Mutex()
@@ -192,7 +189,12 @@ object FirewallRepository {
             _smartModeEnabled.value = prefsDataSource.getSmartModeEnabled()
             _observationModeEnabled.value = prefsDataSource.getObservationModeEnabled()
             learnedTokens.clear()
-            learnedTokens.putAll(prefsDataSource.getLearnedTokens())
+            // Descarta y limpia pesos antiguos por token: podían afectar dominios no relacionados.
+            val storedLearnedTokens = prefsDataSource.getLearnedTokens()
+            learnedTokens.putAll(storedLearnedTokens.filterKeys { it.startsWith("domain:") })
+            if (learnedTokens.size != storedLearnedTokens.size) {
+                prefsDataSource.saveLearnedTokens(HashMap(learnedTokens))
+            }
             val activitySnapshot = prefsDataSource.getActivitySnapshot()
             _logs.value = activitySnapshot.logs
             logCounter.set(activitySnapshot.logs.maxOfOrNull { it.id } ?: 0L)
@@ -241,19 +243,25 @@ object FirewallRepository {
         learningScope.launch {
             learningStoreReady.await()
             for (first in observationQueue) {
-                val batch = ArrayList<DomainObservationEvent>(128)
+                val batch = ArrayList<DomainObservationEvent>(256)
                 batch.add(first)
-                delay(1_000)
-                while (batch.size < 256) {
+                delay(100)
+                while (batch.size < 2048) {
                     val next = observationQueue.tryReceive().getOrNull() ?: break
                     batch.add(next)
                 }
-                runCatching {
+                val persisted = runCatching {
                     observationPersistenceMutex.withLock {
                         // Recheck after acquiring the lock so a reset cannot be undone by an old batch.
                         val validBatch = batch.filter { it.generation == learningGeneration.get() }
                         if (validBatch.isNotEmpty()) smartLearningStore.recordBatch(validBatch)
                     }
+                }.isSuccess
+                if (!persisted) {
+                    // No perder el lote por un error temporal de persistencia; se reintentará en IO.
+                    batch.filter { it.generation == learningGeneration.get() }
+                        .forEach { observationQueue.trySend(it) }
+                    delay(1_000)
                 }
             }
         }

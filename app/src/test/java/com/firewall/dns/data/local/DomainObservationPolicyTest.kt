@@ -11,6 +11,26 @@ class DomainObservationPolicyTest {
     }
 
     @Test
+    fun acceptsOnlyInternallyConsistentObservationSummaries() {
+        assertEquals(
+            true,
+            DomainObservationPolicy.isValidSummary("ads.example.com", 4L, 2L, 100L, 200L)
+        )
+        assertEquals(
+            false,
+            DomainObservationPolicy.isValidSummary("ads.example.com", -1L, 2L, 100L, 200L)
+        )
+        assertEquals(
+            false,
+            DomainObservationPolicy.isValidSummary("ads.example.com", 4L, 2L, 201L, 200L)
+        )
+        assertEquals(
+            false,
+            DomainObservationPolicy.isValidSummary("ADS.example.com", 4L, 2L, 100L, 200L)
+        )
+    }
+
+    @Test
     fun rejectsMalformedOrNonDnsInput() {
         assertNull(DomainObservationPolicy.normalize(""))
         assertNull(DomainObservationPolicy.normalize("localhost"))
