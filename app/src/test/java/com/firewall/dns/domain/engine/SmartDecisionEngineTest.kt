@@ -53,7 +53,7 @@ class SmartDecisionEngineTest {
     @Test fun reinforcedCompoundSignalsDoNotOverrideLearnedAllowEvidence() {
         val result = SmartDecisionEngine.evaluate(
             "ads-pixel-analytics.example.org",
-            mapOf("analytics" to -2)
+            mapOf("domain:ads-pixel-analytics.example.org" to -2)
         )
         assertEquals(SmartDecisionEngine.Level.OBSERVE, result?.level)
         assertTrue(result?.reason?.contains("el aprendizaje local impide el bloqueo automático") == true)
@@ -62,7 +62,7 @@ class SmartDecisionEngineTest {
     @Test fun compoundWeakSignalsNeverOverrideAnActiveAllowLearningSignal() {
         val result = SmartDecisionEngine.evaluate(
             "analytics-telemetry.example.org",
-            mapOf("analytics" to -2)
+            mapOf("domain:analytics-telemetry.example.org" to -2)
         )
         assertEquals(SmartDecisionEngine.Level.OBSERVE, result?.level)
         assertTrue(result?.reason?.contains("el aprendizaje local impide el bloqueo automático") == true)
@@ -131,9 +131,22 @@ class SmartDecisionEngineTest {
     }
 
     @Test fun learnedAllowSignalPreventsHeuristicBlock() {
-        val result = SmartDecisionEngine.evaluate("ads.example.org", mapOf("ads" to -2))
+        val result = SmartDecisionEngine.evaluate("ads.example.org", mapOf("domain:ads.example.org" to -2))
         assertEquals(SmartDecisionEngine.Level.OBSERVE, result?.level)
     }
+    @Test fun learnedPermissionDoesNotSpreadToAnotherDomainWithTheSameToken() {
+        val allowedDomain = SmartDecisionEngine.evaluate(
+            "ads.example.org",
+            mapOf("domain:ads.example.org" to -2)
+        )
+        val unrelatedDomain = SmartDecisionEngine.evaluate(
+            "ads.other.org",
+            mapOf("domain:ads.example.org" to -2)
+        )
+        assertEquals(SmartDecisionEngine.Level.OBSERVE, allowedDomain?.level)
+        assertEquals(SmartDecisionEngine.Level.BLOCK, unrelatedDomain?.level)
+    }
+
     @Test fun heuristicDecisionsExposeSignalsScoreConfidenceAndCriterion() {
         val result = SmartDecisionEngine.evaluate("analytics.example.org")
         assertEquals(SmartDecisionEngine.Level.OBSERVE, result?.level)
