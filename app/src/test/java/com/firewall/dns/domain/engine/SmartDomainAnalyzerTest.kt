@@ -14,6 +14,18 @@ class SmartDomainAnalyzerTest {
     }
 
     @Test
+    fun learnedWeightsUseOnlyTheExactFullyQualifiedDomain() {
+        assertEquals(
+            listOf("domain:ads.example.com"),
+            SmartDomainAnalyzer.learnableTokens("ADS.Example.COM.")
+        )
+        assertTrue(
+            SmartDomainAnalyzer.learnableTokens("ads.example.com")
+                .none { it == "ads" || it == "example" || it == "com" }
+        )
+    }
+
+    @Test
     fun doesNotBlockOrdinaryGoogleSubdomain() {
         assertNull(SmartDomainAnalyzer.evaluate("mail.google.com", emptyMap()))
     }
