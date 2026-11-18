@@ -95,14 +95,15 @@ fun SocDashboardScreen(
                 MetricCard("Tasa de bloqueo", "$blockRate%", MaterialTheme.colorScheme.onSurface, Modifier.weight(1f))
             }
         }
-        item {
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        Text("  Señales de seguridad", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    }
+        if (!operational || stats.loadedRulesCount == 0 || threatMatches > 0) {
+            item {
+                Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Text("  Señales de seguridad", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        }
                     Text(when {
                         otherVpnActive -> "Comprueba los ajustes de VPN: se detectó otra VPN activa."
                         !stats.isRunning -> "Activa FirewallDNS para aplicar las reglas DNS."
@@ -117,6 +118,7 @@ fun SocDashboardScreen(
                         Icon(Icons.Default.ArrowForward, contentDescription = null)
                     }
                 }
+            }
             }
         }
         item {
