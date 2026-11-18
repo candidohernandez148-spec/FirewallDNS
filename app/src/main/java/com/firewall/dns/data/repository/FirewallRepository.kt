@@ -98,13 +98,20 @@ object FirewallRepository {
     private val _cacheInvalidateEvent = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val cacheInvalidateEvent: SharedFlow<Unit> = _cacheInvalidateEvent.asSharedFlow()
 
+    private val _closeUidConnectionsEvent = MutableSharedFlow<Int>(extraBufferCapacity = 16)
+    val closeUidConnectionsEvent: SharedFlow<Int> = _closeUidConnectionsEvent.asSharedFlow()
+
     private val _rebuildVpnEvent = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val rebuildVpnEvent: SharedFlow<Unit> = _rebuildVpnEvent.asSharedFlow()
 
-    private val hostBlockSet = ConcurrentHashMap.newKeySet<String>()
-    private val hostExceptionSet = ConcurrentHashMap.newKeySet<String>()
+    // La política activa se publica como una única referencia: las consultas DNS
+    // nunca observan una lista parcialmente vaciada o reconstruida.
     @Volatile
-    private var threatDomainsByCategory: Map<ThreatFeedCategory, Set<String>> = emptyMap()
+    private var activeBlocklistSnapshot = BlocklistSnapshot(
+        blocked = emptySet(),
+        exceptions = emptySet(),
+        threatDomainsByCategory = emptyMap()
+    )
     private val customBlockSet = ConcurrentHashMap.newKeySet<String>()
     private val customAllowSet = ConcurrentHashMap.newKeySet<String>()
     private val learnedTokens = ConcurrentHashMap<String, Int>()
@@ -218,11 +225,13 @@ object FirewallRepository {
 
             // Publica las reglas semilla y deja la lectura del archivo persistido en IO.
             // Así la interfaz puede mostrarse sin esperar a analizar listas grandes.
-            hostBlockSet.clear()
-            hostBlockSet.addAll(defaultDomains)
-            SmartDecisionEngine.updateBlocklistKnowledge(hostBlockSet)
-            hostExceptionSet.clear()
-            updateRulesCount()
+            publishBlocklist(
+                BlocklistSnapshot(
+                    blocked = defaultDomains.toSet(),
+                    exceptions = emptySet(),
+                    threatDomainsByCategory = emptyMap()
+                )
+            )
             initialized = true
 
             val generationAtStart = blocklistGeneration.get()
@@ -230,14 +239,8 @@ object FirewallRepository {
                 try {
                     val snapshot = blocklistDataSource.loadFromDisk(defaultDomains)
                     if (blocklistGeneration.get() == generationAtStart) {
-                        hostBlockSet.clear()
-                        hostBlockSet.addAll(snapshot.blocked)
-                        SmartDecisionEngine.updateBlocklistKnowledge(hostBlockSet)
-                        hostExceptionSet.clear()
-                        hostExceptionSet.addAll(snapshot.exceptions)
-                        threatDomainsByCategory = snapshot.threatDomainsByCategory
+                        publishBlocklist(snapshot)
                         refreshObservationKnowledge()
-                        updateRulesCount()
                         _cacheInvalidateEvent.tryEmit(Unit)
                     }
                 } catch (_: Exception) {
@@ -342,6 +345,21 @@ object FirewallRepository {
         withContext(Dispatchers.IO) { smartLearningStore.getSnapshot() }
 
     /** Publishes an immutable in-memory profile snapshot for the DNS decision engine. */
+    private fun publishBlocklist(snapshot: BlocklistSnapshot) {
+        val published = BlocklistSnapshot(
+            blocked = snapshot.blocked.toSet(),
+            exceptions = snapshot.exceptions.toSet(),
+            threatDomainsByCategory = snapshot.threatDomainsByCategory.mapValues { (_, domains) ->
+                domains.toSet()
+            },
+            summary = snapshot.summary
+        )
+        // Primero sincroniza el motor heurístico; después publica la referencia completa.
+        SmartDecisionEngine.updateBlocklistKnowledge(published.blocked)
+        activeBlocklistSnapshot = published
+        updateRulesCount()
+    }
+
     private fun refreshObservationKnowledge() {
         smartLearningStore.getSnapshot().map { summary ->
             ThreatKnowledgeGraph.ObservationProfile(
@@ -411,7 +429,17 @@ object FirewallRepository {
         if (!nowBlocked) updated.remove(pkg)
         _blockedApps.value = updated
         prefsDataSource.saveBlockedApps(updated)
-        if (uid >= 0) AppFirewallManager.setBlocked(uid, nowBlocked)
+        if (uid >= 0) {
+            // Un UID puede pertenecer a más de un paquete: no retirar el bloqueo
+            // mientras otra app con el mismo UID siga incluida en la lista.
+            val uidStillBlocked = nowBlocked || updated.any { otherPackage ->
+                runCatching {
+                    appContext.packageManager.getApplicationInfo(otherPackage, 0).uid == uid
+                }.getOrDefault(false)
+            }
+            AppFirewallManager.setBlocked(uid, uidStillBlocked)
+            _closeUidConnectionsEvent.tryEmit(uid)
+        }
     }
 
     private fun syncBlockedUids() {
@@ -433,26 +461,21 @@ object FirewallRepository {
         )
         result.map { snapshot ->
             blocklistGeneration.incrementAndGet()
-            hostBlockSet.clear()
-            hostBlockSet.addAll(snapshot.blocked)
-            SmartDecisionEngine.updateBlocklistKnowledge(hostBlockSet)
-            hostExceptionSet.clear()
-            hostExceptionSet.addAll(snapshot.exceptions)
-            threatDomainsByCategory = snapshot.threatDomainsByCategory
+            publishBlocklist(snapshot)
             _blocklistsDownloaded.value = true
-            updateRulesCount()
             _cacheInvalidateEvent.tryEmit(Unit)
             snapshot.summary
         }
     }
 
     fun evaluateDomain(domain: String): Pair<Boolean, String> {
+        val activeRules = activeBlocklistSnapshot
         val baseEval = RuleEvaluator.evaluate(
             domain = domain,
             customAllow = customAllowSet,
             customBlock = customBlockSet,
-            hostExceptions = hostExceptionSet,
-            hostBlock = hostBlockSet
+            hostExceptions = activeRules.exceptions,
+            hostBlock = activeRules.blocked
         )
         if (!baseEval.first && baseEval.second != "Permitido") {
             learnFromActivity(domain, blocked = false, step = 1)
@@ -460,7 +483,7 @@ object FirewallRepository {
         }
         if (baseEval.first) {
             val category = if (baseEval.second.startsWith("Adblock")) {
-                threatDomainsByCategory.entries.firstOrNull { (_, domains) ->
+                activeRules.threatDomainsByCategory.entries.firstOrNull { (_, domains) ->
                     ThreatFeedCatalog.matchesDomainOrParent(domain, domains)
                 }?.key
             } else null
@@ -620,7 +643,7 @@ object FirewallRepository {
     private fun updateRulesCount() {
         // Cuenta cada dominio una sola vez, incluso si aparece en una lista descargada
         // y también en las reglas personalizadas.
-        val uniqueRuleCount = hostBlockSet.union(customBlockSet).size
+        val uniqueRuleCount = activeBlocklistSnapshot.blocked.union(customBlockSet).size
         _stats.update { it.copy(loadedRulesCount = uniqueRuleCount) }
     }
 
