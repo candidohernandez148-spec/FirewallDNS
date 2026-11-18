@@ -35,7 +35,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -323,6 +326,7 @@ private fun ActivityMetric(label: String, value: String, color: Color, modifier:
 
 @Composable
 private fun ActivityEntry(entry: DnsLogEntry, onToggleRule: () -> Unit) {
+    var explanationExpanded by remember(entry.id) { mutableStateOf(false) }
     val blocked = entry.isBlocked
     val badgeColor = if (blocked) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer
     val badgeTextColor = if (blocked) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSecondaryContainer
@@ -374,7 +378,13 @@ private fun ActivityEntry(entry: DnsLogEntry, onToggleRule: () -> Unit) {
                             fontSize = 10.sp
                         )
                     }
-                    Spacer(Modifier.weight(1f))
+                    TextButton(
+                        onClick = { explanationExpanded = !explanationExpanded },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        modifier = Modifier.height(28.dp)
+                    ) {
+                        Text(if (explanationExpanded) "Ocultar explicación" else "Explicar", fontSize = 12.sp)
+                    }
                     if (canToggleDomain) {
                         TextButton(
                             onClick = onToggleRule,
@@ -382,6 +392,27 @@ private fun ActivityEntry(entry: DnsLogEntry, onToggleRule: () -> Unit) {
                             modifier = Modifier.height(28.dp)
                         ) {
                             Text(if (blocked) "Permitir" else "Bloquear", fontSize = 12.sp)
+                        }
+                    }
+                }
+                if (explanationExpanded) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp, end = 8.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant
+                    ) {
+                        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                if (blocked) "Motivo del bloqueo" else "Motivo del permiso u observación",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(entry.reason, style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                "La explicación describe las señales locales disponibles; no representa un análisis de contenido cifrado.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }
