@@ -24,13 +24,6 @@ jobs:
         with:
           gradle-version: "8.14"
 
-      - name: Restaurar clave de firma
-        id: signing-cache
-        uses: actions/cache@v6
-        with:
-          path: signing
-          key: firewalldns-signing-v1
-
       - name: Preparar firma de release
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
