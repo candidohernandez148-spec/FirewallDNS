@@ -237,10 +237,17 @@ class FirewallVpnService : VpnService() {
             val ips = probe.orderedServers.ifEmpty { candidates }
             Log.i(TAG, "Medición DNS al cambiar de red: ${probe.measurements}; orden: $ips")
             if (ips == lastDnsIps) return
-            lastDnsIps = ips
-            Log.d(TAG, "DNS de la red cambió: $ips")
-            try { Intra.setSystemDNS(t, ips) } catch (e: Throwable) { Log.e(TAG, "setSystemDNS falló", e) }
-            try { Intra.addDefaultTransport(t, Backend.DNS53, ips, "") } catch (e: Throwable) { Log.e(TAG, "addDefaultTransport falló", e) }
+            Log.d(TAG, "Aplicando DNS de la nueva red: $ips")
+            try {
+                // Solo confirmar el estado después de aplicar ambas operaciones nativas.
+                // Si cualquiera falla, la siguiente notificación de red podrá reintentarlo.
+                Intra.setSystemDNS(t, ips)
+                Intra.addDefaultTransport(t, Backend.DNS53, ips, "")
+                lastDnsIps = ips
+                Log.i(TAG, "DNS de la nueva red aplicados correctamente: $ips")
+            } catch (e: Throwable) {
+                Log.e(TAG, "No se pudieron aplicar los DNS de la nueva red; se reintentará", e)
+            }
         }
     }
 
