@@ -63,7 +63,7 @@ object SmartDecisionEngine {
         val tokens = labels.flatMap { it.split('-', '_') }.toSet()
         val learnedAllow = tokens.any { (learnedWeights[it] ?: 0) <= -2 }
         // La memoria agregada solo influye con al menos 8 observaciones y 90% de permisos.
-        // Se consulta un mapa en memoria; nunca se accede a SQLite desde el hilo DNS.
+        // Se consulta un mapa en memoria; nunca se accede a almacenamiento local desde el hilo DNS.
         val repeatedlyAllowed = ThreatKnowledgeGraph.isRepeatedlyAllowed(clean)
 
         // Una familia aprendida solo bloquea si varios dominios independientes acumularon
