@@ -36,7 +36,8 @@ class RuleEvaluatorTest {
             hostExceptions = setOf("example.com"),
             hostBlock = setOf("example.com")
         )
-        assertEquals(false, manualBlockResult.first)
+        assertEquals(true, manualBlockResult.first)
+        assertEquals("Regla propia", manualBlockResult.second)
     }
 
     @Test
