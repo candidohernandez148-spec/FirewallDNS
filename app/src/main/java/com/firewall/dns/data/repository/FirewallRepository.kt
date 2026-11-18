@@ -12,7 +12,6 @@ import com.firewall.dns.data.local.DomainObservationEvent
 import com.firewall.dns.data.local.DomainObservationSummary
 import com.firewall.dns.domain.engine.BlocklistSourcePolicy
 import com.firewall.dns.domain.engine.AppFirewallManager
-import com.firewall.dns.domain.engine.DomainBlocker
 import com.firewall.dns.domain.engine.RuleEvaluator
 import com.firewall.dns.domain.engine.SmartDomainAnalyzer
 import com.firewall.dns.domain.engine.SmartDecisionEngine
@@ -162,10 +161,7 @@ object FirewallRepository {
     @Volatile
     private var initialized = false
 
-    private val defaultDomains = listOf(
-        "doubleclick.net", "googlesyndication.com", "googleadservices.com",
-        "app-measurement.com", "ads.facebook.com", "analytics.tiktok.com"
-    )
+    private val defaultDomains = BuiltInThreatDomains.domains
 
     fun init(context: Context) {
         if (initialized) return
@@ -493,10 +489,6 @@ object FirewallRepository {
                 learnFromActivity(domain, blocked = true, step = 1)
             }
             return true to reason
-        }
-        if (DomainBlocker.isBlocked(domain)) {
-            learnFromActivity(domain, blocked = true, step = 1)
-            return true to "Lista de anuncios y rastreo"
         }
         if (_smartModeEnabled.value) {
             SmartDecisionEngine.evaluate(domain, learnedTokens)?.let { decision ->
