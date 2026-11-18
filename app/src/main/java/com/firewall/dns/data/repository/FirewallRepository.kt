@@ -187,7 +187,12 @@ object FirewallRepository {
             _excludedPackages.value = prefsDataSource.getExcludedPackages()
             _blockedApps.value = prefsDataSource.getBlockedApps()
             syncBlockedUids()
-            _blocklistUrls.value = prefsDataSource.getBlocklistUrls()
+            val savedBlocklistUrls = prefsDataSource.getBlocklistUrls()
+            val normalizedBlocklistUrls = savedBlocklistUrls.mapNotNull(BlocklistSourcePolicy::canonicalize).distinct()
+            _blocklistUrls.value = normalizedBlocklistUrls
+            if (normalizedBlocklistUrls != savedBlocklistUrls) {
+                prefsDataSource.saveBlocklistUrls(normalizedBlocklistUrls)
+            }
             _smartModeEnabled.value = prefsDataSource.getSmartModeEnabled()
             _observationModeEnabled.value = prefsDataSource.getObservationModeEnabled()
             learnedTokens.clear()
@@ -328,9 +333,8 @@ object FirewallRepository {
     }
 
     fun addBlocklistUrl(rawUrl: String): Boolean {
-        val clean = rawUrl.trim()
-        if (!BlocklistSourcePolicy.isAllowed(clean)) return false
-        val current = _blocklistUrls.value.toMutableList()
+        val clean = BlocklistSourcePolicy.canonicalize(rawUrl) ?: return false
+        val current = _blocklistUrls.value.mapNotNull(BlocklistSourcePolicy::canonicalize).distinct().toMutableList()
         if (!current.contains(clean)) {
             current.add(clean)
             _blocklistUrls.value = current
