@@ -84,10 +84,15 @@ class BlocklistDataSource(context: Context) {
         signedFeeds: Map<String, ThreatFeedSignatureConfig> = emptyMap(),
         onProgress: (BlocklistDownloadProgress) -> Unit = {}
     ): Result<BlocklistSnapshot> = withContext(Dispatchers.IO) {
-        val uniqueUrls = urls.mapNotNull(BlocklistSourcePolicy::canonicalize).distinct()
-        if (uniqueUrls.isEmpty()) {
+        val configuredUrls = urls.map(String::trim).filter(String::isNotEmpty)
+        if (configuredUrls.isEmpty()) {
             return@withContext Result.failure(IllegalArgumentException("Agrega al menos una URL HTTPS en sintaxis Adblock"))
         }
+        val normalizedUrls = configuredUrls.map { raw ->
+            BlocklistSourcePolicy.canonicalize(raw)
+                ?: return@withContext Result.failure(IllegalArgumentException("Fuente HTTPS inválida: $raw"))
+        }
+        val uniqueUrls = normalizedUrls.distinct()
 
         val blocked = HashSet<String>(defaultDomains)
         val exceptions = HashSet<String>()
@@ -158,7 +163,9 @@ class BlocklistDataSource(context: Context) {
                 }
                 onProgress(BlocklistDownloadProgress(sourceIndex + 1, uniqueUrls.size, "Validando", payload.size.toLong(), declaredLength))
 
-                val signatureConfig = signedFeeds[targetUrl]
+                val signatureConfig = signedFeeds.entries.firstOrNull {
+                    BlocklistSourcePolicy.canonicalize(it.key) == targetUrl
+                }?.value
                 if (signatureConfig == null) {
                     unsignedSources++
                 } else {
