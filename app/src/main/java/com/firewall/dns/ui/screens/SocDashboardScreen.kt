@@ -136,7 +136,7 @@ fun SocDashboardScreen(
                 }
             }
         } else {
-            items(logs.take(5), key = { "${it.timestamp}-${it.domain}-${it.appName}" }) { entry ->
+            items(logs.take(5), key = { it.id }) { entry ->
                 RecentDnsEvent(entry)
             }
         }
