@@ -56,24 +56,19 @@ class SmartLearningStore(context: Context) {
 
     @Synchronized
     fun load() {
-        if (atomicFile.baseFile.exists() || File(atomicFile.baseFile.path + ".bak").exists()) {
+        if ((atomicFile.baseFile.exists() || File(atomicFile.baseFile.path + ".bak").exists()) &&
             readFileSnapshot()
-            // The new snapshot is authoritative once it has been read successfully.
-            if (!dirty) appContext.deleteDatabase(LEGACY_DATABASE_NAME)
+        ) {
+            appContext.deleteDatabase(LEGACY_DATABASE_NAME)
             return
         }
 
-        val migrated = readLegacyDatabase()
-        if (migrated.isNotEmpty()) {
-            observations.clear()
-            migrated.forEach { observations[it.domain] = it }
-            dirty = true
-            flush()
-        } else {
-            observations.clear()
-        }
-        // Delete the legacy DB only after the replacement snapshot was committed.
-        if (!dirty) appContext.deleteDatabase(LEGACY_DATABASE_NAME)
+        val migrated = readLegacyDatabase() ?: return
+        observations.clear()
+        migrated.forEach { observations[it.domain] = it }
+        dirty = true
+        // Even an empty legacy database gets a committed versioned snapshot before deletion.
+        flush()
     }
 
     @Synchronized
@@ -144,17 +139,17 @@ class SmartLearningStore(context: Context) {
         flush()
     }
 
-    private fun readFileSnapshot() {
+    private fun readFileSnapshot(): Boolean {
         val parsed = try {
             atomicFile.openRead().bufferedReader(Charsets.UTF_8).use { JSONObject(it.readText()) }
         } catch (_: FileNotFoundException) {
-            return
+            return false
         } catch (_: Exception) {
-            return
+            return false
         }
 
-        if (parsed.optInt("version", -1) != SCHEMA_VERSION) return
-        val rows = parsed.optJSONArray("domains") ?: return
+        if (parsed.optInt("version", -1) != SCHEMA_VERSION) return false
+        val rows = parsed.optJSONArray("domains") ?: return false
         val restored = LinkedHashMap<String, DomainObservationSummary>()
         for (index in 0 until rows.length()) {
             val row = rows.optJSONObject(index) ?: continue
@@ -172,11 +167,12 @@ class SmartLearningStore(context: Context) {
         restored.values.sortedByDescending { it.lastSeen }.take(MAX_DOMAINS)
             .forEach { observations[it.domain] = it }
         dirty = false
+        return true
     }
 
-    private fun readLegacyDatabase(): List<DomainObservationSummary> {
+    private fun readLegacyDatabase(): List<DomainObservationSummary>? {
         val databaseFile = appContext.getDatabasePath(LEGACY_DATABASE_NAME)
-        if (!databaseFile.exists()) return emptyList()
+        if (!databaseFile.exists()) return null
         return try {
             SQLiteDatabase.openDatabase(
                 databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY
@@ -203,7 +199,7 @@ class SmartLearningStore(context: Context) {
                 }
             }
         } catch (_: Exception) {
-            emptyList()
+            null
         }
     }
 }
