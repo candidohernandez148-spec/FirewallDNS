@@ -254,7 +254,7 @@ fun LogsScreen(
                 }
             }
         } else {
-            items(logs, key = { it.id }) { entry ->
+            items(logs, key = { it.id }, contentType = { "dns-log-entry" }) { entry ->
                 ActivityEntry(entry = entry, onToggleRule = { onToggleRule(entry) })
             }
         }

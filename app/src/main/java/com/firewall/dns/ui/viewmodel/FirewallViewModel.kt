@@ -18,6 +18,10 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.launch
 
 class FirewallViewModel(application: Application) : AndroidViewModel(application) {
@@ -54,6 +58,7 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
     private val _toastMessage = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val toastMessage: SharedFlow<String> = _toastMessage.asSharedFlow()
 
+    @OptIn(FlowPreview::class)
     val filteredLogs: StateFlow<List<DnsLogEntry>> = combine(
         FirewallRepository.logs,
         _onlyBlocked,
@@ -65,7 +70,10 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
                     entry.domain.contains(query, ignoreCase = true) ||
                     entry.appName.contains(query, ignoreCase = true))
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }
+        .flowOn(Dispatchers.Default)
+        .sample(150)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val filteredApps: StateFlow<List<AppInfoItem>> = combine(
         _installedApps,
