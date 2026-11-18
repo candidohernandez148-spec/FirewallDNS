@@ -19,6 +19,19 @@ class SmartDomainAnalyzerTest {
     }
 
     @Test
+    fun recognizesKnownAdTechProvidersWithoutDownloadedListEntries() {
+        val adsRvr = SmartDomainAnalyzer.evaluate("sync.adsrvr.org", emptyMap())
+        val scorecard = SmartDomainAnalyzer.evaluate("pixel.scorecardresearch.com", emptyMap())
+        assertTrue(adsRvr?.first == true)
+        assertTrue(scorecard?.first == true)
+    }
+
+    @Test
+    fun doesNotBlockUnrecognizedOrdinaryDomainFromBaselineKnowledgeAlone() {
+        assertNull(SmartDomainAnalyzer.evaluate("api.example.org", emptyMap()))
+    }
+
+    @Test
     fun keepsExplicitCoreSafeHostsOutOfSmartBlocking() {
         assertFalse(SmartDomainAnalyzer.evaluate("www.instagram.com", emptyMap())?.first == true)
     }
