@@ -105,6 +105,20 @@ fun AppsSettingsScreen(
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Aplicaciones", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text("Excluye apps del filtrado o bloquea su acceso a Internet.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (stats.engine.startsWith("DNS clásico")) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.tertiaryContainer
+                    ) {
+                        Text(
+                            "El respaldo DNS-only puede bloquear consultas DNS de las apps marcadas, pero el bloqueo completo de sus conexiones requiere el motor Firestack.",
+                            modifier = Modifier.padding(14.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                    }
+                }
                 OutlinedTextField(
                     value = appSearch,
                     onValueChange = onAppSearchChange,
@@ -135,8 +149,10 @@ fun AppsSettingsScreen(
                 val excluded = excludedPackages.contains(app.packageName)
                 val internetBlocked = blockedApps.contains(app.packageName)
 
+                val dnsOnlyFallback = stats.engine.startsWith("DNS clásico")
                 val chipText = when {
                     excluded -> "Excluida"
+                    internetBlocked && dnsOnlyFallback -> "Regla guardada"
                     internetBlocked -> "Sin internet"
                     else -> "Protegida"
                 }
@@ -188,6 +204,7 @@ fun AppsSettingsScreen(
                             Text(
                                 when {
                                     excluded -> "Internet bloqueado (desactiva excluir)"
+                                    internetBlocked && dnsOnlyFallback -> "Bloqueo DNS activo; bloqueo total requiere Firestack"
                                     internetBlocked -> "Internet bloqueado"
                                     else -> "Internet permitido"
                                 },
