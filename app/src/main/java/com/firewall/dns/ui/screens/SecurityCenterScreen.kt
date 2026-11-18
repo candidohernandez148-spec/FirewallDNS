@@ -25,6 +25,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.firewall.dns.domain.model.DnsLogEntry
 import com.firewall.dns.domain.model.FirewallStats
+import com.firewall.dns.domain.security.DnsActivityAnalyzer
+import com.firewall.dns.domain.security.DnsRiskLevel
 
 @Composable
 fun SecurityCenterScreen(
@@ -35,6 +37,7 @@ fun SecurityCenterScreen(
 ) {
     val context = LocalContext.current
     val recentThreats = logs.filter { it.isBlocked && isThreatReason(it.reason) }
+    val activityRisk = DnsActivityAnalyzer.assess(logs)
     val riskTitle = when {
         otherVpnActive -> "Conflicto de VPN"
         !stats.isRunning -> "Protección desactivada"
@@ -131,6 +134,47 @@ fun SecurityCenterScreen(
                 }
                 if (stats.loadedRulesCount == 0) {
                     AlertCard("No hay reglas cargadas", "Comprueba las listas de bloqueo para que el filtro tenga fuentes de dominios.", true)
+                }
+            }
+        }
+        item {
+            Text("Análisis de actividad DNS", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            val riskLabel = when (activityRisk.level) {
+                DnsRiskLevel.LOW -> "Bajo"
+                DnsRiskLevel.MEDIUM -> "Moderado"
+                DnsRiskLevel.HIGH -> "Elevado"
+            }
+            val riskColor = when (activityRisk.level) {
+                DnsRiskLevel.LOW -> MaterialTheme.colorScheme.secondaryContainer
+                DnsRiskLevel.MEDIUM -> MaterialTheme.colorScheme.tertiaryContainer
+                DnsRiskLevel.HIGH -> MaterialTheme.colorScheme.errorContainer
+            }
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = riskColor)
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Riesgo orientativo: $riskLabel", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Se analizaron ${activityRisk.analyzedEvents} de los últimos 50 eventos DNS conservados.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    if (activityRisk.findings.isEmpty()) {
+                        Text(
+                            "No se detectaron los patrones configurados en esta muestra. Esto no demuestra que el dispositivo esté libre de amenazas.",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    } else {
+                        activityRisk.findings.forEach { finding ->
+                            Text("• $finding", style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                    Text(
+                        "Las señales se basan en volumen de dominios por aplicación, repeticiones bloqueadas y nombres de host inusuales. No se realiza un escaneo del dispositivo ni se bloquea tráfico por este análisis.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }
