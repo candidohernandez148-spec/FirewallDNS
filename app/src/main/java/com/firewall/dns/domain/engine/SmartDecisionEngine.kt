@@ -5,6 +5,16 @@ object SmartDecisionEngine {
     enum class Level { ALLOW, OBSERVE, BLOCK }
     data class Decision(val level: Level, val score: Int, val reason: String)
 
+    // Referencia compartida a la colección concurrente del repositorio: no duplica miles
+    // de dominios ni realiza lecturas de disco durante una consulta DNS.
+    @Volatile
+    private var blocklistKnowledge: Set<String> = emptySet()
+
+    /** Sincroniza el conocimiento con las reglas activas cargadas desde las listas. */
+    fun updateBlocklistKnowledge(domains: Set<String>) {
+        blocklistKnowledge = domains
+    }
+
     private val safeHosts = setOf(
         "www.facebook.com", "m.facebook.com", "web.facebook.com", "graph.facebook.com",
         "edge-mqtt.facebook.com", "www.instagram.com", "i.instagram.com", "graph.instagram.com",
@@ -42,6 +52,12 @@ object SmartDecisionEngine {
         val labels = clean.split('.')
         if (labels.size < 2 || labels.any { it.isEmpty() || it.length > 63 }) return null
         if (clean in safeHosts) return null
+
+        // Las listas verificadas son conocimiento de alta confianza. La coincidencia
+        // incluye el dominio y sus subdominios, igual que el evaluador de reglas.
+        if (matchesDomainOrParent(clean, blocklistKnowledge)) {
+            return Decision(Level.BLOCK, 5, "Bloqueado: dominio conocido por las listas de protección")
+        }
 
         val tokens = labels.flatMap { it.split('-', '_') }.toSet()
         val parts = labels.dropLast(1)
@@ -91,5 +107,15 @@ object SmartDecisionEngine {
         }
         val label = if (level == Level.BLOCK) "Bloqueado" else "Observado; se permite"
         return Decision(level, score, "$label: ${reasons.joinToString(" + ")} (${score} pts)")
+    }
+
+    private fun matchesDomainOrParent(domain: String, domains: Set<String>): Boolean {
+        var candidate = domain
+        while (true) {
+            if (domains.contains(candidate)) return true
+            val dot = candidate.indexOf('.')
+            if (dot < 0) return false
+            candidate = candidate.substring(dot + 1)
+        }
     }
 }
