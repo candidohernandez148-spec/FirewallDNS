@@ -74,6 +74,9 @@ object FirewallRepository {
     private val _blocklistUrls = MutableStateFlow<List<String>>(emptyList())
     val blocklistUrls: StateFlow<List<String>> = _blocklistUrls.asStateFlow()
 
+    private val _blocklistsDownloaded = MutableStateFlow(false)
+    val blocklistsDownloaded: StateFlow<Boolean> = _blocklistsDownloaded.asStateFlow()
+
     private val _smartModeEnabled = MutableStateFlow(true)
     val smartModeEnabled: StateFlow<Boolean> = _smartModeEnabled.asStateFlow()
 
@@ -141,6 +144,7 @@ object FirewallRepository {
             startNetworkTypeMonitor()
             prefsDataSource = PreferencesDataSource(appContext)
             blocklistDataSource = BlocklistDataSource(appContext)
+            _blocklistsDownloaded.value = blocklistDataSource.hasSavedBlocklists()
 
             customBlockSet.clear()
             customBlockSet.addAll(prefsDataSource.getCustomBlockSet())
@@ -175,6 +179,7 @@ object FirewallRepository {
             hostExceptionSet.clear()
             hostExceptionSet.addAll(snapshot.exceptions)
             threatDomainsByCategory = snapshot.threatDomainsByCategory
+            _blocklistsDownloaded.value = true
             updateRulesCount()
 
             initialized = true
