@@ -157,6 +157,69 @@ object ThreatKnowledgeGraph {
     fun unattributedLearnedProfileCount(): Int =
         observations.keys.count { inspect(it) == null }
 
+
+    enum class PatternConfidence { LOW, MEDIUM }
+
+    /** Patrón repetido entre dominios sin proveedor conocido; nunca ordena bloquear. */
+    data class AdaptivePattern(
+        val indicators: List<String>,
+        val domains: List<String>,
+        val allowedCount: Long,
+        val blockedCount: Long,
+        val confidence: PatternConfidence
+    ) {
+        val totalObservations: Long get() = allowedCount + blockedCount
+    }
+
+    private val adaptiveIndicators = setOf(
+        "ad", "ads", "advert", "analytics", "telemetry", "tracking", "tracker",
+        "pixel", "beacon", "metrics", "measurement", "collect", "events",
+        "monitor", "stats", "stat", "impression", "click"
+    )
+
+    /**
+     * Agrupa dominios desconocidos que repiten exactamente los mismos indicadores.
+     * Exige dos dominios y ocho observaciones por dominio. No atribuye proveedor,
+     * no demuestra malicia y no interviene en evaluate().
+     */
+    fun adaptivePatternSnapshot(): List<AdaptivePattern> {
+        val groups = observations.entries.mapNotNull { (domain, signal) ->
+            if (inspect(domain) != null) return@mapNotNull null
+            val indicators = domain
+                .split(Regex("[^a-z0-9]+"))
+                .filter { it in adaptiveIndicators }
+                .distinct()
+                .sorted()
+            if (indicators.isEmpty()) return@mapNotNull null
+            indicators.joinToString("+") to (domain to signal)
+        }.groupBy({ it.first }, { it.second })
+
+        return groups.mapNotNull { (signature, entries) ->
+            if (entries.size < MIN_PATTERN_DOMAINS) return@mapNotNull null
+            val domains = entries.map { it.first }.distinct().sorted()
+            val allowed = entries.sumOf { it.second.allowedCount }
+            val blocked = entries.sumOf { it.second.blockedCount }
+            AdaptivePattern(
+                indicators = signature.split("+"),
+                domains = domains,
+                allowedCount = allowed,
+                blockedCount = blocked,
+                confidence = if (domains.size >= 3 && allowed + blocked >= 24L) {
+                    PatternConfidence.MEDIUM
+                } else {
+                    PatternConfidence.LOW
+                }
+            )
+        }.sortedWith(
+            compareByDescending<AdaptivePattern> { it.totalObservations }
+                .thenByDescending { it.domains.size }
+                .thenBy { it.indicators.joinToString("+") }
+        ).take(MAX_ADAPTIVE_PATTERNS)
+    }
+
+    private const val MIN_PATTERN_DOMAINS = 2
+    private const val MAX_ADAPTIVE_PATTERNS = 20
+
     private const val MIN_OBSERVATIONS = 8L
     private const val ALLOWED_RATIO = 0.90
 

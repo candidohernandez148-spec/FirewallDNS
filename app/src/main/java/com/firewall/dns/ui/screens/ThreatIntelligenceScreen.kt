@@ -35,6 +35,7 @@ fun ThreatIntelligenceScreen() {
     val catalog = remember(refreshKey) { ThreatKnowledgeGraph.catalogSnapshot() }
     val learnedCount = remember(refreshKey) { ThreatKnowledgeGraph.learnedProfileCount() }
     val correlations = remember(refreshKey) { ThreatKnowledgeGraph.correlationSnapshot() }
+    val adaptivePatterns = remember(refreshKey) { ThreatKnowledgeGraph.adaptivePatternSnapshot() }
     val unattributedCount = remember(refreshKey) { ThreatKnowledgeGraph.unattributedLearnedProfileCount() }
     var query by remember { mutableStateOf("") }
     var expandedProvider by remember { mutableStateOf<String?>(null) }
@@ -126,6 +127,60 @@ fun ThreatIntelligenceScreen() {
                     }
                     Text(
                         "Relación basada en catálogo explícito; no cambia la decisión DNS.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.tertiary
+                    )
+                }
+            }
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SummaryTile("Patrones recurrentes", adaptivePatterns.size.toString(), Modifier.weight(1f))
+                SummaryTile("Dominios en patrones", adaptivePatterns.sumOf { it.domains.size }.toString(), Modifier.weight(1f))
+            }
+        }
+        item {
+            Text("Detecciones adaptativas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(
+                "Patrones repetidos entre dominios desconocidos. Son indicios para investigar, no amenazas confirmadas.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        if (adaptivePatterns.isEmpty()) {
+            item {
+                Text(
+                    "Aún no hay patrones repetidos con suficiente historial. El motor seguirá observando sin atribuir ni bloquear por esta señal.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        items(adaptivePatterns, key = { "adaptive-${it.indicators.joinToString("-")}" }) { pattern ->
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("OBSERVAR", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.Bold)
+                        Text(
+                            if (pattern.confidence == ThreatKnowledgeGraph.PatternConfidence.MEDIUM) "Confianza media" else "Confianza inicial",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Text(pattern.indicators.joinToString(" + "), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text("${pattern.domains.size} dominios · ${pattern.totalObservations} observaciones", style = MaterialTheme.typography.bodySmall)
+                    Text("Permisos: ${pattern.allowedCount} · Bloqueos: ${pattern.blockedCount}", style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        "Dominios: ${pattern.domains.take(5).joinToString(", ")}" +
+                            if (pattern.domains.size > 5) " y ${pattern.domains.size - 5} más" else "",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        "Sin proveedor atribuido. No modifica la decisión DNS ni activa bloqueos.",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.tertiary
                     )
