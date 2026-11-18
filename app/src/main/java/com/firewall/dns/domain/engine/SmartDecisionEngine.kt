@@ -79,8 +79,13 @@ object SmartDecisionEngine {
             val label = if (level == Level.BLOCK) "Bloqueado" else "Observado; se permite"
             val confidenceLabel = if (highConfidence) "alta" else "media"
             val learningNote = ThreatKnowledgeGraph.observationEvidence(clean)?.let {
-                "; aprendizaje local: ${it.allowedCount} permisos y ${it.blockedCount} bloqueos " +
+                "; aprendizaje local exacto: ${it.allowedCount} permisos y ${it.blockedCount} bloqueos " +
                     "de ${it.total} observaciones (${it.interpretation})"
+            }.orEmpty()
+            val providerContext = ThreatKnowledgeGraph.providerObservationEvidence(clean)?.let {
+                "; correlación local del proveedor ${it.provider}: ${it.allowedCount} permisos y " +
+                    "${it.blockedCount} bloqueos en ${it.total} observaciones de sus endpoints " +
+                    "(${it.interpretation}; contexto informativo, sin heredar decisiones)"
             }.orEmpty()
             val criterion = when {
                 level == Level.BLOCK -> "proveedor publicitario de confianza alta"
@@ -91,7 +96,7 @@ object SmartDecisionEngine {
                 level,
                 score,
                 "$label: relación del mapa de conocimiento con ${evidence.provider} " +
-                    "(${evidence.relation}; $category$learningNote) | " +
+                    "(${evidence.relation}; $category$learningNote$providerContext) | " +
                     "Evidencia: ${evidence.knowledgePath.joinToString(" → ")} | " +
                     "Confianza: $confidenceLabel | Criterio: $criterion"
             )
