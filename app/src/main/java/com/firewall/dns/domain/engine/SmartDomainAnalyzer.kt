@@ -53,13 +53,15 @@ object SmartDomainAnalyzer {
         "collect", "events", "log", "logs", "mon", "stat", "stats", "ping", "report"
     )
 
-    private val META_TRACKER_TOKENS = setOf(
-        "pixel", "an", "tr", "ads", "analytics", "logging", "scribe", "graph-fallback"
+    // Señales específicas de publicidad y medición dentro de plataformas sociales.
+    // Se evalúan por subdominio: nunca se bloquea facebook.com, instagram.com o tiktok.com completos.
+    private val META_AD_TOKENS = setOf("ads", "ad", "pixel", "an", "tr")
+    private val META_MEASUREMENT_TOKENS = setOf(
+        "analytics", "logging", "scribe", "graph-fallback", "tracking", "events"
     )
-
-    private val TIKTOK_TRACKER_TOKENS = setOf(
-        "ads", "analytics", "log", "mon", "telemetry", "metrics", "mcs",
-        "pitaya", "ad", "pangolin", "pangle"
+    private val TIKTOK_AD_TOKENS = setOf("ads", "ad", "pangle", "adservice", "adserver")
+    private val TIKTOK_MEASUREMENT_TOKENS = setOf(
+        "analytics", "log", "mon", "telemetry", "metrics", "mcs", "pitaya", "tracking"
     )
 
     fun evaluate(domain: String, learnedWeights: Map<String, Int>): Pair<Boolean, String>? {
@@ -84,18 +86,30 @@ object SmartDomainAnalyzer {
         var category = "Heurística"
 
         if (clean.endsWith(".facebook.com") || clean.endsWith(".instagram.com") || clean.endsWith(".fb.com")) {
-            if (parts.any { it in META_TRACKER_TOKENS }) {
-                score += 3
-                category = "Meta Tracker"
+            when {
+                parts.any { it in META_AD_TOKENS } -> {
+                    score += 3
+                    category = "Publicidad Meta"
+                }
+                parts.any { it in META_MEASUREMENT_TOKENS } -> {
+                    score += 3
+                    category = "Medición Meta"
+                }
             }
         }
 
         if (clean.endsWith(".tiktok.com") || clean.endsWith(".tiktokv.com") ||
             clean.endsWith(".byteoversea.com") || clean.endsWith(".tiktokw.us")
         ) {
-            if (parts.any { it in TIKTOK_TRACKER_TOKENS }) {
-                score += 3
-                category = "TikTok Tracker"
+            when {
+                parts.any { it in TIKTOK_AD_TOKENS } -> {
+                    score += 3
+                    category = "Publicidad TikTok"
+                }
+                parts.any { it in TIKTOK_MEASUREMENT_TOKENS } -> {
+                    score += 3
+                    category = "Medición TikTok"
+                }
             }
         }
 
