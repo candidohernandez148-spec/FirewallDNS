@@ -41,7 +41,10 @@ private data class ThreatIntelligenceSnapshot(
 )
 
 @Composable
-fun ThreatIntelligenceScreen() {
+fun ThreatIntelligenceScreen(
+    blockedDomains: Set<String>,
+    onBlockDomain: (String) -> Unit
+) {
     var refreshKey by remember { mutableIntStateOf(0) }
     // El catálogo curado es pequeño: permite mostrar contenido útil en el primer frame.
     // Los perfiles aprendidos y sus agrupaciones se calculan después, fuera del hilo UI.
@@ -56,29 +59,30 @@ fun ThreatIntelligenceScreen() {
             )
         )
     }
-    var hasLoadedDetails by remember { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var expandedProvider by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(refreshKey) {
-        isRefreshing = true
-        val result = withContext(Dispatchers.Default) {
-            ThreatIntelligenceSnapshot(
-                catalog = snapshot.catalog,
-                learnedCount = ThreatKnowledgeGraph.learnedProfileCount(),
-                correlations = ThreatKnowledgeGraph.correlationSnapshot(),
-                adaptivePatterns = ThreatKnowledgeGraph.adaptivePatternSnapshot(),
-                unattributedCount = ThreatKnowledgeGraph.unattributedLearnedProfileCount(),
-            )
+        while (true) {
+            isRefreshing = true
+            val result = withContext(Dispatchers.Default) {
+                ThreatIntelligenceSnapshot(
+                    catalog = ThreatKnowledgeGraph.catalogSnapshot(),
+                    learnedCount = ThreatKnowledgeGraph.learnedProfileCount(),
+                    correlations = ThreatKnowledgeGraph.correlationSnapshot(),
+                    adaptivePatterns = ThreatKnowledgeGraph.adaptivePatternSnapshot(),
+                    unattributedCount = ThreatKnowledgeGraph.unattributedLearnedProfileCount(),
+                )
+            }
+            snapshot = result
+            isRefreshing = false
+            kotlinx.coroutines.delay(5_000)
         }
-        snapshot = result
-        hasLoadedDetails = true
-        isRefreshing = false
     }
 
     val current = snapshot
-    if (!hasLoadedDetails) {
+    if (false) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
@@ -96,7 +100,7 @@ fun ThreatIntelligenceScreen() {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.padding(4.dp))
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("Cargando aprendizaje local…", fontWeight = FontWeight.SemiBold)
+                        Text("Preparando datos en segundo plano…", fontWeight = FontWeight.SemiBold)
                         Text(
                             "El catálogo ya está disponible. Estamos preparando las observaciones y correlaciones.",
                             style = MaterialTheme.typography.bodySmall,
@@ -150,8 +154,8 @@ fun ThreatIntelligenceScreen() {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Button(onClick = { refreshKey++ }, enabled = !isRefreshing) { Text("Actualizar mapa") }
-                    if (isRefreshing) androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.padding(8.dp))
+                    Button(onClick = { refreshKey++ }) { Text("Actualizar ahora") }
+                    Text(if (isRefreshing) "Sincronizando…" else "En vivo · actualización automática", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                 }
             }
         }
