@@ -82,7 +82,7 @@ private val FirewallTypography = Typography(
     bodySmall = TextStyle(fontSize = 11.sp, lineHeight = 15.sp),
     labelLarge = TextStyle(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.SemiBold),
     labelMedium = TextStyle(fontSize = 11.sp, lineHeight = 14.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.2.sp),
-    labelSmall = TextStyle(fontSize = 10.sp, lineHeight = 13.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.15.sp)
+    labelSmall = TextStyle(fontSize = 11.sp, lineHeight = 14.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.15.sp)
 )
 
 private val FirewallShapes = Shapes(
