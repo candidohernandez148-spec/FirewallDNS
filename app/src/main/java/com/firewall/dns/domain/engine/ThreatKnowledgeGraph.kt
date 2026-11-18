@@ -274,6 +274,10 @@ object ThreatKnowledgeGraph {
     }
 
     private const val MIN_PATTERN_DOMAINS = 2
+    private const val MIN_HIGH_CONFIDENCE_PATTERN_DOMAINS = 3
+    private const val MIN_HIGH_CONFIDENCE_PATTERN_OBSERVATIONS = 24L
+    private const val MIN_HIGH_CONFIDENCE_BLOCKED_OBSERVATIONS = 18L
+    private const val MIN_PATTERN_BLOCKED_RATIO = 0.75
     private const val MAX_ADAPTIVE_PATTERNS = 20
 
     private const val MIN_OBSERVATIONS = 8L
