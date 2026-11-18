@@ -3,6 +3,7 @@ package com.firewall.dns.data.repository
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.util.Log
 import com.firewall.dns.data.local.BlocklistDataSource
 import com.firewall.dns.data.local.PreferencesDataSource
 import com.firewall.dns.data.local.SmartLearningStore
@@ -51,6 +52,7 @@ import java.util.concurrent.atomic.AtomicLong
 
 object FirewallRepository {
 
+    private const val TAG = "FirewallRepository"
     private const val MAX_LOGS = 400
     private const val TRAFFIC_POINTS = 40
     private const val TRAFFIC_INTERVAL_MS = 2_000L
@@ -258,6 +260,7 @@ object FirewallRepository {
                     }
                 }.isSuccess
                 if (!persisted) {
+                    Log.e(TAG, "No se pudo incorporar el lote de observaciones; se reintentará")
                     // No perder el lote por un error temporal de persistencia; se reintentará en IO.
                     batch.filter { it.generation == learningGeneration.get() }
                         .forEach { observationQueue.trySend(it) }
@@ -275,6 +278,9 @@ object FirewallRepository {
                         smartLearningStore.flush()
                         refreshObservationKnowledge()
                     }
+                }.onFailure { error ->
+                    // Keep the in-memory snapshot dirty and retry on the next interval.
+                    Log.e(TAG, "No se pudo guardar el snapshot de aprendizaje; se reintentará", error)
                 }
             }
         }
