@@ -5,6 +5,9 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import com.firewall.dns.data.local.BlocklistDataSource
 import com.firewall.dns.data.local.PreferencesDataSource
+import com.firewall.dns.data.local.SmartLearningStore
+import com.firewall.dns.data.local.DomainObservationEvent
+import com.firewall.dns.data.local.DomainObservationSummary
 import com.firewall.dns.domain.engine.BlocklistSourcePolicy
 import com.firewall.dns.domain.engine.AppFirewallManager
 import com.firewall.dns.domain.engine.DomainBlocker
@@ -20,6 +23,8 @@ import com.firewall.dns.domain.model.TrafficPoint
 import com.firewall.dns.service.NetworkDns
 import com.firewall.dns.service.FirewallTileService
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -53,6 +58,7 @@ object FirewallRepository {
     private lateinit var appContext: Context
     private lateinit var prefsDataSource: PreferencesDataSource
     private lateinit var blocklistDataSource: BlocklistDataSource
+    private lateinit var smartLearningStore: SmartLearningStore
 
     private val _logs = MutableStateFlow<List<DnsLogEntry>>(emptyList())
     val logs: StateFlow<List<DnsLogEntry>> = _logs.asStateFlow()
@@ -102,6 +108,11 @@ object FirewallRepository {
     private val activitySaveScheduled = AtomicBoolean(false)
     private val activityVersion = AtomicLong(0L)
     private val learningScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    // Cola acotada: nunca espera a SQLite dentro de la consulta DNS.
+    private val observationQueue = Channel<DomainObservationEvent>(
+        capacity = 2048,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
     private val initialBlocklistLoad = CompletableDeferred<Unit>()
     private val blocklistDownloadMutex = Mutex()
     private val blocklistGeneration = AtomicLong(0L)
@@ -148,6 +159,8 @@ object FirewallRepository {
             startNetworkTypeMonitor()
             prefsDataSource = PreferencesDataSource(appContext)
             blocklistDataSource = BlocklistDataSource(appContext)
+            smartLearningStore = SmartLearningStore(appContext)
+            startObservationWorker()
             _blocklistsDownloaded.value = blocklistDataSource.hasSavedBlocklists()
 
             customBlockSet.clear()
@@ -206,6 +219,25 @@ object FirewallRepository {
             }
         }
     }
+
+    private fun startObservationWorker() {
+        learningScope.launch {
+            for (first in observationQueue) {
+                val batch = ArrayList<DomainObservationEvent>(128)
+                batch.add(first)
+                // Agrupa escrituras para no abrir una transacción por cada paquete DNS.
+                delay(1_000)
+                while (batch.size < 256) {
+                    val next = observationQueue.tryReceive().getOrNull() ?: break
+                    batch.add(next)
+                }
+                runCatching { smartLearningStore.recordBatch(batch) }
+            }
+        }
+    }
+
+    suspend fun getSmartLearningMemory(): List<DomainObservationSummary> =
+        withContext(Dispatchers.IO) { smartLearningStore.getSnapshot() }
 
     suspend fun awaitInitialBlocklistLoad() {
         initialBlocklistLoad.await()
@@ -477,6 +509,10 @@ object FirewallRepository {
             else stats.copy(totalBlocked = stats.totalBlocked + 1)
         }
         activityVersion.incrementAndGet()
+        // Se registra únicamente el dominio y contadores agregados; no se guarda la app ni el historial crudo.
+        observationQueue.trySend(
+            DomainObservationEvent(domain = domain, blocked = !allowed, observedAt = System.currentTimeMillis())
+        )
         scheduleActivitySave()
     }
 
