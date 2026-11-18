@@ -93,6 +93,16 @@ No se recomienda reescribir la aplicación ni introducir módulos, Room o SQLite
 - **Verificación:** búsqueda de referencias, pruebas de normalización y pruebas de decisión central.
 - **Estado:** pendiente.
 
+### MEDIO — La caché DNS del respaldo ignora el TTL real de las respuestas
+
+- **Archivo/clase:** `service/DnsFirewallService.kt`, `dnsCache` y `forwardDnsQuery()`.
+- **Problema:** las respuestas permitidas se guardan con un vencimiento fijo de 60 segundos, sin extraer ni respetar el TTL de los registros DNS.
+- **Consecuencia:** un registro cuyo TTL sea inferior puede mantenerse en caché más tiempo del autorizado por el servidor; los cambios de DNS pueden tardar en reflejarse.
+- **Solución:** analizar TTL de los registros A/AAAA/CNAME de forma segura y usar el mínimo TTL aplicable, con límites conservadores; no almacenar respuestas malformadas ni truncadas.
+- **Riesgo:** medio-alto; un parser DNS de respuestas incorrecto puede provocar caché inconsistente.
+- **Verificación:** respuestas con TTL 0, TTL corto, múltiples registros, NXDOMAIN, CNAME, respuestas malformadas y cambio de upstream.
+- **Estado:** pendiente.
+
 ### MEDIO — El estado “listas descargadas” solo comprueba que exista un archivo
 
 - **Archivo/clase:** `data/local/BlocklistDataSource.kt`, `hasSavedBlocklists()`; inicialización en `FirewallRepository.init()`.
