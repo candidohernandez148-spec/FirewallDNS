@@ -94,6 +94,7 @@ class DnsFirewallService : VpnService() {
         serviceScope.launch {
             FirewallRepository.cacheInvalidateEvent.collect {
                 dnsCache.clear()
+                if (isRunning) installSharedEngine()
                 if (isRunning) updateForegroundNotification()
             }
         }

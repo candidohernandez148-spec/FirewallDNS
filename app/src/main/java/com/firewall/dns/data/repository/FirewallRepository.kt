@@ -19,6 +19,9 @@ import com.firewall.dns.domain.model.DnsLogEntry
 import com.firewall.dns.domain.model.FirewallStats
 import com.firewall.dns.domain.model.TrafficPoint
 import com.firewall.dns.service.NetworkDns
+import com.firewalldns.engine.core.PolicyAction
+import com.firewalldns.engine.core.PolicyRule
+import com.firewalldns.engine.core.RuleSource
 import com.firewall.dns.service.FirewallTileService
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -321,6 +324,31 @@ object FirewallRepository {
             snapshot.summary
         }
     }
+
+    /** Exporta un snapshot inmutable para la autoridad única FirewallDNS-Engine. */
+    fun enginePolicyRules(): List<PolicyRule> {
+        val snapshot = activeBlocklistSnapshot
+        return buildList {
+            customAllowSet.forEach { domain ->
+                add(PolicyRule("user-allow:$domain", domain, action = PolicyAction.ALLOW,
+                    source = RuleSource.USER, priority = 100_000, reason = "custom_allow"))
+            }
+            customBlockSet.forEach { domain ->
+                add(PolicyRule("user-block:$domain", domain, action = PolicyAction.BLOCK,
+                    source = RuleSource.USER, priority = 90_000, reason = "custom_block"))
+            }
+            snapshot.exceptions.forEach { domain ->
+                add(PolicyRule("list-exception:$domain", domain, action = PolicyAction.ALLOW,
+                    source = RuleSource.MANAGED, priority = 80_000, reason = "blocklist_exception"))
+            }
+            snapshot.blocked.forEach { domain ->
+                add(PolicyRule("blocklist:$domain", domain, action = PolicyAction.BLOCK,
+                    source = RuleSource.MANAGED, priority = 10_000, reason = "blocklist_match"))
+            }
+        }
+    }
+
+    fun isSmartModeEnabled(): Boolean = _smartModeEnabled.value
 
     fun evaluateDomain(domain: String): Pair<Boolean, String> {
         val activeRules = activeBlocklistSnapshot

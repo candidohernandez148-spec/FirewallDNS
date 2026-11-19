@@ -13,4 +13,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "FirewallDNS"
-include(":app")
+include(":app", ":engine-core", ":dns-engine", ":threat-engine", ":engine-monitor", ":engine-runtime", ":android-adapter")
