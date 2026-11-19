@@ -17,19 +17,19 @@ Aplicación Android de **firewall local y filtrado DNS sin permisos root**, cons
 
 ## ✨ Características principales
 
-* **Motor híbrido Firestack + Respaldo DNS clásico:**
-  * **Modo principal (`FirewallVpnService` + `Firestack`):** Túnel local IPv4/IPv6 (`gVisor/netstack`) para interceptar y registrar conexiones **TCP/UDP** y consultas **DNS** (`A`, `AAAA`, `HTTPS`, `CNAME`, `TXT`) identificando la aplicación propietaria por UID.
-  * **Respaldo automático (`DnsFirewallService`):** Motor DNS ligero en Kotlin puro (`DnsPacketEngine`) que entra en acción automáticamente si el túnel principal no logra iniciar.
-  * **Adaptación dinámica de red (`NetworkDns`):** Detecta cambios entre Wi-Fi, datos móviles y Ethernet para usar los servidores DNS de la red física activa.
+* **Arquitectura actual en transición:**
+    * El servicio VPN actual todavía utiliza Firestack. Se mantiene temporalmente solo como referencia de paridad mientras `FirewallDNS-Engine` alcanza y valida la cobertura necesaria.
+    * El servicio DNS clásico sigue disponible durante la transición; no es el motor objetivo de la arquitectura final.
+    * La integración final tendrá un único motor de decisiones y filtrado: `FirewallDNS-Engine`; Android conservará la interfaz, permisos y `VpnService`.
 * **Control de aplicaciones (Split Tunneling y bloqueo total):**
   * Bloquea por completo el acceso a Internet de aplicaciones individuales por UID (`AppFirewallManager`).
   * Excluye aplicaciones concretas del filtrado mediante `addDisallowedApplication`.
 * **Listas Adblock externas y reglas personalizadas:**
   * Compatible con sintaxis estándar Adblock DNS (`||dominio.com^` y excepciones `@@||dominio.com^`), con presets recomendados de **HaGeZi** (Ligera, Estándar y Avanzada) y soporte para añadir URLs externas sin recompilar.
   * Reglas manuales de **Lista Blanca** y **Lista Negra** con prioridad sobre las listas descargadas, y botones rápidos de *Permitir/Bloquear* desde el historial en vivo.
-* **Protección inteligente local (`SmartDomainAnalyzer`):**
-  * Evaluación heurística multi-señal con escudo de dominios esenciales (`CORE_SAFE_HOSTS`) para evitar falsos positivos en chats, videos o inicios de sesión.
-  * Aprendizaje ponderado local en el dispositivo basado en las decisiones del usuario, con opción para reiniciar los patrones aprendidos en cualquier momento.
+* **Protección inteligente determinista:**
+  * Evaluación en tiempo real con indicadores integrados y curados de publicidad, rastreo y analítica, además de listas descargadas y reglas personalizadas.
+  * Las decisiones son explicables y no se modifican por historial de actividad: no hay aprendizaje persistente, entrenamiento local ni perfiles construidos a partir del tráfico.
 * **Interfaz moderna y monitoreo en vivo:**
   * Gráfica de tráfico en tiempo real (`TrafficChart`), métricas de bloqueo, ranking de dominios más bloqueados, buscador por dominio o aplicación y detección de conflicto cuando otra VPN del sistema está activa.
   * Soporte automático para tema claro y oscuro (`Material 3`).
