@@ -41,18 +41,24 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 
 class DnsFirewallService : VpnService() {
 
     private var vpnInterface: ParcelFileDescriptor? = null
     private var tunReaderThread: Thread? = null
+    // El lector TUN nunca ejecuta trabajo DNS: si la cola se llena, el paquete
+    // se contabiliza como rechazado en lugar de bloquear la lectura del túnel.
     private val executor = ThreadPoolExecutor(
-        4, 4, 0L, TimeUnit.MILLISECONDS,
+        4, 8, 15L, TimeUnit.SECONDS,
         ArrayBlockingQueue(256),
-        ThreadPoolExecutor.CallerRunsPolicy()
-    )
+        ThreadPoolExecutor.AbortPolicy()
+    ).apply {
+        allowCoreThreadTimeOut(true)
+    }
     private val writeLock = Any()
     private val vpnLock = Any()
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -87,6 +93,13 @@ class DnsFirewallService : VpnService() {
         private const val CHANNEL_ID = "dns_firewall_channel"
         private const val NOTIFICATION_ID = 2001
         private const val CACHE_TTL_MS = 60_000L
+
+        /** Paquetes descartados explícitamente por saturación de la cola TUN. */
+        val queueRejectedPackets = AtomicLong(0L)
+
+        /** Fallos inesperados al procesar un paquete en un worker. */
+        val packetProcessingErrors = AtomicLong(0L)
+
         private val TRAPPED_IPV4_DNS = listOf("8.8.8.8", "8.8.4.4", "1.1.1.1", "1.0.0.1")
         private val TRAPPED_IPV6_DNS = listOf(
             "2001:4860:4860::8888", "2001:4860:4860::8844",
@@ -218,10 +231,17 @@ class DnsFirewallService : VpnService() {
                     if (length < 0) break
                     if (length > 0) {
                         val copy = buffer.copyOf(length)
-                        executor.execute {
-                            try {
-                                handlePacket(copy, output)
-                            } catch (_: Throwable) {}
+                        try {
+                            executor.execute {
+                                try {
+                                    handlePacket(copy, output)
+                                } catch (_: Exception) {
+                                    packetProcessingErrors.incrementAndGet()
+                                }
+                            }
+                        } catch (_: RejectedExecutionException) {
+                            // No ejecutar handlePacket en el lector: puede esperar al DNS upstream.
+                            queueRejectedPackets.incrementAndGet()
                         }
                     }
                 }
