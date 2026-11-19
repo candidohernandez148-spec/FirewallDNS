@@ -21,6 +21,11 @@ import com.firewall.dns.R
 import com.firewall.dns.data.repository.FirewallRepository
 import com.firewall.dns.domain.engine.AppFirewallManager
 import com.firewall.dns.domain.engine.DnsPacketEngine
+import com.firewalldns.engine.android.AndroidEngineRuntime
+import com.firewalldns.engine.dns.DnsEvaluation
+import com.firewalldns.engine.dns.DnsUpstreamConfig
+import com.firewalldns.engine.dns.DnsUpstreamFailoverClient
+import com.firewalldns.engine.dns.DnsUpstreamResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -59,6 +64,8 @@ class DnsFirewallService : VpnService() {
     private val uidAppCache = ConcurrentHashMap<Int, String>()
 
     private lateinit var connectivityManager: ConnectivityManager
+    @Volatile private var sharedEngine: AndroidEngineRuntime? = null
+    @Volatile private var sharedUpstream: DnsUpstreamFailoverClient? = null
 
     companion object {
         const val ACTION_START = "com.firewall.dns.action.START_TUN"
@@ -196,6 +203,7 @@ class DnsFirewallService : VpnService() {
             return
         }
         vpnInterface = established
+        installSharedEngine()
         isRunning = true
         FirewallRepository.setRunning(true, "FirewallDNS TUN (DNS)")
         val input = FileInputStream(established.fileDescriptor)
@@ -274,17 +282,22 @@ class DnsFirewallService : VpnService() {
         val query = DnsPacketEngine.parseDnsQuery(dnsPayload) ?: return
         val appUid = resolveAppUid(srcIp, srcPort, dstIp, dstPort)
         val appName = resolveAppName(appUid)
-        val (ruleWouldBlock, ruleReason) = if (appUid >= 0 && AppFirewallManager.isUidBlocked(appUid)) {
-            true to "DNS bloqueado para la aplicación (respaldo DNS-only)"
-        } else {
-            FirewallRepository.evaluateDomain(query.domain)
+        val appPackage = resolvePackageName(appUid)
+        val evaluation = sharedEngine?.engine?.evaluateDns(dnsPayload, appPackage)
+        val engineDecision = when (evaluation) {
+            is DnsEvaluation.Blocked -> true to evaluation.decision.reason
+            is DnsEvaluation.Forward -> false to evaluation.decision.reason
+            is DnsEvaluation.Rejected -> return
+            null -> FirewallRepository.evaluateDomain(query.domain)
         }
+        val appBlocked = appUid >= 0 && AppFirewallManager.isUidBlocked(appUid)
         val observationMode = FirewallRepository.isObservationModeEnabled()
-
-        val shouldBlock = ruleWouldBlock
+        val policyWouldBlock = appBlocked || engineDecision.first
+        val shouldBlock = policyWouldBlock && !observationMode
+        val ruleReason = if (appBlocked) "DNS bloqueado para la aplicación" else engineDecision.second
         val finalReason = when {
-            observationMode && shouldBlock -> "Monitoreo + bloqueo: $ruleReason"
-            observationMode -> "Monitoreo: permitido"
+            observationMode && policyWouldBlock -> "OBSERVE: $ruleReason"
+            observationMode -> "OBSERVE: permitido"
             else -> ruleReason
         }
 
@@ -302,7 +315,12 @@ class DnsFirewallService : VpnService() {
             if (cachedResponse != null) {
                 dnsResponse = cachedResponse
             } else {
-                dnsResponse = forwardDnsQuery(dnsPayload)
+                dnsResponse = sharedUpstream?.let { upstream ->
+                    when (val result = upstream.exchange(dnsPayload)) {
+                        is DnsUpstreamResult.Success -> result.response.message
+                        is DnsUpstreamResult.Failure, DnsUpstreamResult.Cancelled -> null
+                    }
+                } ?: forwardDnsQuery(dnsPayload)
                 if (dnsResponse != null) {
                     if (dnsCache.size > 600) dnsCache.clear()
                     dnsCache[cacheKey] = CachedDns(dnsResponse, now + CACHE_TTL_MS)
@@ -347,6 +365,24 @@ class DnsFirewallService : VpnService() {
         }
     }
 
+
+    private fun installSharedEngine() {
+        val runtime = runCatching {
+            AndroidEngineRuntime(this, FirewallRepository.isSmartModeEnabled()).also {
+                it.engine.replaceRules(FirewallRepository.enginePolicyRules())
+            }
+        }.getOrNull()
+        sharedEngine = runtime
+        sharedUpstream = runtime?.let { engine ->
+            runCatching {
+                engine.createDnsFailover(listOf(DnsUpstreamConfig(FirewallRepository.getUpstreamDns(), timeoutMillis = 2_000)))
+            }.getOrNull()
+        }
+    }
+
+    private fun resolvePackageName(uid: Int): String? =
+        if (uid < 0) null else runCatching { packageManager.getPackagesForUid(uid)?.firstOrNull() }.getOrNull()
+
     private fun resolveAppName(uid: Int): String {
         if (uid == Process.INVALID_UID || uid < 0) return "Sistema / DNS"
         if (uid == 0) return "Sistema (root)"
@@ -390,8 +426,9 @@ class DnsFirewallService : VpnService() {
         FirewallRepository.setRunning(false)
         tunReaderThread?.interrupt()
         tunReaderThread = null
+        sharedEngine = null
+        sharedUpstream = null
         val iface = vpnInterface
-        vpnInterface = null
         try { iface?.close() } catch (_: IOException) {}
     }
 
