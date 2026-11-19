@@ -1,19 +1,15 @@
 package com.firewall.dns.domain.engine
 
-/** Motor local de evidencias: señales aisladas se observan; evidencia compuesta reforzada puede bloquear. */
+/** Evaluador determinista: usa reglas activas, catálogo curado y señales del dominio en tiempo real. */
 object SmartDecisionEngine {
     enum class Level { ALLOW, OBSERVE, BLOCK }
     data class Decision(val level: Level, val score: Int, val reason: String)
 
-    // Referencia compartida a la colección concurrente del repositorio: no duplica miles
-    // de dominios ni realiza lecturas de disco durante una consulta DNS.
     @Volatile
     private var blocklistKnowledge: Set<String> = emptySet()
 
-    /** Sincroniza el conocimiento con las reglas activas cargadas desde las listas. */
     fun updateBlocklistKnowledge(domains: Set<String>) {
         blocklistKnowledge = domains
-        ThreatKnowledgeGraph.updateBlocklistDomains(domains)
     }
 
     private val safeHosts = setOf(
@@ -47,52 +43,20 @@ object SmartDecisionEngine {
     private val tiktokAd = setOf("ads", "ad", "pangle", "adservice", "adserver")
     private val tiktokMeasure = setOf("analytics", "log", "mon", "telemetry", "metrics", "mcs", "pitaya", "tracking")
 
-    fun evaluate(domain: String, learnedWeights: Map<String, Int> = emptyMap()): Decision? {
+    fun evaluate(domain: String): Decision? {
         val clean = domain.trim().lowercase().trimEnd('.')
         if (clean.isEmpty() || clean.length > 253) return null
         val labels = clean.split('.')
         if (labels.size < 2 || labels.any { it.isEmpty() || it.length > 63 }) return null
         if (clean in safeHosts) return null
 
-        // Las listas verificadas son conocimiento de alta confianza. La coincidencia
-        // incluye el dominio y sus subdominios, igual que el evaluador de reglas.
         if (matchesDomainOrParent(clean, blocklistKnowledge)) {
-            return Decision(Level.BLOCK, 5, "Bloqueado: dominio conocido por las listas de protección | Evidencia: coincidencia con una regla activa o un subdominio suyo | Confianza: muy alta | Criterio: las listas verificadas tienen prioridad sobre las heurísticas")
-        }
-
-        val tokens = labels.flatMap { it.split('-', '_') }.toSet()
-        val exactLearnedWeight = learnedWeights["domain:$clean"] ?: 0
-        val learnedAllow = exactLearnedWeight <= -2
-        // La memoria agregada solo influye con al menos 8 observaciones y 90% de permisos.
-        // Se consulta un mapa en memoria; nunca se accede a almacenamiento local desde el hilo DNS.
-        val repeatedlyAllowed = ThreatKnowledgeGraph.isRepeatedlyAllowed(clean)
-
-        // Una familia aprendida solo bloquea si varios dominios independientes acumularon
-        // evidencia histórica fuerte de bloqueo. El permiso aprendido del dominio exacto
-        // conserva prioridad y degrada la decisión a observación.
-        ThreatKnowledgeGraph.blockedAdaptivePatternFor(clean)?.let { family ->
-            val hasLearnedAllow = learnedAllow || repeatedlyAllowed
-            val level = if (hasLearnedAllow) Level.OBSERVE else Level.BLOCK
-            val label = if (level == Level.BLOCK) "Bloqueado" else "Observado; se permite"
-            val criterion = if (hasLearnedAllow) {
-                "el aprendizaje explícito de permiso del dominio exacto prevalece sobre la familia"
-            } else {
-                "familia repetida en " + family.domains.size + " dominios; " +
-                    family.blockedCount + " de " + family.totalObservations + " observaciones fueron bloqueos"
-            }
             return Decision(
-                level,
-                if (level == Level.BLOCK) 5 else 3,
-                "$label: coincidencia con una familia local de publicidad/rastreo " +
-                    "(${family.indicators.joinToString(", ")}) | " +
-                    "Evidencia: ${family.domains.size} dominios independientes; " +
-                    "${family.blockedCount} bloqueos y ${family.allowedCount} permisos | " +
-                    "Confianza: alta | Criterio: $criterion"
+                Level.BLOCK, 5,
+                "Bloqueado: dominio conocido por las listas de protección | Evidencia: coincidencia con una regla activa o un subdominio suyo | Confianza: muy alta | Criterio: las listas verificadas tienen prioridad sobre las heurísticas"
             )
         }
 
-        // El grafo aporta contexto de proveedor: publicidad conocida puede bloquearse;
-        // analítica y rastreo de confianza media se observan, sin bloqueo automático.
         ThreatKnowledgeGraph.inspect(clean)?.let { evidence ->
             val category = when (evidence.category) {
                 ThreatKnowledgeGraph.Category.ADVERTISING -> "publicidad"
@@ -100,29 +64,19 @@ object SmartDecisionEngine {
                 ThreatKnowledgeGraph.Category.ANALYTICS -> "analítica"
             }
             val highConfidence = evidence.confidence == ThreatKnowledgeGraph.Confidence.HIGH
-            val level = if (highConfidence && !learnedAllow && !repeatedlyAllowed) Level.BLOCK else Level.OBSERVE
-            val score = if (highConfidence) 5 else 2
+            val level = if (highConfidence) Level.BLOCK else Level.OBSERVE
             val label = if (level == Level.BLOCK) "Bloqueado" else "Observado; se permite"
-            val confidenceLabel = if (highConfidence) "alta" else "media"
-            val learningNote = ThreatKnowledgeGraph.observationEvidence(clean)?.let {
-                "; aprendizaje local: ${it.allowedCount} permisos y ${it.blockedCount} bloqueos " +
-                    "de ${it.total} observaciones (${it.interpretation})"
-            }.orEmpty()
-            val criterion = when {
-                level == Level.BLOCK -> "proveedor publicitario de confianza alta"
-                repeatedlyAllowed -> "el permiso repetido evita el bloqueo heurístico"
-                else -> "la evidencia no alcanza el umbral de bloqueo automático"
-            }
+            val confidence = if (highConfidence) "alta" else "media"
             return Decision(
                 level,
-                score,
-                "$label: relación del mapa de conocimiento con ${evidence.provider} " +
-                    "(${evidence.relation}; $category$learningNote) | " +
-                    "Evidencia: ${evidence.knowledgePath.joinToString(" → ")} | " +
-                    "Confianza: $confidenceLabel | Criterio: $criterion"
+                if (highConfidence) 5 else 2,
+                "$label: relación del catálogo de amenazas con ${evidence.provider} " +
+                    "(${evidence.relation}; $category) | Evidencia: ${evidence.knowledgePath.joinToString(" → ")} | " +
+                    "Confianza: $confidence | Criterio: ${if (highConfidence) "proveedor publicitario de confianza alta" else "la evidencia no alcanza el umbral de bloqueo automático"}"
             )
         }
 
+        val tokens = labels.flatMap { it.split('-', '_') }.toSet()
         val parts = labels.dropLast(1)
         var score = 0
         var strong = false
@@ -145,9 +99,7 @@ object SmartDecisionEngine {
         } else if (isTikTok && parts.any { it in tiktokMeasure }) {
             score += 5; strong = true; reasons += "Medición TikTok"
         }
-        // Dos señales débiles distintas solo generan observación. Tres o más señales
-        // independientes en el mismo dominio forman evidencia compuesta reforzada y
-        // pueden bloquearse; el aprendizaje explícito de permiso sigue teniendo prioridad.
+
         val matchedMediumSignals = tokens.filter { it in mediumTokens }.sorted()
         var reinforcedCompound = false
         if (!strong && matchedMediumSignals.isNotEmpty()) {
@@ -172,34 +124,21 @@ object SmartDecisionEngine {
             score += 1
             reasons += "Subdominio de apariencia automatizada"
         }
-        val learned = exactLearnedWeight
-        if (learned >= 2) {
-            score += 1
-            reasons += "Coincidencia con aprendizaje local"
-        }
         if (score == 0) return null
 
-        val hasLearnedAllow = learnedAllow || repeatedlyAllowed
-        ThreatKnowledgeGraph.observationEvidence(clean)?.let { learning ->
-            reasons += "Aprendizaje local: ${learning.allowedCount} permisos y " +
-                "${learning.blockedCount} bloqueos de ${learning.total} observaciones " +
-                "(${learning.interpretation})"
-        }
         val level = when {
-            hasLearnedAllow -> Level.OBSERVE
             (strong || reinforcedCompound) && score >= 5 -> Level.BLOCK
             score >= 2 -> Level.OBSERVE
             else -> Level.ALLOW
         }
         val label = if (level == Level.BLOCK) "Bloqueado" else "Observado; se permite"
         val confidence = when {
-            strong && score >= 5 && !hasLearnedAllow -> "alta"
-            reinforcedCompound && score >= 5 && !hasLearnedAllow -> "media-alta"
+            strong && score >= 5 -> "alta"
+            reinforcedCompound && score >= 5 -> "media-alta"
             score >= 2 -> "media"
             else -> "baja"
         }
         val criterion = when {
-            hasLearnedAllow -> "el aprendizaje local impide el bloqueo automático"
             strong && score >= 5 -> "señal fuerte con puntuación suficiente"
             reinforcedCompound && score >= 5 -> "tres o más indicadores débiles independientes en el mismo dominio"
             score >= 2 -> "señales débiles: se observa sin bloquear"
@@ -208,9 +147,8 @@ object SmartDecisionEngine {
         return Decision(
             level,
             score,
-            "$label: ${reasons.joinToString(" + ")} | " +
-                "Señales: ${reasons.size} | Puntuación: $score | " +
-                "Confianza: $confidence | Criterio: $criterion"
+            "$label: ${reasons.joinToString(" + ")} | Señales: ${reasons.size} | " +
+                "Puntuación: $score | Confianza: $confidence | Criterio: $criterion"
         )
     }
 
