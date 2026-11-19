@@ -25,7 +25,6 @@ class PreferencesDataSource(context: Context) {
         private const val KEY_SHOULD_RUN = "should_run"
         private const val KEY_BLOCKLIST_URLS = "blocklist_urls"
         private const val KEY_SMART_MODE = "smart_mode_enabled"
-        private const val KEY_LEARNED_TOKENS = "learned_tokens"
         private const val KEY_ADBLOCK_MIGRATED = "adblock_syntax_migrated_v1"
         private const val KEY_OBSERVATION_MODE = "observation_mode_enabled"
         private const val KEY_ACTIVITY_LOGS = "activity_logs_v1"
@@ -37,6 +36,11 @@ class PreferencesDataSource(context: Context) {
     }
 
     init {
+        // Retira los datos de aprendizaje de versiones anteriores: ya no forman parte del producto.
+        prefs.edit().remove("learned_tokens").apply()
+        context.applicationContext.deleteFile("firewalldns_learning.json")
+        context.applicationContext.deleteFile("firewalldns_learning.json.bak")
+        context.applicationContext.deleteDatabase("firewalldns_learning.db")
         if (!prefs.getBoolean(KEY_ADBLOCK_MIGRATED, false)) {
             prefs.edit()
                 .putString(KEY_BLOCKLIST_URLS, DEFAULT_ADBLOCK_URL)
@@ -103,27 +107,6 @@ class PreferencesDataSource(context: Context) {
         prefs.edit().putBoolean(KEY_OBSERVATION_MODE, enabled).apply()
     }
 
-    fun getLearnedTokens(): MutableMap<String, Int> {
-        val raw = prefs.getString(KEY_LEARNED_TOKENS, "") ?: ""
-        val map = mutableMapOf<String, Int>()
-        raw.lines().forEach { line ->
-            val idx = line.indexOf('=')
-            if (idx > 0) {
-                val token = line.substring(0, idx).trim()
-                val score = line.substring(idx + 1).toIntOrNull()
-                if (token.isNotEmpty() && score != null) map[token] = score
-            }
-        }
-        return map
-    }
-
-    fun saveLearnedTokens(tokens: Map<String, Int>) {
-        val sep = System.lineSeparator()
-        val serialized = tokens.entries
-            .filter { it.key.isNotBlank() && !it.key.contains('=') && !it.key.contains('\n') }
-            .joinToString(sep) { "${it.key}=${it.value}" }
-        prefs.edit().putString(KEY_LEARNED_TOKENS, serialized).apply()
-    }
     fun getActivitySnapshot(): ActivitySnapshot {
         val raw = prefs.getString(KEY_ACTIVITY_LOGS, null)
         val logs = if (raw.isNullOrBlank()) {
