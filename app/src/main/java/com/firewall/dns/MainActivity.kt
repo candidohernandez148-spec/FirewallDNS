@@ -46,7 +46,6 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import com.firewall.dns.data.repository.FirewallRepository
 import com.firewall.dns.service.DnsFirewallService
-import com.firewall.dns.service.FirewallVpnService
 import com.firewall.dns.ui.screens.AppsSettingsScreen
 import com.firewall.dns.ui.screens.LogsScreen
 import com.firewall.dns.ui.screens.RulesScreen
@@ -184,23 +183,15 @@ class MainActivity : ComponentActivity() {
             FirewallRepository.awaitInitialBlocklistLoad()
             if (requestId == vpnStartRequestId && !isFinishing && !isDestroyed) {
                 android.util.Log.d("MainActivity", "Encendiendo VPN")
-                FirewallVpnService.start(this@MainActivity)
+                DnsFirewallService.start(this@MainActivity)
             }
         }
     }
 
     private fun stopFirewallService() {
         vpnStartRequestId++
-        val activeEngine = firewallViewModel.stats.value.engine
-        android.util.Log.d("MainActivity", "Apagando VPN (motor=$activeEngine)")
-        if (activeEngine == "DNS clásico") {
-            startService(Intent(this, DnsFirewallService::class.java).apply {
-                action = DnsFirewallService.ACTION_STOP
-            })
-        } else {
-            FirewallVpnService.stop(this)
-            stopService(Intent(this, DnsFirewallService::class.java))
-        }
+        android.util.Log.d("MainActivity", "Apagando FirewallDNS TUN")
+        DnsFirewallService.stop(this)
     }
 
     @SuppressLint("BatteryLife")

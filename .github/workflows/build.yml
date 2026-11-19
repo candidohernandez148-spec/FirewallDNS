@@ -1,4 +1,4 @@
-name: Build Debug (Firestack desde fuentes)
+name: Build Debug (FirewallDNS TUN)
 
 on:
   workflow_dispatch:
@@ -15,36 +15,15 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Clonar Firestack
-        run: |
-          git clone https://github.com/celzero/firestack.git "$RUNNER_TEMP/firestack"
-          git -C "$RUNNER_TEMP/firestack" checkout ca3f6d42e5
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: ${{ runner.temp }}/firestack/go.mod
-          cache: false
-
-      - name: Compilar Firestack (gomobile bind)
-        working-directory: ${{ runner.temp }}/firestack
-        run: |
-          # El Makefile instala gomobile (gomobile init) y lanza:
-          # gomobile bind -target=android -androidapi 23 ./intra ...
-          make intra
-          mkdir -p "$GITHUB_WORKSPACE/app/libs"
-          cp build/intra/tun2socks.aar "$GITHUB_WORKSPACE/app/libs/firestack.aar"
-
       - uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: "8.14"
 
       - name: Ejecutar pruebas unitarias
-        run: |
-          gradle testDebugUnitTest --no-daemon --stacktrace
+        run: gradle testDebugUnitTest --no-daemon --stacktrace
 
       - name: Compilar APK debug
-        run: |
-          gradle assembleDebug --no-daemon --stacktrace
+        run: gradle assembleDebug --no-daemon --stacktrace
 
       - uses: actions/upload-artifact@v4
         with:

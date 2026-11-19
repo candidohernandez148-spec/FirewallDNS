@@ -384,7 +384,7 @@ object FirewallRepository {
         prefsDataSource.clearActivitySnapshot()
     }
 
-    // Monitor propio de la app: funciona igual con Firestack o con el respaldo DNS.
+    // Monitor propio de la app: informa el tipo de red física mientras el TUN está activo.
     private fun startNetworkTypeMonitor() {
         val cm = appContext.getSystemService(android.net.ConnectivityManager::class.java)
         val refresh = { setNetworkType(NetworkDns.currentType(appContext)) }

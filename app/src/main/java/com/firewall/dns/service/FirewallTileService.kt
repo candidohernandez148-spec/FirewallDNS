@@ -27,18 +27,11 @@ class FirewallTileService : TileService() {
         val running = FirewallRepository.stats.value.isRunning
 
         if (running) {
-            if (FirewallRepository.stats.value.engine.startsWith("DNS clásico")) {
-                startService(Intent(this, DnsFirewallService::class.java).apply {
-                    action = DnsFirewallService.ACTION_STOP
-                })
-            } else {
-                FirewallVpnService.stop(this)
-                stopService(Intent(this, DnsFirewallService::class.java))
-            }
+            DnsFirewallService.stop(this)
             setTile(active = false, subtitle = "Apagado")
         } else {
             if (VpnService.prepare(this) == null) {
-                FirewallVpnService.start(this)
+                DnsFirewallService.start(this)
                 setTile(active = false, subtitle = "Activando…")
             } else {
                 setTile(active = false, subtitle = "Requiere permiso")

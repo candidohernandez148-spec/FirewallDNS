@@ -3,6 +3,7 @@ package com.firewall.dns.service
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
@@ -14,6 +15,7 @@ import android.os.Process
 import android.system.OsConstants
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
 import com.firewall.dns.MainActivity
 import com.firewall.dns.R
 import com.firewall.dns.data.repository.FirewallRepository
@@ -59,8 +61,21 @@ class DnsFirewallService : VpnService() {
     private lateinit var connectivityManager: ConnectivityManager
 
     companion object {
-        const val ACTION_START = "ACTION_START_DNS_VPN"
-        const val ACTION_STOP = "ACTION_STOP_DNS_VPN"
+        const val ACTION_START = "com.firewall.dns.action.START_TUN"
+        const val ACTION_STOP = "com.firewall.dns.action.STOP_TUN"
+
+        fun start(context: Context) {
+            ContextCompat.startForegroundService(
+                context,
+                Intent(context, DnsFirewallService::class.java).setAction(ACTION_START)
+            )
+        }
+
+        fun stop(context: Context) {
+            context.startService(
+                Intent(context, DnsFirewallService::class.java).setAction(ACTION_STOP)
+            )
+        }
         private const val CHANNEL_ID = "dns_firewall_channel"
         private const val NOTIFICATION_ID = 2001
         private const val CACHE_TTL_MS = 60_000L
@@ -110,7 +125,7 @@ class DnsFirewallService : VpnService() {
     }
 
     private fun notificationText(): String =
-        "Respaldo DNS-only: filtra consultas DNS; no bloquea todo el tráfico por app ni inspecciona DoH/DoT"
+        "FirewallDNS TUN: filtra consultas DNS; el tráfico TCP/UDP general y DoH/DoT no se inspeccionan en esta etapa"
 
     private fun buildNotification() = NotificationCompat.Builder(this, CHANNEL_ID)
         .setContentTitle("Firewall DNS activo")
@@ -181,7 +196,7 @@ class DnsFirewallService : VpnService() {
         }
         vpnInterface = established
         isRunning = true
-        FirewallRepository.setRunning(true, "DNS clásico (solo DNS)")
+        FirewallRepository.setRunning(true, "FirewallDNS TUN (DNS)")
         val input = FileInputStream(established.fileDescriptor)
         val output = FileOutputStream(established.fileDescriptor)
 

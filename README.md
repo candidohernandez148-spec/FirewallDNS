@@ -11,18 +11,19 @@
 
 ---
 
-Aplicación Android de **firewall local y filtrado DNS sin permisos root**, construida en Kotlin con Jetpack Compose (Material 3) y arquitectura **MVVM**. Permite supervisar en tiempo real las consultas DNS y conexiones TCP/UDP de cada aplicación, aplicar listas estándar Adblock (`||dominio.com^`) y bloquear o excluir aplicaciones individuales directamente desde el dispositivo.
+Aplicación Android de **firewall local y filtrado DNS sin permisos root**, construida en Kotlin con Jetpack Compose (Material 3) y arquitectura **MVVM**. Permite supervisar en tiempo real las consultas DNS de cada aplicación, aplicar listas estándar Adblock (`||dominio.com^`) y bloquear o excluir aplicaciones individuales directamente desde el dispositivo.
 
 ---
 
 ## ✨ Características principales
 
-* **Arquitectura actual en transición:**
-    * El servicio VPN actual todavía utiliza Firestack. Se mantiene temporalmente solo como referencia de paridad mientras `FirewallDNS-Engine` alcanza y valida la cobertura necesaria.
-    * El servicio DNS clásico sigue disponible durante la transición; no es el motor objetivo de la arquitectura final.
-    * La integración final tendrá un único motor de decisiones y filtrado: `FirewallDNS-Engine`; Android conservará la interfaz, permisos y `VpnService`.
+* **Arquitectura VPN simplificada:**
+    * Se elimina la dependencia del motor VPN externo.
+    * Se conserva un único servicio Android `VpnService` con interfaz TUN: `DnsFirewallService`.
+    * En esta etapa el TUN procesa consultas DNS; el procesamiento general de TCP/UDP queda pendiente de integrar y validar con `FirewallDNS-Engine` en Rust.
+    * No existe un segundo motor VPN ni un servicio de respaldo.
 * **Control de aplicaciones (Split Tunneling y bloqueo total):**
-  * Bloquea por completo el acceso a Internet de aplicaciones individuales por UID (`AppFirewallManager`).
+  * Aplica reglas DNS por aplicación; el bloqueo general de conexiones TCP/UDP por UID queda pendiente de integrar el motor nativo FirewallDNS.
   * Excluye aplicaciones concretas del filtrado mediante `addDisallowedApplication`.
 * **Listas Adblock externas y reglas personalizadas:**
   * Compatible con sintaxis estándar Adblock DNS (`||dominio.com^` y excepciones `@@||dominio.com^`), con presets recomendados de **HaGeZi** (Ligera, Estándar y Avanzada) y soporte para añadir URLs externas sin recompilar.
@@ -48,7 +49,7 @@ app/src/main/java/com/firewall/dns/
 ├── data/
 │   ├── local/         # Persistencia y fuentes de datos (PreferencesDataSource, BlocklistDataSource)
 │   └── repository/    # Fuente única de verdad reactiva con StateFlow (FirewallRepository)
-├── service/           # Servicios VPN y red (FirewallVpnService, FirestackBridge, DnsFirewallService, NetworkDns)
+├── service/           # Servicio TUN DNS y utilidades de red (DnsFirewallService, NetworkDns)
 ├── ui/
 │   ├── viewmodel/     # Estado de presentación (FirewallViewModel)
 │   ├── screens/       # Pantallas Jetpack Compose (LogsScreen, RulesScreen, AppsSettingsScreen)
