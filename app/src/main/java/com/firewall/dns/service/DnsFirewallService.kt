@@ -125,7 +125,7 @@ class DnsFirewallService : VpnService() {
     }
 
     private fun notificationText(): String =
-        "Respaldo DNS-only: filtra consultas DNS; no bloquea todo el tráfico por app ni inspecciona DoH/DoT"
+        "FirewallDNS TUN: filtra consultas DNS; el tráfico TCP/UDP general y DoH/DoT no se inspeccionan en esta etapa"
 
     private fun buildNotification() = NotificationCompat.Builder(this, CHANNEL_ID)
         .setContentTitle("Firewall DNS activo")
