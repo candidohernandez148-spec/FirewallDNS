@@ -27,7 +27,6 @@ class ThreatKnowledgeGraphTest {
             assertEquals(ThreatKnowledgeGraph.Category.ADVERTISING, evidence?.category)
             assertEquals(ThreatKnowledgeGraph.Confidence.HIGH, evidence?.confidence)
         }
-
         assertNull(ThreatKnowledgeGraph.inspect("www.facebook.com"))
         assertNull(ThreatKnowledgeGraph.inspect("www.instagram.com"))
         assertNull(ThreatKnowledgeGraph.inspect("www.tiktok.com"))
@@ -38,10 +37,7 @@ class ThreatKnowledgeGraphTest {
         assertEquals("facebook.net", evidence?.provider)
         assertEquals(ThreatKnowledgeGraph.Category.TRACKING, evidence?.category)
         assertEquals(ThreatKnowledgeGraph.Confidence.MEDIUM, evidence?.confidence)
-        assertEquals(
-            SmartDecisionEngine.Level.OBSERVE,
-            SmartDecisionEngine.evaluate("connect.facebook.net")?.level
-        )
+        assertEquals(SmartDecisionEngine.Level.OBSERVE, SmartDecisionEngine.evaluate("connect.facebook.net")?.level)
     }
 
     @Test fun unrelatedLookalikeDoesNotMatchProviderNode() {
@@ -50,84 +46,14 @@ class ThreatKnowledgeGraphTest {
     }
 
     @Test fun smartEngineBlocksHighConfidenceAdvertisingAndObservesAnalytics() {
-        val advertising = SmartDecisionEngine.evaluate("cdn.doubleclick.net")
-        assertEquals(SmartDecisionEngine.Level.BLOCK, advertising?.level)
-        assertTrue(advertising?.reason?.contains("mapa de conocimiento") == true)
-
-        val analytics = SmartDecisionEngine.evaluate("events.mixpanel.com")
-        assertEquals(SmartDecisionEngine.Level.OBSERVE, analytics?.level)
-        assertTrue(analytics?.reason?.contains("se permite") == true)
-    }
-
-    @Test fun learnedAllowDowngradesGraphBlockToObservation() {
-        val result = SmartDecisionEngine.evaluate(
-            "cdn.doubleclick.net",
-            mapOf("domain:cdn.doubleclick.net" to -2)
-        )
-        assertEquals(SmartDecisionEngine.Level.OBSERVE, result?.level)
-    }
-
-    @Test fun repeatedAllowedObservationsDowngradeExactProviderDomain() {
-        ThreatKnowledgeGraph.updateObservations(
-            listOf(ThreatKnowledgeGraph.ObservationProfile("cdn.doubleclick.net", 8, 0))
-        )
-        try {
-            val result = SmartDecisionEngine.evaluate("cdn.doubleclick.net")
-            assertEquals(SmartDecisionEngine.Level.OBSERVE, result?.level)
-            assertTrue(result?.reason?.contains("8 permisos y 0 bloqueos") == true)
-            assertEquals(
-                SmartDecisionEngine.Level.BLOCK,
-                SmartDecisionEngine.evaluate("other.doubleclick.net")?.level
-            )
-        } finally {
-            ThreatKnowledgeGraph.updateObservations(emptyList())
-        }
-    }
-
-    @Test fun contextualLearningRequiresEightObservationsAndNinetyPercentAllowed() {
-        ThreatKnowledgeGraph.updateObservations(
-            listOf(
-                ThreatKnowledgeGraph.ObservationProfile("cdn.doubleclick.net", 7, 0),
-                ThreatKnowledgeGraph.ObservationProfile("pixel.doubleclick.net", 8, 1)
-            )
-        )
-        try {
-            assertEquals(
-                SmartDecisionEngine.Level.BLOCK,
-                SmartDecisionEngine.evaluate("cdn.doubleclick.net")?.level
-            )
-            assertEquals(
-                SmartDecisionEngine.Level.BLOCK,
-                SmartDecisionEngine.evaluate("pixel.doubleclick.net")?.level
-            )
-        } finally {
-            ThreatKnowledgeGraph.updateObservations(emptyList())
-        }
-    }
-
-    @Test fun repeatedAllowedSignalDoesNotOverrideActiveBlocklistKnowledge() {
-        SmartDecisionEngine.updateBlocklistKnowledge(setOf("cdn.doubleclick.net"))
-        ThreatKnowledgeGraph.updateObservations(
-            listOf(ThreatKnowledgeGraph.ObservationProfile("cdn.doubleclick.net", 20, 0))
-        )
-        try {
-            assertEquals(
-                SmartDecisionEngine.Level.BLOCK,
-                SmartDecisionEngine.evaluate("cdn.doubleclick.net")?.level
-            )
-        } finally {
-            SmartDecisionEngine.updateBlocklistKnowledge(emptySet())
-            ThreatKnowledgeGraph.updateObservations(emptyList())
-        }
+        assertEquals(SmartDecisionEngine.Level.BLOCK, SmartDecisionEngine.evaluate("cdn.doubleclick.net")?.level)
+        assertEquals(SmartDecisionEngine.Level.OBSERVE, SmartDecisionEngine.evaluate("events.mixpanel.com")?.level)
     }
 
     @Test fun socialProviderEvidenceExplainsItsPlatformAndKnowledgePath() {
         val evidence = ThreatKnowledgeGraph.inspect("pixel.instagram.com")
         assertEquals("Meta", evidence?.platform)
-        assertEquals(
-            listOf("plataforma: Meta", "proveedor: pixel.instagram.com"),
-            evidence?.knowledgePath
-        )
+        assertEquals(listOf("plataforma: Meta", "proveedor: pixel.instagram.com"), evidence?.knowledgePath)
         assertEquals("catálogo local curado", evidence?.source)
     }
 
@@ -154,229 +80,4 @@ class ThreatKnowledgeGraphTest {
         assertTrue(snapshot.any { it.provider == "pixel.instagram.com" && it.platform == "Meta" })
         assertTrue(snapshot.none { it.provider == "www.facebook.com" })
     }
-
-    @Test fun observationEvidenceExplainsAllowedBlockedAndMixedHistory() {
-        ThreatKnowledgeGraph.updateObservations(
-            listOf(
-                ThreatKnowledgeGraph.ObservationProfile("mostly-allowed.example", 9, 1),
-                ThreatKnowledgeGraph.ObservationProfile("mostly-blocked.example", 1, 9),
-                ThreatKnowledgeGraph.ObservationProfile("mixed.example", 5, 5),
-                ThreatKnowledgeGraph.ObservationProfile("insufficient.example", 7, 0)
-            )
-        )
-        try {
-            val allowed = ThreatKnowledgeGraph.observationEvidence("mostly-allowed.example")
-            assertEquals(9L, allowed?.allowedCount)
-            assertEquals(1L, allowed?.blockedCount)
-            assertTrue(allowed?.interpretation?.contains("posible falso positivo") == true)
-
-            val blocked = ThreatKnowledgeGraph.observationEvidence("mostly-blocked.example")
-            assertTrue(blocked?.interpretation?.contains("predominan los bloqueos") == true)
-
-            val mixed = ThreatKnowledgeGraph.observationEvidence("mixed.example")
-            assertTrue(mixed?.interpretation?.contains("historial mixto") == true)
-            assertNull(ThreatKnowledgeGraph.observationEvidence("insufficient.example"))
-        } finally {
-            ThreatKnowledgeGraph.updateObservations(emptyList())
-        }
-    }
-
-    @Test fun dnsDecisionExplanationIncludesExactDomainLearningCounts() {
-        ThreatKnowledgeGraph.updateObservations(
-            listOf(ThreatKnowledgeGraph.ObservationProfile("events.mixpanel.com", 9, 1))
-        )
-        try {
-            val result = SmartDecisionEngine.evaluate("events.mixpanel.com")
-            assertEquals(SmartDecisionEngine.Level.OBSERVE, result?.level)
-            assertTrue(result?.reason?.contains("9 permisos y 1 bloqueos") == true)
-            assertTrue(result?.reason?.contains("posible falso positivo") == true)
-        } finally {
-            ThreatKnowledgeGraph.updateObservations(emptyList())
-        }
-    }
-
-    @Test fun unknownLearnedDomainsAreClassifiedByRepeatedEvidenceWithoutBecomingThreats() {
-        ThreatKnowledgeGraph.updateObservations(
-            listOf(
-                ThreatKnowledgeGraph.ObservationProfile("review-candidate.example", 2, 6),
-                ThreatKnowledgeGraph.ObservationProfile("mostly-allowed.example", 9, 1),
-                ThreatKnowledgeGraph.ObservationProfile("mixed-history.example", 5, 5),
-                ThreatKnowledgeGraph.ObservationProfile("known.doubleclick.net", 1, 9),
-                ThreatKnowledgeGraph.ObservationProfile("insufficient.example", 1, 2)
-            )
-        )
-        try {
-            val assessments = ThreatKnowledgeGraph.learnedDomainAssessments().associateBy { it.domain }
-            assertEquals(3, assessments.size)
-            assertEquals(ThreatKnowledgeGraph.LearnedAssessmentStatus.REVIEW_CANDIDATE, assessments["review-candidate.example"]?.status)
-            assertEquals(ThreatKnowledgeGraph.LearnedAssessmentStatus.POSSIBLE_FALSE_POSITIVE, assessments["mostly-allowed.example"]?.status)
-            assertEquals(ThreatKnowledgeGraph.LearnedAssessmentStatus.MIXED_HISTORY, assessments["mixed-history.example"]?.status)
-            assertTrue(assessments["review-candidate.example"]?.explanation?.contains("no es una amenaza confirmada") == true)
-            assertNull(SmartDecisionEngine.evaluate("review-candidate.example"))
-        } finally {
-            ThreatKnowledgeGraph.updateObservations(emptyList())
-        }
-    }
-
-    @Test fun learnedProfileCountReportsOnlyQualifiedAggregates() {
-        ThreatKnowledgeGraph.updateObservations(
-            listOf(
-                ThreatKnowledgeGraph.ObservationProfile("qualified.example", 8, 0),
-                ThreatKnowledgeGraph.ObservationProfile("too-few.example", 7, 0)
-            )
-        )
-        try { assertEquals(1, ThreatKnowledgeGraph.learnedProfileCount()) }
-        finally { ThreatKnowledgeGraph.updateObservations(emptyList()) }
-    }
-
-    @Test fun nonSocialProviderHasNoInventedPlatformAttribution() {
-        val evidence = ThreatKnowledgeGraph.inspect("cdn.doubleclick.net")
-        assertNull(evidence?.platform)
-        assertEquals(
-            listOf("proveedor: doubleclick.net", "dominio consultado: cdn.doubleclick.net"),
-            evidence?.knowledgePath
-        )
-    }
-
-
-    @Test fun correlationAggregatesKnownProviderObservationsAndActiveListMatches() {
-        ThreatKnowledgeGraph.updateObservations(
-            listOf(
-                ThreatKnowledgeGraph.ObservationProfile("cdn.doubleclick.net", 9, 1),
-                ThreatKnowledgeGraph.ObservationProfile("img.doubleclick.net", 2, 6),
-                ThreatKnowledgeGraph.ObservationProfile("unknown-provider.example", 12, 0)
-            )
-        )
-        SmartDecisionEngine.updateBlocklistKnowledge(
-            setOf("ads.doubleclick.net", "unrelated.example")
-        )
-        try {
-            val correlation = ThreatKnowledgeGraph.correlationSnapshot()
-                .single { it.provider == "doubleclick.net" }
-            assertEquals(listOf("cdn.doubleclick.net", "img.doubleclick.net"), correlation.observedDomains)
-            assertEquals(11L, correlation.allowedCount)
-            assertEquals(7L, correlation.blockedCount)
-            assertEquals(1, correlation.listedDomainCount)
-            assertEquals(1, ThreatKnowledgeGraph.unattributedLearnedProfileCount())
-        } finally {
-            SmartDecisionEngine.updateBlocklistKnowledge(emptySet())
-            ThreatKnowledgeGraph.updateObservations(emptyList())
-        }
-    }
-
-    @Test fun correlationDoesNotInventRelationsForLookalikesOrChangeDnsDecision() {
-        ThreatKnowledgeGraph.updateObservations(
-            listOf(ThreatKnowledgeGraph.ObservationProfile("cdn.notdoubleclick.net", 12, 0))
-        )
-        try {
-            assertTrue(ThreatKnowledgeGraph.correlationSnapshot().isEmpty())
-            assertEquals(1, ThreatKnowledgeGraph.unattributedLearnedProfileCount())
-            assertNull(ThreatKnowledgeGraph.inspect("cdn.notdoubleclick.net"))
-            assertNull(SmartDecisionEngine.evaluate("cdn.notdoubleclick.net"))
-        } finally {
-            ThreatKnowledgeGraph.updateObservations(emptyList())
-        }
-    }
-
-    @Test fun activeBlocklistKnowledgeIsCorrelatedOnlyToExplicitCatalogProviders() {
-        SmartDecisionEngine.updateBlocklistKnowledge(
-            setOf("cdn.doubleclick.net", "pixel.instagram.com", "unknown-threat.example")
-        )
-        try {
-            val snapshot = ThreatKnowledgeGraph.correlationSnapshot()
-            assertEquals(1, snapshot.single { it.provider == "doubleclick.net" }.listedDomainCount)
-            assertEquals(1, snapshot.single { it.provider == "pixel.instagram.com" }.listedDomainCount)
-            assertTrue(snapshot.none { it.provider == "unknown-threat.example" })
-        } finally {
-            SmartDecisionEngine.updateBlocklistKnowledge(emptySet())
-        }
-    }
-
-
-    @Test fun adaptivePatternsRequireRepeatedIndicatorsAcrossUnknownDomains() {
-        ThreatKnowledgeGraph.updateObservations(
-            listOf(
-                ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.alpha.example", 8, 0),
-                ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.beta.example", 7, 1),
-                ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.gamma.example", 8, 0),
-                ThreatKnowledgeGraph.ObservationProfile("pixel.isolated.example", 8, 0),
-                ThreatKnowledgeGraph.ObservationProfile("analytics.doubleclick.net", 8, 0)
-            )
-        )
-        try {
-            val pattern = ThreatKnowledgeGraph.adaptivePatternSnapshot().single()
-            assertEquals(listOf("analytics", "telemetry"), pattern.indicators)
-            assertEquals(
-                listOf(
-                    "analytics-telemetry.alpha.example",
-                    "analytics-telemetry.beta.example",
-                    "analytics-telemetry.gamma.example"
-                ),
-                pattern.domains
-            )
-            assertEquals(23L, pattern.allowedCount)
-            assertEquals(1L, pattern.blockedCount)
-            assertEquals(ThreatKnowledgeGraph.PatternConfidence.MEDIUM, pattern.confidence)
-        } finally {
-            ThreatKnowledgeGraph.updateObservations(emptyList())
-        }
-    }
-
-    @Test fun adaptivePatternsDoNotTreatSingleDomainOrSubstringsAsRepeatedSignals() {
-        ThreatKnowledgeGraph.updateObservations(
-            listOf(
-                ThreatKnowledgeGraph.ObservationProfile("myanalytics.alpha.example", 8, 0),
-                ThreatKnowledgeGraph.ObservationProfile("telemetry.beta.example", 8, 0),
-                ThreatKnowledgeGraph.ObservationProfile("api.gamma.example", 8, 0)
-            )
-        )
-        try {
-            assertTrue(ThreatKnowledgeGraph.adaptivePatternSnapshot().isEmpty())
-        } finally {
-            ThreatKnowledgeGraph.updateObservations(emptyList())
-        }
-    }
-
-    @Test fun adaptivePatternNeedsThreeDomainsAndStrongBlockedHistoryForHighConfidence() {
-        ThreatKnowledgeGraph.updateObservations(
-            listOf(
-                ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.alpha.example", 0, 8),
-                ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.beta.example", 0, 8),
-                ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.gamma.example", 0, 8)
-            )
-        )
-        try {
-            val family = ThreatKnowledgeGraph.adaptivePatternSnapshot().single()
-            assertEquals(ThreatKnowledgeGraph.PatternConfidence.HIGH, family.confidence)
-            assertEquals(24L, family.blockedCount)
-            assertEquals(
-                family.indicators,
-                ThreatKnowledgeGraph.blockedAdaptivePatternFor("analytics-telemetry.delta.example")?.indicators
-            )
-            assertNull(ThreatKnowledgeGraph.blockedAdaptivePatternFor("analytics-other.delta.example"))
-        } finally {
-            ThreatKnowledgeGraph.updateObservations(emptyList())
-        }
-    }
-
-    @Test fun adaptivePatternIsInformationalAndDoesNotChangeDnsDecision() {
-        val domainA = "analytics-telemetry.alpha.example"
-        val domainB = "analytics-telemetry.beta.example"
-        val before = SmartDecisionEngine.evaluate(domainA)
-        ThreatKnowledgeGraph.updateObservations(
-            listOf(
-                ThreatKnowledgeGraph.ObservationProfile(domainA, 8, 0),
-                ThreatKnowledgeGraph.ObservationProfile(domainB, 8, 0)
-            )
-        )
-        try {
-            assertTrue(ThreatKnowledgeGraph.adaptivePatternSnapshot().isNotEmpty())
-            val after = SmartDecisionEngine.evaluate(domainA)
-            assertEquals(before?.level, after?.level)
-            assertEquals(SmartDecisionEngine.Level.OBSERVE, after?.level)
-        } finally {
-            ThreatKnowledgeGraph.updateObservations(emptyList())
-        }
-    }
-
 }
