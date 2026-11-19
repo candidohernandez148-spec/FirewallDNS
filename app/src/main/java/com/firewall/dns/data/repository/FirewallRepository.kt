@@ -3,7 +3,6 @@ package com.firewall.dns.data.repository
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
-import android.util.Log
 import com.firewall.dns.data.local.BlocklistDataSource
 import com.firewall.dns.data.local.BlocklistSnapshot
 import com.firewall.dns.data.local.PreferencesDataSource
@@ -47,7 +46,6 @@ import java.util.concurrent.atomic.AtomicLong
 
 object FirewallRepository {
 
-    private const val TAG = "FirewallRepository"
     private const val MAX_LOGS = 400
     private const val TRAFFIC_POINTS = 40
     private const val TRAFFIC_INTERVAL_MS = 2_000L
@@ -109,8 +107,6 @@ object FirewallRepository {
     private val activitySaveScheduled = AtomicBoolean(false)
     private val activityVersion = AtomicLong(0L)
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    // Señal conflada + agregación por dominio: la ruta DNS nunca espera al disco y las
-    // consultas repetidas no generan una entrada independiente en la cola de persistencia.
     private val initialBlocklistLoad = CompletableDeferred<Unit>()
     private val blocklistDownloadMutex = Mutex()
     private val blocklistGeneration = AtomicLong(0L)
@@ -154,16 +150,6 @@ object FirewallRepository {
             startNetworkTypeMonitor()
             prefsDataSource = PreferencesDataSource(appContext)
             blocklistDataSource = BlocklistDataSource(appContext)
-            smartLearningStore = SmartLearningStore(appContext)
-            ioScope.launch {
-                try {
-                    smartLearningStore.load()
-                    refreshObservationKnowledge()
-                } finally {
-                    learningStoreReady.complete(Unit)
-                }
-            }
-            startObservationWorker()
             _blocklistsDownloaded.value = blocklistDataSource.hasSavedBlocklists()
 
             customBlockSet.clear()
@@ -195,8 +181,7 @@ object FirewallRepository {
                 )
             }
 
-            // Publica las reglas semilla y deja la lectura del archivo persistido en IO.
-            // Así la interfaz puede mostrarse sin esperar a analizar listas grandes.
+            // Publica las reglas semilla y carga las listas en IO para mostrar la interfaz sin demora.
             publishBlocklist(
                 BlocklistSnapshot(
                     blocked = defaultDomains.toSet(),
@@ -233,7 +218,7 @@ object FirewallRepository {
             },
             summary = snapshot.summary
         )
-        // Primero sincroniza el motor heurístico; después publica la referencia completa.
+        // Sincroniza el evaluador determinista antes de publicar el snapshot completo.
         SmartDecisionEngine.updateBlocklistKnowledge(published.blocked)
         activeBlocklistSnapshot = published
         updateRulesCount()
@@ -356,7 +341,7 @@ object FirewallRepository {
                 }?.key
             } else null
             val reason = category?.let(ThreatFeedCatalog::reasonFor) ?: baseEval.second
-                return true to reason
+            return true to reason
         }
         if (_smartModeEnabled.value) {
             SmartDecisionEngine.evaluate(domain)?.let { decision ->
