@@ -126,11 +126,6 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
         FirewallRepository.toggleExcludedApp(packageName)
     }
 
-    fun resetLearning() {
-        FirewallRepository.resetLearning()
-        _toastMessage.tryEmit("Aprendizaje reiniciado")
-    }
-
     fun toggleSmartMode(enabled: Boolean) {
         FirewallRepository.setSmartModeEnabled(enabled)
     }
