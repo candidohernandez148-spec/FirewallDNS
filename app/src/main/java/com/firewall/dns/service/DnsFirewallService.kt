@@ -17,6 +17,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.firewall.dns.MainActivity
+import com.firewall.dns.BuildConfig
 import com.firewall.dns.R
 import com.firewall.dns.data.repository.FirewallRepository
 import com.firewall.dns.domain.engine.AppFirewallManager
@@ -367,6 +368,11 @@ class DnsFirewallService : VpnService() {
 
 
     private fun installSharedEngine() {
+        if (!BuildConfig.USE_SHARED_ENGINE) {
+            sharedEngine = null
+            sharedUpstream = null
+            return
+        }
         val runtime = runCatching {
             AndroidEngineRuntime(this, FirewallRepository.isSmartModeEnabled()).also {
                 it.engine.replaceRules(FirewallRepository.enginePolicyRules())
