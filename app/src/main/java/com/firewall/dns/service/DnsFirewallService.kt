@@ -44,12 +44,24 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
 class DnsFirewallService : VpnService() {
 
-    private var vpnInterface: ParcelFileDescriptor? = null
-    private var tunReaderThread: Thread? = null
+    private class TunSession(
+        val descriptor: ParcelFileDescriptor,
+        val input: FileInputStream,
+        val output: FileOutputStream
+    ) {
+        val active = AtomicBoolean(true)
+        val inFlightWorkers = AtomicInteger(0)
+        @Volatile var reader: Thread? = null
+    }
+
+    @Volatile
+    private var activeTunSession: TunSession? = null
     // El lector TUN nunca ejecuta trabajo DNS: si la cola se llena, el paquete
     // se contabiliza como rechazado en lugar de bloquear la lectura del túnel.
     private val executor = ThreadPoolExecutor(
@@ -99,6 +111,9 @@ class DnsFirewallService : VpnService() {
 
         /** Fallos inesperados al procesar un paquete en un worker. */
         val packetProcessingErrors = AtomicLong(0L)
+
+        /** Fallos al escribir respuestas en el descriptor TUN. */
+        val packetWriteErrors = AtomicLong(0L)
 
         private val TRAPPED_IPV4_DNS = listOf("8.8.8.8", "8.8.4.4", "1.1.1.1", "1.0.0.1")
         private val TRAPPED_IPV6_DNS = listOf(
@@ -216,40 +231,48 @@ class DnsFirewallService : VpnService() {
             stopSelf()
             return
         }
-        vpnInterface = established
         installSharedEngine()
         isRunning = true
         FirewallRepository.setRunning(true, "FirewallDNS TUN (DNS)")
-        val input = FileInputStream(established.fileDescriptor)
-        val output = FileOutputStream(established.fileDescriptor)
+        val session = TunSession(
+            established,
+            FileInputStream(established.fileDescriptor),
+            FileOutputStream(established.fileDescriptor)
+        )
+        activeTunSession = session
 
-        tunReaderThread = Thread {
+        session.reader = Thread({
             val buffer = ByteArray(4096)
             try {
-                while (isRunning && !Thread.interrupted()) {
-                    val length = input.read(buffer)
+                while (session.active.get() && isRunning && !Thread.currentThread().isInterrupted) {
+                    val length = session.input.read(buffer)
                     if (length < 0) break
-                    if (length > 0) {
+                    if (length > 0 && session.active.get()) {
                         val copy = buffer.copyOf(length)
                         try {
                             executor.execute {
+                                session.inFlightWorkers.incrementAndGet()
                                 try {
-                                    handlePacket(copy, output)
+                                    // Segunda comprobación: el cierre puede ocurrir tras encolar.
+                                    if (session.active.get()) handlePacket(copy, session)
                                 } catch (_: Exception) {
                                     packetProcessingErrors.incrementAndGet()
+                                } finally {
+                                    session.inFlightWorkers.decrementAndGet()
                                 }
                             }
                         } catch (_: RejectedExecutionException) {
-                            // No ejecutar handlePacket en el lector: puede esperar al DNS upstream.
                             queueRejectedPackets.incrementAndGet()
                         }
                     }
                 }
-            } catch (_: IOException) {}
-        }.apply { start() }
+            } catch (_: IOException) {
+                // Cerrar el descriptor desbloquea read() durante el apagado normal.
+            }
+        }, "FirewallDNS-TUN-reader").apply { start() }
     }
 
-    private fun handlePacket(req: ByteArray, output: FileOutputStream) {
+    private fun handlePacket(req: ByteArray, session: TunSession) {
         if (req.isEmpty()) return
         val version = (req[0].toInt() ushr 4) and 0x0F
         val isIpv6: Boolean
@@ -287,7 +310,7 @@ class DnsFirewallService : VpnService() {
             val tcpDestinationPort = DnsPacketEngine.readU16(req, ipHeaderLen + 2)
             if (tcpDestinationPort == 53) {
                 DnsPacketEngine.buildTcpRstResponse(req, isIpv6, ipHeaderLen, srcIp, dstIp)?.let {
-                    writePacket(output, it)
+                    writePacket(session, it)
                 }
             }
             return
@@ -363,13 +386,19 @@ class DnsFirewallService : VpnService() {
             } else {
                 DnsPacketEngine.buildIpv4UdpResponse(req, srcIp, dstIp, srcPort, dstPort, dnsResponse)
             }
-            writePacket(output, responsePacket)
+            writePacket(session, responsePacket)
         }
     }
 
-    private fun writePacket(output: FileOutputStream, data: ByteArray) {
+    private fun writePacket(session: TunSession, data: ByteArray) {
         synchronized(writeLock) {
-            try { output.write(data) } catch (_: IOException) {}
+            // Una respuesta de una sesión anterior nunca debe entrar en el TUN nuevo.
+            if (!session.active.get()) return
+            try {
+                session.output.write(data)
+            } catch (_: IOException) {
+                packetWriteErrors.incrementAndGet()
+            }
         }
     }
 
@@ -450,12 +479,42 @@ class DnsFirewallService : VpnService() {
     private fun closeInterfaceSync() {
         isRunning = false
         FirewallRepository.setRunning(false)
-        tunReaderThread?.interrupt()
-        tunReaderThread = null
         sharedEngine = null
         sharedUpstream = null
-        val iface = vpnInterface
-        try { iface?.close() } catch (_: IOException) {}
+
+        val session = activeTunSession
+        activeTunSession = null
+        if (session != null) {
+            // Invalidar primero: workers antiguos ya no pueden escribir respuestas.
+            session.active.set(false)
+
+            // Serializar con writePacket para no cerrar el descriptor a mitad de write().
+            synchronized(writeLock) {
+                try { session.descriptor.close() } catch (_: IOException) {}
+            }
+
+            session.reader?.interrupt()
+            if (session.reader !== Thread.currentThread()) {
+                try {
+                    session.reader?.join(1_000L)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                }
+            }
+
+            // Espera acotada: el cierre no queda a merced de una consulta upstream lenta.
+            val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(500)
+            while (session.inFlightWorkers.get() > 0 && System.nanoTime() < deadline) {
+                try {
+                    Thread.sleep(10L)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    break
+                }
+            }
+            try { session.input.close() } catch (_: IOException) {}
+            try { session.output.close() } catch (_: IOException) {}
+        }
     }
 
     private fun stopVpnAsync() {

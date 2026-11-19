@@ -57,6 +57,23 @@ errores de procesamiento capturados en workers en
 Un rechazo significa que ese paquete no se procesa y la consulta correspondiente
 puede expirar en la aplicación de origen. El contador hace visible esa pérdida
 para diagnóstico; no constituye un mecanismo de reintento ni garantiza entrega.
-La siguiente etapa debe exponer estos contadores en el monitor y completar el
-cierre coordinado del lector, workers y descriptor TUN. Esta modificación no
+
+## Ciclo de vida de cada sesión TUN
+
+Cada establecimiento crea una sesión con su propio descriptor, streams, lector
+y estado activo. Los workers reciben esa sesión concreta, no un stream global:
+antes de escribir comprueban que siga activa. Así una respuesta tardía de una
+sesión anterior no puede entrar en un TUN recién establecido.
+
+El cierre invalida primero la sesión, serializa el cierre del descriptor con las
+escrituras, cierra el descriptor para desbloquear la lectura, espera al lector
+con un límite de tiempo y da a los workers una ventana acotada para terminar.
+Las escrituras fallidas se cuentan en
+`DnsFirewallService.packetWriteErrors`. Las métricas de cola, procesamiento y
+escritura siguen siendo contadores internos; todavía no están conectados a la UI
+del monitor.
+
+La espera de workers es deliberadamente limitada: una consulta upstream lenta no
+debe bloquear indefinidamente el apagado. Los workers que terminen después de la
+invalidación ya no pueden escribir en el descriptor cerrado. Esta etapa no
 habilita TCP/UDP general ni cambia el alcance DNS-only.
