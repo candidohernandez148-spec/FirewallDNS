@@ -55,6 +55,9 @@ jobs:
           echo "KEY_ALIAS=$(cat signing/alias)" >> "$GITHUB_ENV"
           echo "::add-mask::$(cat signing/password)"
 
+      - name: Ejecutar pruebas unitarias
+        run: gradle testDebugUnitTest --no-daemon
+
       - name: Compilar Release APK
         run: gradle assembleRelease --no-daemon
 
