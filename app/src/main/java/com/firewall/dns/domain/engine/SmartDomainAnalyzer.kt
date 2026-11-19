@@ -64,7 +64,7 @@ object SmartDomainAnalyzer {
         "analytics", "log", "mon", "telemetry", "metrics", "mcs", "pitaya", "tracking"
     )
 
-    fun evaluate(domain: String, learnedWeights: Map<String, Int>): Pair<Boolean, String>? {
+    fun evaluate(domain: String): Pair<Boolean, String>? {
         val clean = domain.lowercase()
 
         if (matchesDomainOrParent(clean, CORE_SAFE_HOSTS)) {
@@ -75,13 +75,6 @@ object SmartDomainAnalyzer {
         if (labels.size < 2) return null
 
         val parts = labels.dropLast(1).flatMap { it.split('-', '_') }
-        val tokens = learnableTokens(clean)
-
-        if (tokens.any { (learnedWeights[it] ?: 0) <= -2 }) return null
-        val strongest = tokens.maxByOrNull { learnedWeights[it] ?: 0 }
-        val learnedMax = strongest?.let { learnedWeights[it] } ?: 0
-        if (learnedMax >= 3) return true to "IA aprendido ($strongest)"
-
         var score = 0
         var category = "Heurística"
 
@@ -132,8 +125,6 @@ object SmartDomainAnalyzer {
             score += 1
         }
 
-        if (learnedMax >= 1) score += 1
-
         return if (score >= 3) {
             true to "IA [${score}pts] $category"
         } else {
@@ -141,34 +132,7 @@ object SmartDomainAnalyzer {
         }
     }
 
-    // El aprendizaje se vincula al FQDN exacto. Nunca generaliza una excepción
-    // ni una señal de bloqueo a otros dominios que compartan palabras o etiquetas.
-    fun learnableTokens(domain: String): List<String> {
-        val clean = domain.trim().lowercase().trimEnd('.')
-        if (clean.isEmpty() || clean.length > 253 || clean.split('.').size < 2) return emptyList()
-        return listOf("domain:$clean")
-    }
-
     fun isCoreSafe(domain: String): Boolean = matchesDomainOrParent(domain.lowercase(), CORE_SAFE_HOSTS)
-
-    fun updateLearning(
-        domain: String,
-        blocked: Boolean,
-        weights: MutableMap<String, Int>,
-        step: Int = 1
-    ): Boolean {
-        if (blocked && isCoreSafe(domain)) return false
-        var changed = false
-        for (token in learnableTokens(domain)) {
-            val current = weights[token] ?: 0
-            val next = if (blocked) (current + step).coerceAtMost(5) else (current - 3).coerceAtLeast(-5)
-            if (next != current) {
-                if (next == 0) weights.remove(token) else weights[token] = next
-                changed = true
-            }
-        }
-        return changed
-    }
 
     private fun matchesDomainOrParent(domain: String, set: Set<String>): Boolean {
         var current = domain
