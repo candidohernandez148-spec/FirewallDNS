@@ -20,7 +20,7 @@ jobs:
           gradle-version: "8.14"
 
       - name: Ejecutar pruebas unitarias
-        run: gradle testDebugUnitTest --no-daemon --stacktrace
+        run: gradle testDebugUnitTest test --no-daemon --stacktrace
 
       - name: Compilar APK debug
         run: gradle assembleDebug --no-daemon --stacktrace
