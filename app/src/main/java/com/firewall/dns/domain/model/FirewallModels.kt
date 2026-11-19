@@ -21,8 +21,7 @@ data class FirewallStats(
     val totalAllowed: Long = 0,
     val totalBlocked: Long = 0,
     val loadedRulesCount: Int = 0,
-    val networkType: String = "Sin red",
-    val learnedTokens: Int = 0
+    val networkType: String = "Sin red"
 )
 
 data class DnsQueryInfo(
