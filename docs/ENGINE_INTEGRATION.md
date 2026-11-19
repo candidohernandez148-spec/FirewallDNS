@@ -43,3 +43,20 @@ El campo `USE_SHARED_ENGINE` de `app/build.gradle.kts` funciona como interruptor
 7. No retirar el código anterior hasta superar la matriz de validación.
 
 La integración de código no equivale a validación en el dispositivo ni demuestra ausencia de fugas DNS.
+
+
+## Protección del lector TUN ante saturación
+
+La cola de paquetes del servicio Android es acotada (256 elementos) y usa
+`AbortPolicy`. El hilo lector nunca ejecuta procesamiento DNS como alternativa
+cuando la cola está llena, porque ese trabajo puede esperar al servidor upstream.
+Los rechazos se contabilizan en `DnsFirewallService.queueRejectedPackets` y los
+errores de procesamiento capturados en workers en
+`DnsFirewallService.packetProcessingErrors`.
+
+Un rechazo significa que ese paquete no se procesa y la consulta correspondiente
+puede expirar en la aplicación de origen. El contador hace visible esa pérdida
+para diagnóstico; no constituye un mecanismo de reintento ni garantiza entrega.
+La siguiente etapa debe exponer estos contadores en el monitor y completar el
+cierre coordinado del lector, workers y descriptor TUN. Esta modificación no
+habilita TCP/UDP general ni cambia el alcance DNS-only.
