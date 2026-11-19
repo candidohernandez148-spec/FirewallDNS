@@ -57,7 +57,6 @@ class DnsFirewallService : VpnService() {
     ) {
         val active = AtomicBoolean(true)
         val inFlightWorkers = AtomicInteger(0)
-        val workerMonitor = Object()
         @Volatile var reader: Thread? = null
     }
 
@@ -259,11 +258,7 @@ class DnsFirewallService : VpnService() {
                                 } catch (_: Exception) {
                                     packetProcessingErrors.incrementAndGet()
                                 } finally {
-                                    if (session.inFlightWorkers.decrementAndGet() == 0) {
-                                        synchronized(session.workerMonitor) {
-                                            session.workerMonitor.notifyAll()
-                                        }
-                                    }
+                                    session.inFlightWorkers.decrementAndGet()
                                 }
                             }
                         } catch (_: RejectedExecutionException) {
@@ -509,16 +504,12 @@ class DnsFirewallService : VpnService() {
 
             // Espera acotada: el cierre no queda a merced de una consulta upstream lenta.
             val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(500)
-            synchronized(session.workerMonitor) {
-                while (session.inFlightWorkers.get() > 0) {
-                    val remainingNanos = deadline - System.nanoTime()
-                    if (remainingNanos <= 0L) break
-                    try {
-                        TimeUnit.NANOSECONDS.timedWait(session.workerMonitor, remainingNanos)
-                    } catch (_: InterruptedException) {
-                        Thread.currentThread().interrupt()
-                        break
-                    }
+            while (session.inFlightWorkers.get() > 0 && System.nanoTime() < deadline) {
+                try {
+                    Thread.sleep(10L)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    break
                 }
             }
             try { session.input.close() } catch (_: IOException) {}
