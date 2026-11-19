@@ -107,8 +107,7 @@ fun LogsScreen(
                         Text(
                             when {
                                 !stats.isRunning -> "Enciende el interruptor superior para proteger tu dispositivo"
-                                stats.engine == "Firestack" -> "Motor: Firestack (local) · ${stats.networkType}"
-                                else -> "Motor: Respaldo DNS · ${stats.networkType}"
+                                else -> "Motor: FirewallDNS TUN (DNS) · ${stats.networkType}
                             },
                             style = MaterialTheme.typography.bodySmall
                         )
@@ -247,7 +246,7 @@ fun LogsScreen(
                 ) {
                     Text("Sin actividad todavía", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text(
-                        text = if (stats.isRunning) "Las consultas DNS y conexiones de cada app aparecerán aquí." else "Activa la protección para empezar a registrar consultas.",
+                        text = if (stats.isRunning) "Las consultas DNS procesadas por FirewallDNS aparecerán aquí." else "Activa la protección para empezar a registrar consultas.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
