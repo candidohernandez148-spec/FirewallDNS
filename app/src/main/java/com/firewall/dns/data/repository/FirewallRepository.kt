@@ -7,16 +7,11 @@ import android.util.Log
 import com.firewall.dns.data.local.BlocklistDataSource
 import com.firewall.dns.data.local.BlocklistSnapshot
 import com.firewall.dns.data.local.PreferencesDataSource
-import com.firewall.dns.data.local.SmartLearningStore
-import com.firewall.dns.data.local.DomainObservationEvent
-import com.firewall.dns.data.local.DomainObservationSummary
 import com.firewall.dns.domain.engine.BlocklistSourcePolicy
 import com.firewall.dns.domain.engine.BuiltInThreatDomains
 import com.firewall.dns.domain.engine.AppFirewallManager
 import com.firewall.dns.domain.engine.RuleEvaluator
-import com.firewall.dns.domain.engine.SmartDomainAnalyzer
 import com.firewall.dns.domain.engine.SmartDecisionEngine
-import com.firewall.dns.domain.engine.ThreatKnowledgeGraph
 import com.firewall.dns.domain.engine.ThreatFeedCatalog
 import com.firewall.dns.domain.engine.ThreatFeedCategory
 import com.firewall.dns.domain.model.AppInfoItem
@@ -27,7 +22,6 @@ import com.firewall.dns.domain.model.TrafficPoint
 import com.firewall.dns.service.NetworkDns
 import com.firewall.dns.service.FirewallTileService
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -57,14 +51,11 @@ object FirewallRepository {
     private const val MAX_LOGS = 400
     private const val TRAFFIC_POINTS = 40
     private const val TRAFFIC_INTERVAL_MS = 2_000L
-    private const val MAX_LEARNED_DOMAINS = 5000
-    private const val OBSERVATION_BATCH_SIZE = 2048
     private const val ACTIVITY_SAVE_INTERVAL_MS = 5_000L
 
     private lateinit var appContext: Context
     private lateinit var prefsDataSource: PreferencesDataSource
     private lateinit var blocklistDataSource: BlocklistDataSource
-    private lateinit var smartLearningStore: SmartLearningStore
 
     private val _logs = MutableStateFlow<List<DnsLogEntry>>(emptyList())
     val logs: StateFlow<List<DnsLogEntry>> = _logs.asStateFlow()
@@ -115,20 +106,11 @@ object FirewallRepository {
     )
     private val customBlockSet = ConcurrentHashMap.newKeySet<String>()
     private val customAllowSet = ConcurrentHashMap.newKeySet<String>()
-    private val learnedTokens = ConcurrentHashMap<String, Int>()
-    private val learnedDomains = ConcurrentHashMap.newKeySet<String>()
-    private val learningSaveScheduled = AtomicBoolean(false)
     private val activitySaveScheduled = AtomicBoolean(false)
     private val activityVersion = AtomicLong(0L)
-    private val learningScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     // Señal conflada + agregación por dominio: la ruta DNS nunca espera al disco y las
     // consultas repetidas no generan una entrada independiente en la cola de persistencia.
-    private val observationQueue = Channel<Unit>(Channel.CONFLATED)
-    private val pendingObservationLock = Any()
-    private val pendingObservations = LinkedHashMap<String, DomainObservationEvent>()
-    private val learningStoreReady = CompletableDeferred<Unit>()
-    private val learningGeneration = AtomicLong(0L)
-    private val observationPersistenceMutex = Mutex()
     private val initialBlocklistLoad = CompletableDeferred<Unit>()
     private val blocklistDownloadMutex = Mutex()
     private val blocklistGeneration = AtomicLong(0L)
@@ -173,7 +155,7 @@ object FirewallRepository {
             prefsDataSource = PreferencesDataSource(appContext)
             blocklistDataSource = BlocklistDataSource(appContext)
             smartLearningStore = SmartLearningStore(appContext)
-            learningScope.launch {
+            ioScope.launch {
                 try {
                     smartLearningStore.load()
                     refreshObservationKnowledge()
@@ -203,19 +185,11 @@ object FirewallRepository {
             }
             _smartModeEnabled.value = prefsDataSource.getSmartModeEnabled()
             _observationModeEnabled.value = prefsDataSource.getObservationModeEnabled()
-            learnedTokens.clear()
-            // Descarta y limpia pesos antiguos por token: podían afectar dominios no relacionados.
-            val storedLearnedTokens = prefsDataSource.getLearnedTokens()
-            learnedTokens.putAll(storedLearnedTokens.filterKeys { it.startsWith("domain:") })
-            if (learnedTokens.size != storedLearnedTokens.size) {
-                prefsDataSource.saveLearnedTokens(HashMap(learnedTokens))
-            }
             val activitySnapshot = prefsDataSource.getActivitySnapshot()
             _logs.value = activitySnapshot.logs
             logCounter.set(activitySnapshot.logs.maxOfOrNull { it.id } ?: 0L)
             _stats.update {
                 it.copy(
-                    learnedTokens = learnedTokens.size,
                     totalAllowed = activitySnapshot.totalAllowed,
                     totalBlocked = activitySnapshot.totalBlocked
                 )
@@ -233,12 +207,11 @@ object FirewallRepository {
             initialized = true
 
             val generationAtStart = blocklistGeneration.get()
-            learningScope.launch {
+            ioScope.launch {
                 try {
                     val snapshot = blocklistDataSource.loadFromDisk(defaultDomains)
                     if (blocklistGeneration.get() == generationAtStart) {
                         publishBlocklist(snapshot)
-                        refreshObservationKnowledge()
                         _cacheInvalidateEvent.tryEmit(Unit)
                     }
                 } catch (_: Exception) {
@@ -249,98 +222,6 @@ object FirewallRepository {
             }
         }
     }
-
-    private fun startObservationWorker() {
-        learningScope.launch {
-            learningStoreReady.await()
-            for (ignored in observationQueue) {
-                delay(100)
-                val batch = drainPendingObservations()
-                if (batch.isEmpty()) continue
-                val persisted = runCatching {
-                    observationPersistenceMutex.withLock {
-                        // Recheck after acquiring the lock so a reset cannot be undone by an old batch.
-                        val validBatch = batch.filter { it.generation == learningGeneration.get() }
-                        if (validBatch.isNotEmpty()) smartLearningStore.recordBatch(validBatch)
-                    }
-                }.isSuccess
-                if (persisted) {
-                    // Publica el aprendizaje recién observado sin esperar al ciclo de snapshot.
-                    runCatching {
-                        observationPersistenceMutex.withLock { refreshObservationKnowledge() }
-                    }.onFailure { error ->
-                        Log.e(TAG, "No se pudo actualizar el conocimiento en memoria; se reintentará", error)
-                    }
-                } else {
-                    Log.e(TAG, "No se pudo incorporar el lote de observaciones; se reintentará")
-                    synchronized(pendingObservationLock) {
-                        batch.filter { it.generation == learningGeneration.get() }
-                            .forEach(::mergePendingObservationLocked)
-                        if (pendingObservations.isNotEmpty()) observationQueue.trySend(Unit)
-                    }
-                    delay(1_000)
-                }
-            }
-        }
-        // Atomic snapshot writes are periodic and remain outside the DNS decision path.
-        learningScope.launch {
-            learningStoreReady.await()
-            while (true) {
-                delay(5_000)
-                runCatching {
-                    observationPersistenceMutex.withLock {
-                        smartLearningStore.flush()
-                        refreshObservationKnowledge()
-                    }
-                }.onFailure { error ->
-                    // Keep the in-memory snapshot dirty and retry on the next interval.
-                    Log.e(TAG, "No se pudo guardar el snapshot de aprendizaje; se reintentará", error)
-                }
-            }
-        }
-    }
-
-    private fun enqueueObservation(event: DomainObservationEvent) {
-        synchronized(pendingObservationLock) {
-            mergePendingObservationLocked(event)
-            observationQueue.trySend(Unit)
-        }
-    }
-
-    // Se conserva el conteo exacto por dominio, pero múltiples consultas iguales se compactan.
-    private fun mergePendingObservationLocked(event: DomainObservationEvent) {
-        if (event.generation != learningGeneration.get()) return
-        val key = "${event.generation}|${event.domain}"
-        val previous = pendingObservations.remove(key)
-        val merged = if (previous == null) event else previous.copy(
-            blocked = if (event.observedAt >= previous.observedAt) event.blocked else previous.blocked,
-            observedAt = maxOf(previous.observedAt, event.observedAt),
-            firstObservedAt = minOf(previous.firstObservedAt, event.firstObservedAt),
-            allowedCountDelta = saturatedAdd(previous.allowedCountDelta, event.allowedCountDelta),
-            blockedCountDelta = saturatedAdd(previous.blockedCountDelta, event.blockedCountDelta)
-        )
-        // No se descartan dominios distintos: las consultas repetidas se compactan
-        // y el worker vacía los agregados en lotes pequeños hacia el almacén local.
-        pendingObservations[key] = merged
-    }
-
-    private fun saturatedAdd(left: Long, right: Long): Long =
-        if (Long.MAX_VALUE - left < right) Long.MAX_VALUE else left + right
-
-    private fun drainPendingObservations(): List<DomainObservationEvent> =
-        synchronized(pendingObservationLock) {
-            val batch = ArrayList<DomainObservationEvent>(OBSERVATION_BATCH_SIZE)
-            val iterator = pendingObservations.entries.iterator()
-            while (iterator.hasNext() && batch.size < OBSERVATION_BATCH_SIZE) {
-                batch.add(iterator.next().value)
-                iterator.remove()
-            }
-            if (pendingObservations.isNotEmpty()) observationQueue.trySend(Unit)
-            batch
-        }
-
-    suspend fun getSmartLearningMemory(): List<DomainObservationSummary> =
-        withContext(Dispatchers.IO) { smartLearningStore.getSnapshot() }
 
     /** Publishes an immutable in-memory profile snapshot for the DNS decision engine. */
     private fun publishBlocklist(snapshot: BlocklistSnapshot) {
@@ -356,16 +237,6 @@ object FirewallRepository {
         SmartDecisionEngine.updateBlocklistKnowledge(published.blocked)
         activeBlocklistSnapshot = published
         updateRulesCount()
-    }
-
-    private fun refreshObservationKnowledge() {
-        smartLearningStore.getSnapshot().map { summary ->
-            ThreatKnowledgeGraph.ObservationProfile(
-                domain = summary.domain,
-                allowedCount = summary.allowedCount,
-                blockedCount = summary.blockedCount
-            )
-        }.also(ThreatKnowledgeGraph::updateObservations)
     }
 
     suspend fun awaitInitialBlocklistLoad() {
@@ -476,7 +347,6 @@ object FirewallRepository {
             hostBlock = activeRules.blocked
         )
         if (!baseEval.first && baseEval.second != "Permitido") {
-            learnFromActivity(domain, blocked = false, step = 1)
             return baseEval
         }
         if (baseEval.first) {
@@ -486,58 +356,14 @@ object FirewallRepository {
                 }?.key
             } else null
             val reason = category?.let(ThreatFeedCatalog::reasonFor) ?: baseEval.second
-            if (reason.startsWith("Adblock") || category != null) {
-                learnFromActivity(domain, blocked = true, step = 1)
-            }
-            return true to reason
+                return true to reason
         }
         if (_smartModeEnabled.value) {
-            SmartDecisionEngine.evaluate(domain, learnedTokens)?.let { decision ->
+            SmartDecisionEngine.evaluate(domain)?.let { decision ->
                 return (decision.level == SmartDecisionEngine.Level.BLOCK) to decision.reason
             }
         }
         return baseEval
-    }
-
-    private fun learnFromActivity(domain: String, blocked: Boolean, step: Int) {
-        if (!_smartModeEnabled.value) return
-        val key = (if (blocked) "b:" else "a:") + domain
-        if (learnedDomains.size > MAX_LEARNED_DOMAINS) learnedDomains.clear()
-        if (!learnedDomains.add(key)) return
-        if (SmartDomainAnalyzer.updateLearning(domain, blocked, learnedTokens, step)) scheduleLearningSave()
-    }
-
-    private fun scheduleLearningSave() {
-        _stats.update { it.copy(learnedTokens = learnedTokens.size) }
-        if (!learningSaveScheduled.compareAndSet(false, true)) return
-        learningScope.launch {
-            delay(5_000)
-            learningSaveScheduled.set(false)
-            prefsDataSource.saveLearnedTokens(HashMap(learnedTokens))
-        }
-    }
-
-    fun resetLearning() {
-        learnedTokens.clear()
-        learnedDomains.clear()
-        prefsDataSource.saveLearnedTokens(emptyMap())
-        val resetGeneration = learningGeneration.incrementAndGet()
-        // Discard pending aggregates and wake-up signals from the previous generation.
-        synchronized(pendingObservationLock) {
-            pendingObservations.clear()
-            while (observationQueue.tryReceive().isSuccess) Unit
-        }
-        learningScope.launch {
-            learningStoreReady.await()
-            observationPersistenceMutex.withLock {
-                if (learningGeneration.get() == resetGeneration) {
-                    smartLearningStore.clear()
-                    ThreatKnowledgeGraph.updateObservations(emptyList())
-                }
-            }
-        }
-        _stats.update { it.copy(learnedTokens = 0) }
-        _cacheInvalidateEvent.tryEmit(Unit)
     }
 
     fun setCustomRule(domain: String, block: Boolean) {
@@ -546,9 +372,6 @@ object FirewallRepository {
         val other = if (block) customAllowSet else customBlockSet
         set.add(clean)
         other.remove(clean)
-        if (_smartModeEnabled.value && SmartDomainAnalyzer.updateLearning(clean, block, learnedTokens, step = 3)) {
-            scheduleLearningSave()
-        }
         prefsDataSource.saveCustomBlockSet(customBlockSet.toSet())
         prefsDataSource.saveCustomAllowSet(customAllowSet.toSet())
         _customBlockList.value = customBlockSet.sorted()
@@ -659,24 +482,13 @@ object FirewallRepository {
             else stats.copy(totalBlocked = stats.totalBlocked + 1)
         }
         activityVersion.incrementAndGet()
-        // Se registra únicamente el dominio y contadores agregados; no se guarda la app ni el historial crudo.
-        enqueueObservation(
-            DomainObservationEvent(
-                domain = domain,
-                blocked = !allowed,
-                observedAt = System.currentTimeMillis(),
-                generation = learningGeneration.get(),
-                allowedCountDelta = if (allowed) 1L else 0L,
-                blockedCountDelta = if (allowed) 0L else 1L
-            )
-        )
         scheduleActivitySave()
     }
 
     // Persistencia agrupada en segundo plano: evita escrituras en el hilo de consultas DNS.
     private fun scheduleActivitySave() {
         if (!activitySaveScheduled.compareAndSet(false, true)) return
-        learningScope.launch {
+        ioScope.launch {
             var persistedVersion = -1L
             try {
                 do {
