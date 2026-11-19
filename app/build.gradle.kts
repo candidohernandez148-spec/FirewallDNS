@@ -65,10 +65,4 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-core")
     testImplementation("junit:junit:4.13.2")
-    // AAR compilado desde fuentes (workflow build.yml); si no existe se usa la publicada.
-    if (file("libs/firestack.aar").exists()) {
-        implementation(files("libs/firestack.aar"))
-    } else {
-        implementation("com.celzero:firestack:ca3f6d42e5@aar")
-    }
 }
