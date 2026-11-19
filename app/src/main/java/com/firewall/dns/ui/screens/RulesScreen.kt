@@ -53,7 +53,6 @@ fun RulesScreen(
     isDownloading: Boolean,
     downloadProgress: BlocklistDownloadProgress?,
     onToggleSmartMode: (Boolean) -> Unit,
-    onResetLearning: () -> Unit,
     onAddBlocklistUrl: (String) -> Unit,
     onRemoveBlocklistUrl: (String) -> Unit,
     onDownloadBlocklist: () -> Unit,
@@ -95,20 +94,10 @@ fun RulesScreen(
                     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         Text("Protección inteligente", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Text(
-                            "Aprende de tu actividad de red con ayuda de la lista adblock: detecta dominios nuevos de anuncios y rastreo con patrones ya vistos. Todo se queda en el dispositivo.",
+                            "Analiza las consultas en tiempo real con indicadores integrados de publicidad, rastreo y amenazas. No aprende ni guarda patrones derivados de tu actividad.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        if (smartModeEnabled) {
-                            Text(
-                                "Patrones aprendidos: ${stats.learnedTokens}",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            if (stats.learnedTokens > 0) {
-                                OutlinedButton(onClick = onResetLearning) { Text("Olvidar aprendizaje") }
-                            }
-                        }
                     }
                     Switch(checked = smartModeEnabled, onCheckedChange = onToggleSmartMode)
                 }
