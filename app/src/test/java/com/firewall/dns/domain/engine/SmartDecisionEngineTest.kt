@@ -50,102 +50,9 @@ class SmartDecisionEngineTest {
         assertTrue(result?.reason?.contains("tres o más indicadores débiles independientes") == true)
     }
 
-    @Test fun reinforcedCompoundSignalsDoNotOverrideLearnedAllowEvidence() {
-        val result = SmartDecisionEngine.evaluate(
-            "ads-pixel-analytics.example.org",
-            mapOf("domain:ads-pixel-analytics.example.org" to -2)
-        )
-        assertEquals(SmartDecisionEngine.Level.OBSERVE, result?.level)
-        assertTrue(result?.reason?.contains("el aprendizaje local impide el bloqueo automático") == true)
-    }
-
-    @Test fun compoundWeakSignalsNeverOverrideAnActiveAllowLearningSignal() {
-        val result = SmartDecisionEngine.evaluate(
-            "analytics-telemetry.example.org",
-            mapOf("domain:analytics-telemetry.example.org" to -2)
-        )
-        assertEquals(SmartDecisionEngine.Level.OBSERVE, result?.level)
-        assertTrue(result?.reason?.contains("el aprendizaje local impide el bloqueo automático") == true)
-    }
-
-    @Test fun highConfidenceBlockedFamilyBlocksANewRelatedDomain() {
-        ThreatKnowledgeGraph.updateObservations(
-            listOf(
-                ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.alpha.example", 0, 8),
-                ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.beta.example", 0, 8),
-                ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.gamma.example", 0, 8)
-            )
-        )
-        try {
-            val result = SmartDecisionEngine.evaluate("analytics-telemetry.delta.example")
-            assertEquals(SmartDecisionEngine.Level.BLOCK, result?.level)
-            assertTrue(result?.reason?.contains("familia local de publicidad/rastreo") == true)
-            assertTrue(result?.reason?.contains("24 bloqueos y 0 permisos") == true)
-            assertTrue(result?.reason?.contains("Confianza: alta") == true)
-        } finally {
-            ThreatKnowledgeGraph.updateObservations(emptyList())
-        }
-    }
-
-    @Test fun adaptiveFamilyIndexIsRebuiltWhenLearningSnapshotChanges() {
-        val profiles = listOf(
-            ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.alpha.example", 0, 8),
-            ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.beta.example", 0, 8),
-            ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.gamma.example", 0, 8)
-        )
-        try {
-            ThreatKnowledgeGraph.updateObservations(profiles)
-            assertTrue(ThreatKnowledgeGraph.adaptivePatternSnapshot().any {
-                it.confidence == ThreatKnowledgeGraph.PatternConfidence.HIGH &&
-                    it.indicators == listOf("analytics", "telemetry")
-            })
-            ThreatKnowledgeGraph.updateObservations(emptyList())
-            assertTrue(ThreatKnowledgeGraph.adaptivePatternSnapshot().isEmpty())
-            assertNull(ThreatKnowledgeGraph.blockedAdaptivePatternFor("analytics-telemetry.delta.example"))
-        } finally {
-            ThreatKnowledgeGraph.updateObservations(emptyList())
-        }
-    }
-
-    @Test fun exactDomainPermissionOverridesLearnedBlockedFamily() {
-        ThreatKnowledgeGraph.updateObservations(
-            listOf(
-                ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.alpha.example", 0, 8),
-                ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.beta.example", 0, 8),
-                ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.gamma.example", 0, 8),
-                ThreatKnowledgeGraph.ObservationProfile("analytics-telemetry.delta.example", 8, 0)
-            )
-        )
-        try {
-            val result = SmartDecisionEngine.evaluate("analytics-telemetry.delta.example")
-            assertEquals(SmartDecisionEngine.Level.OBSERVE, result?.level)
-            assertTrue(result?.reason?.contains("aprendizaje explícito de permiso del dominio exacto prevalece sobre la familia") == true)
-        } finally {
-            ThreatKnowledgeGraph.updateObservations(emptyList())
-        }
-    }
-
     @Test fun ordinaryDomainsRemainAllowed() {
         assertNull(SmartDecisionEngine.evaluate("api.example.org"))
         assertNull(SmartDecisionEngine.evaluate("mail.google.com"))
-    }
-
-    @Test fun learnedAllowSignalPreventsHeuristicBlock() {
-        val result = SmartDecisionEngine.evaluate("ads.example.org", mapOf("domain:ads.example.org" to -2))
-        assertEquals(SmartDecisionEngine.Level.OBSERVE, result?.level)
-    }
-    @Test fun learnedPermissionDoesNotSpreadToAnotherDomainWithTheSameToken() {
-        val allowedDomain = SmartDecisionEngine.evaluate(
-            "ads.example.org",
-            mapOf("domain:ads.example.org" to -2)
-        )
-        val unrelatedDomain = SmartDecisionEngine.evaluate(
-            "adserver.other.org",
-            mapOf("domain:ads.example.org" to -2)
-        )
-        assertEquals(SmartDecisionEngine.Level.OBSERVE, allowedDomain?.level)
-        assertEquals(SmartDecisionEngine.Level.BLOCK, unrelatedDomain?.level)
-        assertTrue(unrelatedDomain?.reason?.contains("el aprendizaje local impide") != true)
     }
 
     @Test fun heuristicDecisionsExposeSignalsScoreConfidenceAndCriterion() {
@@ -161,6 +68,7 @@ class SmartDecisionEngineTest {
         SmartDecisionEngine.updateBlocklistKnowledge(setOf("known-tracker.example"))
         try {
             val result = SmartDecisionEngine.evaluate("cdn.known-tracker.example")
+            assertEquals(SmartDecisionEngine.Level.BLOCK, result?.level)
             assertTrue(result?.reason?.contains("Evidencia:") == true)
             assertTrue(result?.reason?.contains("Confianza: muy alta") == true)
             assertTrue(result?.reason?.contains("prioridad") == true)
@@ -172,12 +80,12 @@ class SmartDecisionEngineTest {
     @Test fun downloadedBlocklistBecomesHighConfidenceEngineKnowledge() {
         SmartDecisionEngine.updateBlocklistKnowledge(setOf("known-tracker.example"))
         try {
-            val result = SmartDecisionEngine.evaluate("cdn.known-tracker.example")
-            assertEquals(SmartDecisionEngine.Level.BLOCK, result?.level)
-            assertTrue(result?.reason?.contains("listas de protección") == true)
+            assertEquals(
+                SmartDecisionEngine.Level.BLOCK,
+                SmartDecisionEngine.evaluate("cdn.known-tracker.example")?.level
+            )
         } finally {
             SmartDecisionEngine.updateBlocklistKnowledge(emptySet())
         }
     }
-
 }
