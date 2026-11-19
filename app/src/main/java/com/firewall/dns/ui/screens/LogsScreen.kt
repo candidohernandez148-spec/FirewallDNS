@@ -107,7 +107,7 @@ fun LogsScreen(
                         Text(
                             when {
                                 !stats.isRunning -> "Enciende el interruptor superior para proteger tu dispositivo"
-                                else -> "Motor: FirewallDNS TUN (DNS) · ${stats.networkType}
+                                else -> "Motor: FirewallDNS TUN (DNS) · ${stats.networkType}"
                             },
                             style = MaterialTheme.typography.bodySmall
                         )
