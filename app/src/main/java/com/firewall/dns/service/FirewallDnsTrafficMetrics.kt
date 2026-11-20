@@ -1,0 +1,124 @@
+package com.firewall.dns.service
+
+import java.util.concurrent.atomic.AtomicLong
+
+/**
+ * Aggregate-only counters for the production DNS-only TUN path.
+ *
+ * No packet bytes, IP addresses, domains, UIDs, or package names are retained.
+ * Counters are process-local and can be sampled without blocking packet workers.
+ */
+object FirewallDnsTrafficMetrics {
+    data class Snapshot(
+        val packetsRead: Long,
+        val queueRejected: Long,
+        val parserRejected: Long,
+        val ipv4Packets: Long,
+        val ipv6Packets: Long,
+        val nonDnsTcp: Long,
+        val nonDnsUdp: Long,
+        val dnsTcp: Long,
+        val tcpRstSent: Long,
+        val tcpRstSuppressed: Long,
+        val unsupportedTransport: Long,
+        val dnsUdpPackets: Long,
+        val malformedDns: Long,
+        val dnsRejected: Long,
+        val dnsBlocked: Long,
+        val dnsObserved: Long,
+        val dnsAllowed: Long,
+        val cacheHits: Long,
+        val cacheMisses: Long,
+        val upstreamSuccess: Long,
+        val upstreamFailure: Long,
+        val noDnsResponse: Long,
+        val dnsResponsesBuilt: Long,
+        val packetsWritten: Long,
+        val writeErrors: Long,
+        val workerErrors: Long,
+    )
+
+    private val packetsRead = AtomicLong()
+    private val queueRejected = AtomicLong()
+    private val parserRejected = AtomicLong()
+    private val ipv4Packets = AtomicLong()
+    private val ipv6Packets = AtomicLong()
+    private val nonDnsTcp = AtomicLong()
+    private val nonDnsUdp = AtomicLong()
+    private val dnsTcp = AtomicLong()
+    private val tcpRstSent = AtomicLong()
+    private val tcpRstSuppressed = AtomicLong()
+    private val unsupportedTransport = AtomicLong()
+    private val dnsUdpPackets = AtomicLong()
+    private val malformedDns = AtomicLong()
+    private val dnsRejected = AtomicLong()
+    private val dnsBlocked = AtomicLong()
+    private val dnsObserved = AtomicLong()
+    private val dnsAllowed = AtomicLong()
+    private val cacheHits = AtomicLong()
+    private val cacheMisses = AtomicLong()
+    private val upstreamSuccess = AtomicLong()
+    private val upstreamFailure = AtomicLong()
+    private val noDnsResponse = AtomicLong()
+    private val dnsResponsesBuilt = AtomicLong()
+    private val packetsWritten = AtomicLong()
+    private val writeErrors = AtomicLong()
+    private val workerErrors = AtomicLong()
+
+    internal fun packetRead() { packetsRead.incrementAndGet() }
+    internal fun queueRejected() { queueRejected.incrementAndGet() }
+    internal fun parserRejected() { parserRejected.incrementAndGet() }
+    internal fun ipv4Packet() { ipv4Packets.incrementAndGet() }
+    internal fun ipv6Packet() { ipv6Packets.incrementAndGet() }
+    internal fun nonDnsTcp() { nonDnsTcp.incrementAndGet() }
+    internal fun nonDnsUdp() { nonDnsUdp.incrementAndGet() }
+    internal fun tcpDns() { dnsTcp.incrementAndGet() }
+    internal fun tcpRstSent() { tcpRstSent.incrementAndGet() }
+    internal fun tcpRstSuppressed() { tcpRstSuppressed.incrementAndGet() }
+    internal fun unsupportedTransport() { unsupportedTransport.incrementAndGet() }
+    internal fun dnsUdpPacket() { dnsUdpPackets.incrementAndGet() }
+    internal fun malformedDns() { malformedDns.incrementAndGet() }
+    internal fun dnsRejected() { dnsRejected.incrementAndGet() }
+    internal fun dnsBlocked() { dnsBlocked.incrementAndGet() }
+    internal fun dnsObserved() { dnsObserved.incrementAndGet() }
+    internal fun dnsAllowed() { dnsAllowed.incrementAndGet() }
+    internal fun cacheHit() { cacheHits.incrementAndGet() }
+    internal fun cacheMiss() { cacheMisses.incrementAndGet() }
+    internal fun upstreamSuccess() { upstreamSuccess.incrementAndGet() }
+    internal fun upstreamFailure() { upstreamFailure.incrementAndGet() }
+    internal fun noDnsResponse() { noDnsResponse.incrementAndGet() }
+    internal fun responseBuilt() { dnsResponsesBuilt.incrementAndGet() }
+    internal fun responseWritten() { packetsWritten.incrementAndGet() }
+    internal fun writeError() { writeErrors.incrementAndGet() }
+    internal fun workerError() { workerErrors.incrementAndGet() }
+
+    /** Returns a non-blocking point-in-time aggregate snapshot for UI/diagnostics. */
+    fun snapshot(): Snapshot = Snapshot(
+        packetsRead = packetsRead.get(),
+        queueRejected = queueRejected.get(),
+        parserRejected = parserRejected.get(),
+        ipv4Packets = ipv4Packets.get(),
+        ipv6Packets = ipv6Packets.get(),
+        nonDnsTcp = nonDnsTcp.get(),
+        nonDnsUdp = nonDnsUdp.get(),
+        dnsTcp = dnsTcp.get(),
+        tcpRstSent = tcpRstSent.get(),
+        tcpRstSuppressed = tcpRstSuppressed.get(),
+        unsupportedTransport = unsupportedTransport.get(),
+        dnsUdpPackets = dnsUdpPackets.get(),
+        malformedDns = malformedDns.get(),
+        dnsRejected = dnsRejected.get(),
+        dnsBlocked = dnsBlocked.get(),
+        dnsObserved = dnsObserved.get(),
+        dnsAllowed = dnsAllowed.get(),
+        cacheHits = cacheHits.get(),
+        cacheMisses = cacheMisses.get(),
+        upstreamSuccess = upstreamSuccess.get(),
+        upstreamFailure = upstreamFailure.get(),
+        noDnsResponse = noDnsResponse.get(),
+        dnsResponsesBuilt = dnsResponsesBuilt.get(),
+        packetsWritten = packetsWritten.get(),
+        writeErrors = writeErrors.get(),
+        workerErrors = workerErrors.get(),
+    )
+}
