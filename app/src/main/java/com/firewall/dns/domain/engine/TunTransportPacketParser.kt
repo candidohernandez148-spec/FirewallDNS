@@ -28,7 +28,8 @@ data class ValidatedTunTransportPacket(
  *
  * Requiere un paquete IP completo (sin bytes sobrantes), cabeceras IPv4/IPv6
  * admitidas y checksum TCP/UDP correcto. IPv4 UDP checksum cero es válido;
- * IPv6 UDP checksum cero y TCP checksum cero siempre son inválidos.
+ * IPv6 UDP checksum cero está prohibido; TCP siempre se verifica y no tiene modo
+ * de checksum omitido (un valor numérico cero solo pasa si matemáticamente valida).
  */
 object TunTransportPacketParser {
     private const val IPPROTO_TCP = 6
