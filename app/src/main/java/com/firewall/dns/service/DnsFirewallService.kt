@@ -273,56 +273,25 @@ class DnsFirewallService : VpnService() {
     }
 
     private fun handlePacket(req: ByteArray, session: TunSession) {
-        if (req.isEmpty()) return
-        val version = (req[0].toInt() ushr 4) and 0x0F
-        val isIpv6: Boolean
-        val ipHeaderLen: Int
-        val protocol: Int
-        val srcIp: ByteArray
-        val dstIp: ByteArray
+        val packet = TunTransportPacketParser.parse(req) ?: return
+        if (packet.destinationPort != 53) return
 
-        when (version) {
-            4 -> {
-                if (req.size < 20) return
-                isIpv6 = false
-                ipHeaderLen = (req[0].toInt() and 0x0F) * 4
-                if (ipHeaderLen < 20 || req.size < ipHeaderLen) return
-                val fragmentField = DnsPacketEngine.readU16(req, 6)
-                if ((fragmentField and 0x3FFF) != 0) return
-                protocol = req[9].toInt() and 0xFF
-                srcIp = req.copyOfRange(12, 16)
-                dstIp = req.copyOfRange(16, 20)
-            }
-            6 -> {
-                if (req.size < 40) return
-                isIpv6 = true
-                ipHeaderLen = 40
-                protocol = req[6].toInt() and 0xFF
-                if (protocol != 17 && protocol != 6) return
-                srcIp = req.copyOfRange(8, 24)
-                dstIp = req.copyOfRange(24, 40)
-            }
-            else -> return
-        }
+        val srcIp = packet.sourceAddress
+        val dstIp = packet.destinationAddress
+        val srcPort = packet.sourcePort
+        val dstPort = packet.destinationPort
 
-        if (protocol == 6) {
-            if (req.size < ipHeaderLen + 20) return
-            val tcpDestinationPort = DnsPacketEngine.readU16(req, ipHeaderLen + 2)
-            if (tcpDestinationPort == 53) {
-                DnsPacketEngine.buildTcpRstResponse(req, isIpv6, ipHeaderLen, srcIp, dstIp)?.let {
-                    writePacket(session, it)
-                }
+        if (packet.protocol == 6) {
+            // DNS-over-TCP desde el cliente aún no está habilitado: responder
+            // RST únicamente a segmentos TCP/53 estructuralmente válidos.
+            DnsPacketEngine.buildTcpRstResponse(req, packet)?.let {
+                writePacket(session, it)
             }
             return
         }
+        if (packet.protocol != 17) return
 
-        if (protocol != 17 || req.size < ipHeaderLen + 8) return
-        val srcPort = DnsPacketEngine.readU16(req, ipHeaderLen)
-        val dstPort = DnsPacketEngine.readU16(req, ipHeaderLen + 2)
-        val udpLength = DnsPacketEngine.readU16(req, ipHeaderLen + 4)
-        if (dstPort != 53 || udpLength < 8 || ipHeaderLen + udpLength > req.size) return
-
-        val dnsPayload = req.copyOfRange(ipHeaderLen + 8, ipHeaderLen + udpLength)
+        val dnsPayload = req.copyOfRange(packet.payloadOffset, packet.ipTotalLength)
         val query = DnsPacketEngine.parseDnsQuery(dnsPayload) ?: return
         val appUid = resolveAppUid(srcIp, srcPort, dstIp, dstPort)
         val appName = resolveAppName(appUid)
@@ -381,7 +350,7 @@ class DnsFirewallService : VpnService() {
         )
 
         if (dnsResponse != null) {
-            val responsePacket = if (isIpv6) {
+            val responsePacket = if (packet.isIpv6) {
                 DnsPacketEngine.buildIpv6UdpResponse(srcIp, dstIp, srcPort, dstPort, dnsResponse)
             } else {
                 DnsPacketEngine.buildIpv4UdpResponse(req, srcIp, dstIp, srcPort, dstPort, dnsResponse)
