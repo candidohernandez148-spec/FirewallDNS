@@ -46,6 +46,7 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import com.firewall.dns.data.repository.FirewallRepository
 import com.firewall.dns.service.DnsFirewallService
+import com.firewall.dns.service.FirewallDnsTrafficMetrics
 import com.firewall.dns.ui.screens.AppsSettingsScreen
 import com.firewall.dns.ui.screens.LogsScreen
 import com.firewall.dns.ui.screens.RulesScreen
@@ -249,6 +250,7 @@ fun FirewallApp(
 ) {
     val context = LocalContext.current
     val stats by viewModel.stats.collectAsState()
+    val tunMetrics by viewModel.tunMetrics.collectAsState()
     val logs by viewModel.filteredLogs.collectAsState()
     val activityLogs by viewModel.activityLogs.collectAsState()
     val traffic by viewModel.traffic.collectAsState()
@@ -373,6 +375,7 @@ fun FirewallApp(
                     logs = activityLogs,
                     otherVpnActive = otherVpnActive,
                     blocklistsDownloaded = blocklistsDownloaded,
+                    tunMetrics = tunMetrics,
                     onOpenMonitor = { selectedDestination = 1 },
                     onOpenThreats = { selectedDestination = 2 },
                     onOpenProtection = { selectedDestination = 3 }
