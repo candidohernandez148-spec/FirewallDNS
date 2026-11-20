@@ -249,6 +249,7 @@ class DnsFirewallService : VpnService() {
                     val length = session.input.read(buffer)
                     if (length < 0) break
                     if (length > 0 && session.active.get()) {
+                        FirewallDnsTrafficMetrics.packetRead()
                         val copy = buffer.copyOf(length)
                         try {
                             executor.execute {
@@ -258,12 +259,14 @@ class DnsFirewallService : VpnService() {
                                     if (session.active.get()) handlePacket(copy, session)
                                 } catch (_: Exception) {
                                     packetProcessingErrors.incrementAndGet()
+                                    FirewallDnsTrafficMetrics.workerError()
                                 } finally {
                                     session.inFlightWorkers.decrementAndGet()
                                 }
                             }
                         } catch (_: RejectedExecutionException) {
                             queueRejectedPackets.incrementAndGet()
+                            FirewallDnsTrafficMetrics.queueRejected()
                         }
                     }
                 }
@@ -274,8 +277,15 @@ class DnsFirewallService : VpnService() {
     }
 
     private fun handlePacket(req: ByteArray, session: TunSession) {
-        val packet = TunTransportPacketParser.parse(req) ?: return
-        if (packet.destinationPort != 53) return
+        val packet = TunTransportPacketParser.parse(req) ?: run {
+            FirewallDnsTrafficMetrics.parserRejected()
+            return
+        }
+        if (packet.isIpv6) FirewallDnsTrafficMetrics.ipv6Packet() else FirewallDnsTrafficMetrics.ipv4Packet()
+        if (packet.destinationPort != 53) {
+            if (packet.protocol == 6) FirewallDnsTrafficMetrics.nonDnsTcp() else FirewallDnsTrafficMetrics.nonDnsUdp()
+            return
+        }
 
         val srcIp = packet.sourceAddress
         val dstIp = packet.destinationAddress
@@ -283,17 +293,29 @@ class DnsFirewallService : VpnService() {
         val dstPort = packet.destinationPort
 
         if (packet.protocol == 6) {
+            FirewallDnsTrafficMetrics.tcpDns()
             // DNS-over-TCP desde el cliente aún no está habilitado: responder
             // RST únicamente a segmentos TCP/53 estructuralmente válidos.
-            DnsPacketEngine.buildTcpRstResponse(req, packet)?.let {
-                writePacket(session, it)
+            val rst = DnsPacketEngine.buildTcpRstResponse(req, packet)
+            if (rst != null) {
+                FirewallDnsTrafficMetrics.tcpRstSent()
+                writePacket(session, rst)
+            } else {
+                FirewallDnsTrafficMetrics.tcpRstSuppressed()
             }
             return
         }
-        if (packet.protocol != 17) return
+        if (packet.protocol != 17) {
+            FirewallDnsTrafficMetrics.unsupportedTransport()
+            return
+        }
+        FirewallDnsTrafficMetrics.dnsUdpPacket()
 
         val dnsPayload = req.copyOfRange(packet.payloadOffset, packet.ipTotalLength)
-        val query = DnsPacketEngine.parseDnsQuery(dnsPayload) ?: return
+        val query = DnsPacketEngine.parseDnsQuery(dnsPayload) ?: run {
+            FirewallDnsTrafficMetrics.malformedDns()
+            return
+        }
         val appUid = resolveAppUid(srcIp, srcPort, dstIp, dstPort)
         val appName = resolveAppName(appUid)
         val appPackage = resolvePackageName(appUid)
@@ -301,13 +323,21 @@ class DnsFirewallService : VpnService() {
         val engineDecision = when (evaluation) {
             is DnsEvaluation.Blocked -> true to evaluation.decision.reason
             is DnsEvaluation.Forward -> false to evaluation.decision.reason
-            is DnsEvaluation.Rejected -> return
+            is DnsEvaluation.Rejected -> {
+                FirewallDnsTrafficMetrics.dnsRejected()
+                return
+            }
             null -> FirewallRepository.evaluateDomain(query.domain)
         }
         val appBlocked = appUid >= 0 && AppFirewallManager.isUidBlocked(appUid)
         val observationMode = FirewallRepository.isObservationModeEnabled()
         val policyWouldBlock = appBlocked || engineDecision.first
         val shouldBlock = policyWouldBlock && !observationMode
+        when {
+            shouldBlock -> FirewallDnsTrafficMetrics.dnsBlocked()
+            observationMode -> FirewallDnsTrafficMetrics.dnsObserved()
+            else -> FirewallDnsTrafficMetrics.dnsAllowed()
+        }
         val ruleReason = if (appBlocked) "DNS bloqueado para la aplicación" else engineDecision.second
         val finalReason = when {
             observationMode && policyWouldBlock -> "OBSERVE: $ruleReason"
@@ -327,8 +357,10 @@ class DnsFirewallService : VpnService() {
                 this[1] = dnsPayload[1]
             }?.takeIf { DnsPacketEngine.matchesDnsResponse(dnsPayload, it) }
             if (cachedResponse != null) {
+                FirewallDnsTrafficMetrics.cacheHit()
                 dnsResponse = cachedResponse
             } else {
+                FirewallDnsTrafficMetrics.cacheMiss()
                 dnsResponse = sharedUpstream?.let { upstream ->
                     when (val result = upstream.exchange(dnsPayload)) {
                         is DnsUpstreamResult.Success -> result.response.message
@@ -336,8 +368,11 @@ class DnsFirewallService : VpnService() {
                     }
                 } ?: forwardDnsQuery(dnsPayload)
                 if (dnsResponse != null) {
+                    FirewallDnsTrafficMetrics.upstreamSuccess()
                     if (dnsCache.size > 600) dnsCache.clear()
                     dnsCache[cacheKey] = CachedDns(dnsResponse, now + CACHE_TTL_MS)
+                } else {
+                    FirewallDnsTrafficMetrics.upstreamFailure()
                 }
             }
         }
@@ -356,7 +391,10 @@ class DnsFirewallService : VpnService() {
             } else {
                 DnsPacketEngine.buildIpv4UdpResponse(req, srcIp, dstIp, srcPort, dstPort, dnsResponse)
             }
+            FirewallDnsTrafficMetrics.responseBuilt()
             writePacket(session, responsePacket)
+        } else {
+            FirewallDnsTrafficMetrics.noDnsResponse()
         }
     }
 
@@ -366,8 +404,10 @@ class DnsFirewallService : VpnService() {
             if (!session.active.get()) return
             try {
                 session.output.write(data)
+                FirewallDnsTrafficMetrics.responseWritten()
             } catch (_: IOException) {
                 packetWriteErrors.incrementAndGet()
+                FirewallDnsTrafficMetrics.writeError()
             }
         }
     }
