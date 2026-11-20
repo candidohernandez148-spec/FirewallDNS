@@ -77,3 +77,19 @@ La espera de workers es deliberadamente limitada: una consulta upstream lenta no
 debe bloquear indefinidamente el apagado. Los workers que terminen después de la
 invalidación ya no pueden escribir en el descriptor cerrado. Esta etapa no
 habilita TCP/UDP general ni cambia el alcance DNS-only.
+
+## Validación de transporte en el límite TUN
+
+`TunTransportPacketParser` valida paquetes IP completos antes de que el servicio lea puertos o genere una respuesta:
+- IPv4: IHL, longitud total exacta, checksum de cabecera y rechazo de reservado/MF/offset; DF se permite.
+- IPv6: cabecera base y longitud exacta; extensiones, fragmentos y jumbograms siguen fuera de alcance.
+- UDP: cabecera y longitud coincidentes; checksum cero se permite solo en IPv4 y los checksums presentes se verifican.
+- TCP: mínimo de 20 bytes, Data Offset válido y checksum de pseudo-cabecera obligatorio verificado sobre el segmento completo.
+
+El servicio productivo usa ese resultado para procesar DNS UDP/53 y, mientras no exista TCP de cliente gestionado por smoltcp, responder con RST correcto a TCP/53 válido. El generador evita responder a RST, aplica las reglas de secuencia/ACK con y sin ACK entrante, incluye datos + SYN + FIN en el espacio de secuencia y reconstruye checksums IPv4/TCP o TCP/IPv6.
+
+## DNS sobre TCP: qué está reutilizado y qué falta
+
+`DnsTcpFrameCodec` ya codifica/decodifica el prefijo de longitud de 2 bytes Big Endian y devuelve cuántos bytes consumir, por lo que admite lecturas parciales y varios mensajes concatenados si el llamador conserva el resto del flujo. `DnsUpstreamClient` ya reintenta por TCP cuando la respuesta UDP upstream trae TC=1; protege el socket TCP antes de conectar y lee exactamente el frame anunciado.
+
+Esto **no equivale** a DNS sobre TCP desde las aplicaciones del dispositivo. La VPN productiva todavía responde RST al TCP/53 del cliente. Para habilitarlo se requiere completar y probar la frontera JNI + `TunPacketDevice` + bucle `smoltcp` + socket TCP por flujo + parser incremental por conexión + política DNS compartida + respuesta por el mismo flujo. No se habilita full-tunnel ni se añade una segunda VPN con esta entrega.
