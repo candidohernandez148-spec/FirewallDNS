@@ -186,7 +186,7 @@ fun SocDashboardScreen(
                         TunMetric("Cola", tunMetrics.queueRejected, Modifier.weight(1f))
                     }
                     Text(
-                        "Respuestas: ${tunMetrics.packetsWritten} · Upstream OK: ${tunMetrics.upstreamSuccess} · Fallos: ${tunMetrics.upstreamFailure + tunMetrics.workerErrors + tunMetrics.writeErrors}",
+                        "Respuestas: ${tunMetrics.packetsWritten} · Upstream OK: ${tunMetrics.upstreamSuccess} · Fallos: ${tunMetrics.parserRejected + tunMetrics.malformedDns + tunMetrics.dnsRejected + tunMetrics.upstreamFailure + tunMetrics.workerErrors + tunMetrics.writeErrors}",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
