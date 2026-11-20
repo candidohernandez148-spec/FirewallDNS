@@ -80,13 +80,15 @@ object TunTransportPacketParser {
         if (protocol != IPPROTO_TCP && protocol != IPPROTO_UDP) return null
         val transportLength = totalLength - ipHeaderLength
         val transportOffset = ipHeaderLength
-        if (transportLength < if (protocol == IPPROTO_TCP) 20 else 8) return null
+        val minimumTransportLength = if (protocol == IPPROTO_TCP) 20 else 8
+        if (transportLength < minimumTransportLength) return null
 
         val transportHeaderLength = if (protocol == IPPROTO_TCP) {
             val headerLength = ((packet[transportOffset + 12].toInt() ushr 4) and 0x0f) * 4
             if (headerLength !in 20..transportLength) return null
-            val checksumValue = u16(packet, transportOffset + 16)
-            if (checksumValue == 0 || transportChecksum(
+            // TCP has no "checksum disabled" mode. Verify the field as sent;
+            // a numeric zero is accepted only if the complete checksum verifies.
+            if (transportChecksum(
                     isIpv6, source, destination, protocol, packet, transportOffset, transportLength
                 ) != 0
             ) return null
