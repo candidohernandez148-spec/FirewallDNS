@@ -9,6 +9,7 @@ import com.firewall.dns.domain.model.BlocklistDownloadProgress
 import com.firewall.dns.domain.model.DnsLogEntry
 import com.firewall.dns.domain.model.FirewallStats
 import com.firewall.dns.domain.model.TrafficPoint
+import com.firewall.dns.service.FirewallDnsTrafficMetrics
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -23,6 +24,7 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 class FirewallViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -37,6 +39,9 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
     val smartModeEnabled: StateFlow<Boolean> = FirewallRepository.smartModeEnabled
     val observationModeEnabled: StateFlow<Boolean> = FirewallRepository.observationModeEnabled
     val blockedApps: StateFlow<Set<String>> = FirewallRepository.blockedApps
+
+    private val _tunMetrics = MutableStateFlow(FirewallDnsTrafficMetrics.snapshot())
+    val tunMetrics: StateFlow<FirewallDnsTrafficMetrics.Snapshot> = _tunMetrics.asStateFlow()
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
@@ -89,6 +94,13 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
     init {
         FirewallRepository.init(application)
         loadInstalledApps()
+        // Muestreo ligero de contadores atómicos; no interviene en el hilo TUN.
+        viewModelScope.launch {
+            while (true) {
+                _tunMetrics.value = FirewallDnsTrafficMetrics.snapshot()
+                delay(1_000L)
+            }
+        }
     }
 
     private fun loadInstalledApps() {

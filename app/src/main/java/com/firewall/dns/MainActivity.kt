@@ -249,6 +249,7 @@ fun FirewallApp(
 ) {
     val context = LocalContext.current
     val stats by viewModel.stats.collectAsState()
+    val tunMetrics by viewModel.tunMetrics.collectAsState()
     val logs by viewModel.filteredLogs.collectAsState()
     val activityLogs by viewModel.activityLogs.collectAsState()
     val traffic by viewModel.traffic.collectAsState()
@@ -373,6 +374,7 @@ fun FirewallApp(
                     logs = activityLogs,
                     otherVpnActive = otherVpnActive,
                     blocklistsDownloaded = blocklistsDownloaded,
+                    tunMetrics = tunMetrics,
                     onOpenMonitor = { selectedDestination = 1 },
                     onOpenThreats = { selectedDestination = 2 },
                     onOpenProtection = { selectedDestination = 3 }

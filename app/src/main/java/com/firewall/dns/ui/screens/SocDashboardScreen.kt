@@ -17,6 +17,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.firewall.dns.domain.model.DnsLogEntry
 import com.firewall.dns.domain.model.FirewallStats
+import com.firewall.dns.service.FirewallDnsTrafficMetrics
 
 @Composable
 fun SocDashboardScreen(
@@ -24,6 +25,7 @@ fun SocDashboardScreen(
     logs: List<DnsLogEntry>,
     otherVpnActive: Boolean,
     blocklistsDownloaded: Boolean,
+    tunMetrics: FirewallDnsTrafficMetrics.Snapshot,
     onOpenMonitor: () -> Unit,
     onOpenThreats: () -> Unit,
     onOpenProtection: () -> Unit
@@ -155,6 +157,44 @@ fun SocDashboardScreen(
                 }
             }
 
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 11.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Motor TUN · tiempo real",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            "1 s",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TunMetric("Paquetes", tunMetrics.packetsRead, Modifier.weight(1f))
+                        TunMetric("DNS UDP", tunMetrics.dnsUdpPackets, Modifier.weight(1f))
+                        TunMetric("RST TCP", tunMetrics.tcpRstSent, Modifier.weight(1f))
+                        TunMetric("Cola", tunMetrics.queueRejected, Modifier.weight(1f))
+                    }
+                    Text(
+                        "Respuestas: ${tunMetrics.packetsWritten} · Upstream OK: ${tunMetrics.upstreamSuccess} · Fallos: ${tunMetrics.parserRejected + tunMetrics.malformedDns + tunMetrics.dnsRejected + tunMetrics.upstreamFailure + tunMetrics.workerErrors + tunMetrics.writeErrors}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
             if (!operational || !blocklistsDownloaded || threatMatches > 0) {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
@@ -239,6 +279,26 @@ fun SocDashboardScreen(
                 }
             }
         }
+    }
+}
+
+
+@Composable
+private fun TunMetric(label: String, value: Long, modifier: Modifier = Modifier) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(1.dp)) {
+        Text(
+            value.toString(),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
