@@ -22,6 +22,36 @@ class TunTransportPacketParserTest {
     }
 
     @Test
+    fun validatesIpv4UdpZeroChecksumAndIpv6UdpMandatoryChecksum() {
+        val ipv4 = udpPacket(ipv6 = false, zeroChecksum = true)
+        val parsed4 = TunTransportPacketParser.parse(ipv4)
+        assertNotNull(parsed4)
+        assertEquals(17, parsed4?.protocol)
+        assertEquals(53, parsed4?.destinationPort)
+
+        val ipv6 = udpPacket(ipv6 = true, zeroChecksum = false)
+        assertNotNull(TunTransportPacketParser.parse(ipv6))
+        val zeroIpv6 = udpPacket(ipv6 = true, zeroChecksum = true)
+        assertNull(TunTransportPacketParser.parse(zeroIpv6))
+    }
+
+    @Test
+    fun rejectsIpv4FragmentsAndBadUdpChecksums() {
+        val fragment = udpPacket(ipv6 = false, zeroChecksum = true).apply {
+            this[6] = 0x20
+            this[10] = 0
+            this[11] = 0
+        }
+        put16(fragment, 10, checksum(fragment, 0, 20))
+        assertNull(TunTransportPacketParser.parse(fragment))
+
+        val corrupt = udpPacket(ipv6 = true, zeroChecksum = false).apply {
+            this[48] = (this[48].toInt() xor 0x7f).toByte()
+        }
+        assertNull(TunTransportPacketParser.parse(corrupt))
+    }
+
+    @Test
     fun rejectsInvalidTcpDataOffsetAndChecksum() {
         val badOffset = tcpPacket(false, 0x02, 1, 0).apply { this[32] = 0x40 }
         assertNull(TunTransportPacketParser.parse(badOffset))
@@ -61,6 +91,42 @@ class TunTransportPacketParserTest {
         val response6 = DnsPacketEngine.buildTcpRstResponse(syn6, parsed6)!!
         assertNotNull(TunTransportPacketParser.parse(response6))
         assertEquals(0x14, response6[53].toInt() and 0xff)
+    }
+
+    private fun udpPacket(ipv6: Boolean, zeroChecksum: Boolean): ByteArray {
+        val ipLength = if (ipv6) 40 else 20
+        val udpLength = 8 + 12
+        val packet = ByteArray(ipLength + udpLength)
+        if (ipv6) {
+            packet[0] = 0x60
+            put16(packet, 4, udpLength)
+            packet[6] = 17
+            packet[7] = 64
+            packet[8] = 0xfd.toByte()
+            packet[23] = 2
+            packet[24] = 0xfd.toByte()
+            packet[39] = 1
+        } else {
+            packet[0] = 0x45
+            put16(packet, 2, packet.size)
+            put16(packet, 6, 0x4000)
+            packet[8] = 64
+            packet[9] = 17
+            packet[12] = 10
+            packet[15] = 2
+            packet[16] = 10
+            packet[19] = 1
+        }
+        val udp = ipLength
+        put16(packet, udp, 53000)
+        put16(packet, udp + 2, 53)
+        put16(packet, udp + 4, udpLength)
+        for (i in udp + 8 until packet.size) packet[i] = i.toByte()
+        if (!zeroChecksum) {
+            put16(packet, udp + 6, transportChecksum(packet, ipv6, udp, udpLength, 17))
+        }
+        if (!ipv6) put16(packet, 10, checksum(packet, 0, 20))
+        return packet
     }
 
     private fun tcpPacket(
@@ -108,7 +174,9 @@ class TunTransportPacketParserTest {
         return packet
     }
 
-    private fun transportChecksum(packet: ByteArray, ipv6: Boolean, offset: Int, length: Int): Int {
+    private fun transportChecksum(
+        packet: ByteArray, ipv6: Boolean, offset: Int, length: Int, protocol: Int = 6
+    ): Int {
         var sum = 0L
         val srcOffset = if (ipv6) 8 else 12
         val addressLength = if (ipv6) 16 else 4
@@ -117,9 +185,9 @@ class TunTransportPacketParserTest {
             sum += u16(packet, srcOffset + addressLength + i).toLong()
         }
         if (ipv6) {
-            sum += (length ushr 16).toLong() + (length and 0xffff).toLong() + 6L
+            sum += (length ushr 16).toLong() + (length and 0xffff).toLong() + protocol.toLong()
         } else {
-            sum += 6L + length.toLong()
+            sum += protocol.toLong() + length.toLong()
         }
         sum += rawSum(packet, offset, length)
         return fold(sum)
