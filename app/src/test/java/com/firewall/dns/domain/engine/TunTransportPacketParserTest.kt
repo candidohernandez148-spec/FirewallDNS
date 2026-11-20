@@ -58,6 +58,8 @@ class TunTransportPacketParserTest {
 
         val badChecksum = tcpPacket(false, 0x02, 1, 0).apply { this[36] = (this[36].toInt() xor 1).toByte() }
         assertNull(TunTransportPacketParser.parse(badChecksum))
+        val omittedChecksum = tcpPacket(false, 0x02, 1, 0).apply { this[36] = 0; this[37] = 0 }
+        assertNull(TunTransportPacketParser.parse(omittedChecksum))
     }
 
     @Test
