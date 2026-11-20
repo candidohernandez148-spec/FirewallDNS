@@ -194,63 +194,85 @@ object DnsPacketEngine {
         return res
     }
 
+    /**
+     * Construye el RST correcto para un segmento TCP ya validado por
+     * TunTransportPacketParser. No implementa ni sustituye una conexión TCP.
+     */
     fun buildTcpRstResponse(
-        req: ByteArray, isIpv6: Boolean, reqIhl: Int, srcIp: ByteArray, dstIp: ByteArray
+        req: ByteArray,
+        packet: ValidatedTunTransportPacket,
     ): ByteArray? {
-        val tcpFlags = req[reqIhl + 13].toInt() and 0xFF
-        if ((tcpFlags and 0x04) != 0) return null
+        if (packet.protocol != 6 || packet.ipTotalLength != req.size) return null
+        val tcpOffset = packet.ipHeaderLength
+        val tcpHeaderLength = packet.transportHeaderLength
+        if (tcpOffset < 20 || tcpOffset + packet.transportLength > req.size) return null
 
-        val isSyn = (tcpFlags and 0x02) != 0
-        val hasAck = (tcpFlags and 0x10) != 0
-        val reqTcpDataOff = ((req[reqIhl + 12].toInt() ushr 4) and 0x0F) * 4
-        val reqPayloadLen = (req.size - reqIhl - reqTcpDataOff).coerceAtLeast(0)
-        val reqSeq = readU32(req, reqIhl + 4)
-        val reqAck = readU32(req, reqIhl + 8)
+        val receivedFlags = req[tcpOffset + 13].toInt() and 0xff
+        // Never answer an incoming RST.
+        if ((receivedFlags and 0x04) != 0) return null
 
-        val ipLen = if (isIpv6) 40 else 20
-        val tcpLen = 20
-        val res = ByteArray(ipLen + tcpLen)
+        val hasAck = (receivedFlags and 0x10) != 0
+        val sequence = readU32(req, tcpOffset + 4)
+        val acknowledgment = readU32(req, tcpOffset + 8)
+        val dataLength = packet.transportLength - tcpHeaderLength
+        val consumesSequence = dataLength.toLong() +
+            (if ((receivedFlags and 0x02) != 0) 1L else 0L) +
+            (if ((receivedFlags and 0x01) != 0) 1L else 0L)
 
-        if (isIpv6) {
-            res[0] = 0x60.toByte()
-            writeU16(res, 4, tcpLen)
-            res[6] = 6.toByte()
-            res[7] = 64.toByte()
-            System.arraycopy(dstIp, 0, res, 8, 16)
-            System.arraycopy(srcIp, 0, res, 24, 16)
+        val ipLength = if (packet.isIpv6) 40 else 20
+        val tcpLength = 20
+        val response = ByteArray(ipLength + tcpLength)
+
+        if (packet.isIpv6) {
+            response[0] = 0x60
+            writeU16(response, 4, tcpLength)
+            response[6] = 6
+            response[7] = 64
+            System.arraycopy(packet.destinationAddress, 0, response, 8, 16)
+            System.arraycopy(packet.sourceAddress, 0, response, 24, 16)
         } else {
-            res[0] = 0x45.toByte()
-            writeU16(res, 2, ipLen + tcpLen)
-            res[6] = 0x40.toByte()
-            res[8] = 64.toByte()
-            res[9] = 6.toByte()
-            System.arraycopy(dstIp, 0, res, 12, 4)
-            System.arraycopy(srcIp, 0, res, 16, 4)
-            writeU16(res, 10, onesComplementSum(res, 0, ipLen))
+            response[0] = 0x45
+            writeU16(response, 2, ipLength + tcpLength)
+            // Preserve the IPv4 identification, set DF and use a fresh TTL.
+            response[4] = req[4]
+            response[5] = req[5]
+            writeU16(response, 6, 0x4000)
+            response[8] = 64
+            response[9] = 6
+            System.arraycopy(packet.destinationAddress, 0, response, 12, 4)
+            System.arraycopy(packet.sourceAddress, 0, response, 16, 4)
+            writeU16(response, 10, onesComplementSum(response, 0, ipLength))
         }
 
-        res[ipLen] = req[reqIhl + 2]; res[ipLen + 1] = req[reqIhl + 3]
-        res[ipLen + 2] = req[reqIhl]; res[ipLen + 3] = req[reqIhl + 1]
+        val tcp = ipLength
+        writeU16(response, tcp, packet.destinationPort)
+        writeU16(response, tcp + 2, packet.sourcePort)
+        response[tcp + 12] = 0x50 // Data Offset = 5 (20 bytes), no options.
 
         if (hasAck) {
-            writeU32(res, ipLen + 4, reqAck)
-            writeU32(res, ipLen + 8, 0L)
-            res[ipLen + 13] = 0x04.toByte()
+            // RFC reset construction for an incoming segment with ACK:
+            // SEQ = SEG.ACK, RST set, ACK clear.
+            writeU32(response, tcp + 4, acknowledgment)
+            writeU32(response, tcp + 8, 0L)
+            response[tcp + 13] = 0x04
         } else {
-            writeU32(res, ipLen + 4, 0L)
-            val ackVal = (reqSeq + reqPayloadLen + (if (isSyn) 1L else 0L)) and 0xFFFFFFFFL
-            writeU32(res, ipLen + 8, ackVal)
-            res[ipLen + 13] = 0x14.toByte()
+            // Without ACK: RST+ACK acknowledges payload plus SYN/FIN sequence space.
+            writeU32(response, tcp + 4, 0L)
+            writeU32(response, tcp + 8, (sequence + consumesSequence) and 0xffffffffL)
+            response[tcp + 13] = 0x14
         }
-        res[ipLen + 12] = 0x50.toByte()
 
-        val tcpSum = if (isIpv6) {
-            ipv6TransportChecksum(dstIp, srcIp, 6, res, ipLen, tcpLen)
+        val tcpChecksum = if (packet.isIpv6) {
+            ipv6TransportChecksum(
+                packet.destinationAddress, packet.sourceAddress, 6, response, tcp, tcpLength
+            )
         } else {
-            ipv4TransportChecksum(dstIp, srcIp, 6, res, ipLen, tcpLen)
+            ipv4TransportChecksum(
+                packet.destinationAddress, packet.sourceAddress, 6, response, tcp, tcpLength
+            )
         }
-        writeU16(res, ipLen + 16, tcpSum)
-        return res
+        writeU16(response, tcp + 16, tcpChecksum)
+        return response
     }
 
     fun readU16(b: ByteArray, i: Int): Int =
