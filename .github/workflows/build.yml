@@ -1,8 +1,17 @@
-name: Build Debug (FirewallDNS TUN)
+name: Build Debug (FirewallDNS TUN + smoltcp)
 
 on:
   workflow_dispatch:
   pull_request:
+    paths:
+      - "rust-core/**"
+      - "android-adapter/**"
+      - "dns-engine/**"
+      - "engine-runtime/**"
+      - "app/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - ".github/workflows/build.yml"
 
 jobs:
   build:
@@ -15,6 +24,27 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK for Rust JNI
+        run: |
+          sdkmanager --install "ndk;27.2.12479018"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Probar núcleo Rust y transporte smoltcp
+        run: cargo test --manifest-path rust-core/Cargo.toml
+
+      - name: Comprobar Rust para Android ARM64
+        run: cargo check --manifest-path rust-core/Cargo.toml --target aarch64-linux-android
+
       - uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: "8.14"
@@ -22,7 +52,7 @@ jobs:
       - name: Ejecutar pruebas unitarias
         run: gradle testDebugUnitTest test --no-daemon --stacktrace
 
-      - name: Compilar APK debug
+      - name: Compilar APK debug con JNI smoltcp ARM64
         run: gradle assembleDebug --no-daemon --stacktrace
 
       - uses: actions/upload-artifact@v4
