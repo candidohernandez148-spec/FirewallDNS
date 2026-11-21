@@ -6,7 +6,10 @@ import com.firewalldns.engine.dns.DnsUpstreamResult
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
+import java.net.Socket
 import kotlin.concurrent.thread
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.mockito.Mockito
@@ -16,6 +19,7 @@ class AndroidEngineRuntimeTest {
     fun failoverClientProtectsUpstreamSocketThroughActiveVpnService() {
         val vpnService = Mockito.mock(VpnService::class.java)
         Mockito.`when`(vpnService.protect(Mockito.any(DatagramSocket::class.java))).thenReturn(true)
+        val protectionBefore = AndroidSocketProtectionMetrics.snapshot()
 
         DatagramSocket(0, InetAddress.getByName("127.0.0.1")).use { server ->
             server.soTimeout = 3_000
@@ -50,7 +54,26 @@ class AndroidEngineRuntimeTest {
 
             assertTrue("Expected a validated upstream response, got $result", result is DnsUpstreamResult.Success)
             Mockito.verify(vpnService).protect(Mockito.any(DatagramSocket::class.java))
+            val protectionAfter = AndroidSocketProtectionMetrics.snapshot()
+            assertTrue(protectionAfter.datagramAttempts - protectionBefore.datagramAttempts > 0)
+            assertTrue(protectionAfter.datagramSuccesses - protectionBefore.datagramSuccesses > 0)
+            assertEquals(0L, protectionAfter.datagramFailures - protectionBefore.datagramFailures)
         }
+    }
+
+    @Test
+    fun recordsFailClosedResultWhenVpnServiceCannotProtectTcpSocket() {
+        val vpnService = Mockito.mock(VpnService::class.java)
+        Mockito.`when`(vpnService.protect(Mockito.any(Socket::class.java))).thenReturn(false)
+        val before = AndroidSocketProtectionMetrics.snapshot()
+
+        val protected = Socket().use { AndroidDnsSocketProtector(vpnService).protect(it) }
+        val after = AndroidSocketProtectionMetrics.snapshot()
+
+        assertFalse(protected)
+        assertEquals(1L, after.streamAttempts - before.streamAttempts)
+        assertEquals(0L, after.streamSuccesses - before.streamSuccesses)
+        assertEquals(1L, after.streamFailures - before.streamFailures)
     }
 
     @Test(expected = IllegalArgumentException::class)
