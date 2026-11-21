@@ -5,6 +5,7 @@ import android.content.ContentValues
 import android.database.Cursor
 import android.database.MatrixCursor
 import android.net.Uri
+import com.firewall.dns.data.repository.FirewallRepository
 import com.firewall.dns.service.DnsFirewallService
 import com.firewall.dns.service.FirewallDnsTrafficMetrics
 
@@ -25,6 +26,7 @@ class DiagnosticSnapshotProvider : ContentProvider() {
         require(uri.path == "/snapshot") { "Unsupported diagnostic endpoint" }
         val snapshot = FirewallDnsTrafficMetrics.snapshot()
         val values = linkedMapOf(
+            "firewallDnsRunning" to if (FirewallRepository.stats.value.isRunning) 1L else 0L,
             "packetsRead" to snapshot.packetsRead,
             "queueRejected" to snapshot.queueRejected,
             "parserRejected" to snapshot.parserRejected,
