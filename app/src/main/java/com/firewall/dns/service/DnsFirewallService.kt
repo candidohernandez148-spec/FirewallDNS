@@ -717,7 +717,7 @@ class DnsFirewallService : VpnService() {
                 onSocketProtectionResult = { protocol, wasProtected ->
                     FirewallDnsTrafficMetrics.socketProtectionResult(protocol, wasProtected)
                 },
-                physicalNetworkProvider = { NetworkDns.activeNetwork(this@DnsFirewallService) },
+                physicalNetworkProvider = { selectedPhysicalNetwork },
             ).also {
                 it.engine.replaceRules(FirewallRepository.enginePolicyRules())
             }
@@ -773,20 +773,20 @@ class DnsFirewallService : VpnService() {
 
     private fun refreshSharedUpstreamLocked() {
         val runtime = sharedEngine ?: return
-        val physicalNetwork = NetworkDns.activeNetwork(this)
-        // DNS resolvers and upstream sockets must use the same Android Network.
+        // Read resolver addresses and their Android Network from one snapshot:
+        // a network handover must never pair DNS from Wi-Fi with sockets on cellular.
+        val networkSnapshot = NetworkDns.activeSnapshot(this)
+        val physicalNetwork = networkSnapshot.network
+        selectedPhysicalNetwork = physicalNetwork
         // Android asks VpnService to publish explicitly bound underlying networks.
         runCatching {
             setUnderlyingNetworks(physicalNetwork?.let { arrayOf(it) })
         }
-        val networkChanged = physicalNetwork != selectedPhysicalNetwork
-        selectedPhysicalNetwork = physicalNetwork
 
-        val discovered = NetworkDns.activeServers(this).ifEmpty {
+        val discovered = networkSnapshot.resolvers.ifEmpty {
             listOf(NetworkDns.EMERGENCY_DNS)
         }
         val current = upstreamSnapshot
-        if (current != null && discovered == current.resolvers && !networkChanged) return
         if (current != null && discovered == current.resolvers) return
         val replacement = runCatching {
             runtime.createDnsFailover(
