@@ -29,6 +29,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicInteger
+import com.firewall.dns.service.DnsFirewallService
 import com.firewall.dns.service.FirewallDnsTrafficMetrics
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -49,12 +50,15 @@ fun IntegratedDiagnosticsScreen(
     val scope = rememberCoroutineScope()
     var nativeTestRunning by remember { mutableStateOf(false) }
     var nativeTestResult by remember { mutableStateOf("Prueba nativa pendiente") }
+    var tcpProbeRunning by remember { mutableStateOf(false) }
+    var tcpProbeResult by remember { mutableStateOf("Prueba DNS/TCP pendiente") }
     val report = JSONObject().apply {
         put("generatedAt", SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US).format(Date()))
         put("vpnRunning", vpnRunning)
         put("engine", engine)
         put("observedEvents", observedEvents)
         put("nativeJniTest", nativeTestResult)
+        put("forcedTcpProbe", tcpProbeResult)
         put("metrics", JSONObject().apply {
             put("packetsRead", metrics.packetsRead)
             put("queueRejected", metrics.queueRejected)
@@ -175,6 +179,40 @@ fun IntegratedDiagnosticsScreen(
         }
         Card {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Prueba DNS/TCP upstream real", style = MaterialTheme.typography.titleMedium)
+                Text("Envía una consulta DNS de prueba (example.com, tipo A) por TCP/53 a los resolvers configurados, usando los mismos sockets protegidos del servicio VPN. No crea otra VPN ni modifica las reglas.")
+                Button(
+                    enabled = vpnRunning && !tcpProbeRunning,
+                    onClick = {
+                        tcpProbeRunning = true
+                        tcpProbeResult = "Ejecutando consulta TCP/53 a los resolvers configurados…"
+                        scope.launch(Dispatchers.IO) {
+                            val result = runCatching {
+                                DnsFirewallService.runDiagnosticTcpProbe(buildDiagnosticDnsQuery())
+                            }.fold(
+                                onSuccess = { bundle ->
+                                    val approved = bundle.getBoolean("approved", false)
+                                    val detail = bundle.getString("detail").orEmpty()
+                                    (if (approved) "APROBADO: " else "FALLIDO: ") + detail
+                                },
+                                onFailure = { error ->
+                                    "FALLIDO: ${error.javaClass.simpleName}: ${error.message ?: "sin detalle"}"
+                                },
+                            )
+                            withContext(Dispatchers.Main) {
+                                tcpProbeResult = result
+                                tcpProbeRunning = false
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(if (tcpProbeRunning) "Probando TCP/53…" else "Probar DNS/TCP real") }
+                Text(tcpProbeResult, style = MaterialTheme.typography.bodySmall)
+                Text("La prueba solo se habilita con la VPN activa. Un resultado APROBADO exige respuesta DNS validada sobre TCP; protect() exitoso por sí solo no cuenta como aprobación.")
+            }
+        }
+        Card {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Transporte TCP DNS · smoltcp", style = MaterialTheme.typography.titleMedium)
                 Metric("Transporte smoltcp disponible (1=sí)", metrics.smoltcpTransportAvailable)
                 Metric("Sesiones activas", metrics.smoltcpSessionsActive)
@@ -236,6 +274,13 @@ private fun Metric(label: String, first: Long, second: Long? = null) {
     }
 }
 
+
+/** Consulta DNS estándar de example.com para probar el upstream TCP real. */
+private fun buildDiagnosticDnsQuery(): ByteArray = byteArrayOf(
+    0x4A, 0x31, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x07, 0x65, 0x78, 0x61, 0x6D, 0x70, 0x6C, 0x65,
+    0x03, 0x63, 0x6F, 0x6D, 0x00, 0x00, 0x01, 0x00, 0x01,
+)
 
 private fun runNativeBoundaryTest(): String {
     val v4Dns = byteArrayOf(10, 77, 0, 1)
