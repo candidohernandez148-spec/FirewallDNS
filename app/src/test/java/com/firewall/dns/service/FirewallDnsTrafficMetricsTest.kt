@@ -69,4 +69,18 @@ class FirewallDnsTrafficMetricsTest {
         assertEquals(0L, after.upstreamFailure - before.upstreamFailure)
     }
 
+    @Test
+    fun upstreamResolverChangesAreExposedAndCountOnlyWhenListChanges() {
+        val before = FirewallDnsTrafficMetrics.snapshot()
+        FirewallDnsTrafficMetrics.upstreamResolversChanged(listOf("192.168.1.1", "1.1.1.1"))
+        FirewallDnsTrafficMetrics.upstreamResolversChanged(listOf("192.168.1.1", "1.1.1.1"))
+        val unchanged = FirewallDnsTrafficMetrics.snapshot()
+        assertEquals("192.168.1.1,1.1.1.1", unchanged.upstreamResolvers)
+        assertEquals(1L, unchanged.upstreamResolverRefreshes - before.upstreamResolverRefreshes)
+        assertEquals(true, unchanged.upstreamResolverUpdatedAtEpochMs > 0L)
+        FirewallDnsTrafficMetrics.upstreamResolversChanged(listOf("8.8.8.8"))
+        val changed = FirewallDnsTrafficMetrics.snapshot()
+        assertEquals("8.8.8.8", changed.upstreamResolvers)
+        assertEquals(2L, changed.upstreamResolverRefreshes - before.upstreamResolverRefreshes)
+    }
 }
