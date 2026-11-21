@@ -130,20 +130,22 @@ object NetworkDns {
         null
     }
 
+    /**
+     * Returns the same physical Network whose LinkProperties supply active DNS.
+     * Keeping the Network handle prevents sockets from using a different default
+     * route when Android exposes the VPN as the app's active network.
+     */
     @Suppress("DEPRECATION")
-    fun activeServers(context: Context, allowIpv6: Boolean = true): List<String> = try {
+    fun activeNetwork(context: Context): android.net.Network? = try {
         val cm = context.getSystemService(ConnectivityManager::class.java)
         val active = cm.activeNetwork
         val activeCaps = active?.let { cm.getNetworkCapabilities(it) }
-        val physicalNet = if (active != null && activeCaps != null &&
+        if (active != null && activeCaps != null &&
             activeCaps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
             !activeCaps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
         ) {
             active
         } else {
-            // While VpnService is the default network, Android exposes the physical
-            // networks through allNetworks. Prefer validated networks, then a
-            // deterministic transport order instead of relying on allNetworks order.
             cm.allNetworks
                 .filter { network ->
                     cm.getNetworkCapabilities(network)?.let { caps ->
@@ -168,7 +170,13 @@ object NetworkDns {
                 )
                 .firstOrNull()
         }
-        fromLink(physicalNet?.let { cm.getLinkProperties(it) }, allowIpv6)
+    } catch (_: Throwable) {
+        null
+    }
+
+    fun activeServers(context: Context, allowIpv6: Boolean = true): List<String> = try {
+        val cm = context.getSystemService(ConnectivityManager::class.java)
+        fromLink(activeNetwork(context)?.let { cm.getLinkProperties(it) }, allowIpv6)
             .split(',')
             .map(String::trim)
             .filter(String::isNotEmpty)
