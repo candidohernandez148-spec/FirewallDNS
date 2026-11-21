@@ -152,9 +152,11 @@ class DnsFirewallService : VpnService() {
                 }
                 attemptDetails += "$resolver: $outcome (${elapsedMs} ms)"
             }) {
-                is DnsUpstreamResult.Success -> {
-                    Bundle().apply {
-                    putBoolean("approved", result.response.transport == com.firewalldns.engine.dns.DnsUpstreamTransport.TCP)
+                is DnsUpstreamResult.Success -> Bundle().apply {
+                    putBoolean(
+                        "approved",
+                        result.response.transport == com.firewalldns.engine.dns.DnsUpstreamTransport.TCP,
+                    )
                     putString(
                         "detail",
                         "Transporte=${result.response.transport}; respuesta DNS validada. " +
@@ -164,21 +166,22 @@ class DnsFirewallService : VpnService() {
                 is DnsUpstreamResult.Failure -> {
                     FirewallDnsTrafficMetrics.upstreamFailure()
                     Bundle().apply {
-                    putBoolean("approved", false)
-                    putString(
-                        "detail",
-                        "DNS/TCP upstream falló: ${result.reason}. " +
-                            "Intentos por resolver: ${attemptDetails.joinToString("; ")}",
-                    )
+                        putBoolean("approved", false)
+                        putString(
+                            "detail",
+                            "DNS/TCP upstream falló: ${result.reason}. " +
+                                "Intentos por resolver: ${attemptDetails.joinToString("; ")}",
+                        )
+                    }
                 }
                 DnsUpstreamResult.Cancelled -> {
                     FirewallDnsTrafficMetrics.upstreamCancelled()
                     Bundle().apply {
-                    putBoolean("approved", false)
-                    putString(
-                        "detail",
-                        "La prueba DNS/TCP fue cancelada. Intentos: ${attemptDetails.joinToString("; ")}",
-                    )
+                        putBoolean("approved", false)
+                        putString(
+                            "detail",
+                            "La prueba DNS/TCP fue cancelada. Intentos: ${attemptDetails.joinToString("; ")}",
+                        )
                     }
                 }
             }
