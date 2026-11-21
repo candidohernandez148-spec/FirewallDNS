@@ -31,6 +31,52 @@ const DEFAULT_MAX_OUTBOUND_BYTES_PER_SESSION: usize = 128 * 1024;
 const DEFAULT_IDLE_TIMEOUT_MS: i64 = 120_000;
 const TCP_KEEP_ALIVE_MS: u64 = 30_000;
 const MAX_DATA_EVENT_BYTES: usize = 4096;
+const SYN_BUCKET_CAPACITY: f64 = 8.0;
+const SYN_REFILL_PER_SECOND: f64 = 2.0;
+const MAX_SYN_BUCKETS: usize = 256;
+
+#[derive(Debug, Clone, Copy)]
+struct SynTokenBucket {
+    tokens: f64,
+    last_refill_ms: i64,
+    last_seen_ms: i64,
+}
+
+#[derive(Default)]
+struct SynRateLimiter {
+    buckets: HashMap<IpAddr, SynTokenBucket>,
+}
+
+impl SynRateLimiter {
+    fn allow(&mut self, destination: IpAddr, now_ms: i64) -> bool {
+        if !self.buckets.contains_key(&destination) && self.buckets.len() >= MAX_SYN_BUCKETS {
+            if let Some(oldest) = self.buckets.iter()
+                .min_by_key(|(_, bucket)| bucket.last_seen_ms)
+                .map(|(ip, _)| *ip)
+            {
+                self.buckets.remove(&oldest);
+            }
+        }
+
+        let bucket = self.buckets.entry(destination).or_insert(SynTokenBucket {
+            tokens: SYN_BUCKET_CAPACITY,
+            last_refill_ms: now_ms,
+            last_seen_ms: now_ms,
+        });
+        let elapsed_ms = now_ms.saturating_sub(bucket.last_refill_ms).max(0);
+        bucket.tokens = (bucket.tokens
+            + (elapsed_ms as f64 / 1000.0) * SYN_REFILL_PER_SECOND)
+            .min(SYN_BUCKET_CAPACITY);
+        bucket.last_refill_ms = bucket.last_refill_ms.max(now_ms);
+        bucket.last_seen_ms = now_ms;
+
+        if bucket.tokens < 1.0 {
+            return false;
+        }
+        bucket.tokens -= 1.0;
+        true
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct FlowKey {
@@ -72,6 +118,8 @@ pub enum TcpDnsTransportError {
     InvalidConfiguration,
     SessionNotFound,
     InvalidDnsTcpFraming,
+    SynRateLimited,
+    SessionCapacityExceeded,
     ResponseLimitExceeded,
     Queue(TunQueueError),
 }
@@ -116,6 +164,7 @@ pub struct TcpDnsTransport {
     max_outbound_bytes_per_session: usize,
     pending_outbound_bytes: usize,
     idle_timeout_ms: i64,
+    syn_rate_limiter: SynRateLimiter,
     sessions_rejected_at_capacity: u64,
     packets_rejected_by_tun_queue: u64,
     responses_rejected_by_limit: u64,
@@ -185,6 +234,7 @@ impl TcpDnsTransport {
             max_outbound_bytes_per_session: DEFAULT_MAX_OUTBOUND_BYTES_PER_SESSION,
             pending_outbound_bytes: 0,
             idle_timeout_ms: DEFAULT_IDLE_TIMEOUT_MS,
+            syn_rate_limiter: SynRateLimiter::default(),
             sessions_rejected_at_capacity: 0,
             packets_rejected_by_tun_queue: 0,
             responses_rejected_by_limit: 0,
@@ -199,6 +249,21 @@ impl TcpDnsTransport {
         let parsed_syn = parse_dns_tcp_syn(&packet);
         let parsed_flow = parse_dns_tcp_flow(&packet);
 
+        // Apply the token bucket only to a new SYN. Established traffic and
+        // retransmissions for an existing flow are never rate-limited.
+        if let Some(flow) = parsed_syn {
+            if !self.sessions.contains_key(&flow) {
+                if !self.syn_rate_limiter.allow(flow.server_ip, now.total_millis()) {
+                    self.sessions_rejected_at_capacity += 1;
+                    return Err(TcpDnsTransportError::SynRateLimited);
+                }
+                if self.sessions.len() >= self.max_sessions {
+                    self.sessions_rejected_at_capacity += 1;
+                    return Err(TcpDnsTransportError::SessionCapacityExceeded);
+                }
+            }
+        }
+
         if let Some(flow) = parsed_flow {
             if let Some(session) = self.sessions.get_mut(&flow) {
                 session.last_activity_ms = now.total_millis();
@@ -212,11 +277,7 @@ impl TcpDnsTransport {
 
         if let Some(flow) = parsed_syn {
             if !self.sessions.contains_key(&flow) {
-                if self.sessions.len() >= self.max_sessions {
-                    self.sessions_rejected_at_capacity += 1;
-                } else {
-                    self.create_listener(flow, now);
-                }
+                self.create_listener(flow, now);
             }
         }
         Ok(())
@@ -581,6 +642,45 @@ fn is_complete_dns_tcp_framing(bytes: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn syn_rate_limiter_enforces_burst_and_refills() {
+        let destination = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
+        let mut limiter = SynRateLimiter::default();
+        for _ in 0..8 {
+            assert!(limiter.allow(destination, 0));
+        }
+        assert!(!limiter.allow(destination, 0));
+        assert!(limiter.allow(destination, 500));
+        assert!(!limiter.allow(destination, 500));
+    }
+
+    #[test]
+    fn syn_rate_limiter_isolated_per_destination() {
+        let mut limiter = SynRateLimiter::default();
+        let first = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
+        let second = IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8));
+        for _ in 0..8 {
+            assert!(limiter.allow(first, 10));
+        }
+        assert!(!limiter.allow(first, 10));
+        assert!(limiter.allow(second, 10));
+    }
+
+    #[test]
+    fn syn_rate_limiter_bounds_destination_state() {
+        let mut limiter = SynRateLimiter::default();
+        for index in 0..(MAX_SYN_BUCKETS + 32) {
+            let destination = IpAddr::V4(Ipv4Addr::new(
+                10,
+                ((index >> 16) & 0xff) as u8,
+                ((index >> 8) & 0xff) as u8,
+                (index & 0xff) as u8,
+            ));
+            assert!(limiter.allow(destination, index as i64));
+        }
+        assert_eq!(limiter.buckets.len(), MAX_SYN_BUCKETS);
+    }
 
     #[test]
     fn accepts_only_complete_dns_tcp_frames() {
