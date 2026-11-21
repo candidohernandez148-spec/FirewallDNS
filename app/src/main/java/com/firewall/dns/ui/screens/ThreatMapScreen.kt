@@ -94,7 +94,9 @@ fun ThreatMapScreen(
     var showObserved by remember { mutableStateOf(false) }
     var selectedNode by remember { mutableStateOf("core") }
     val catalog = remember { ThreatKnowledgeGraph.catalogSnapshot() }
-    val observedApps = logs.map { it.appName }.filter { it.isNotBlank() }.distinct().size
+    val observedApps = logs.map { it.appName }
+        .filter { it.isNotBlank() && it != "Sistema / DNS" }
+        .distinct().size
     val mindMapNodes = remember(logs, customBlock, customAllow, tunMetrics, vpnRunning,
         smartModeEnabled, observationModeEnabled, catalog) {
         listOf(
@@ -139,7 +141,7 @@ fun ThreatMapScreen(
         "dns" -> "Consultas contabilizadas: UDP ${tunMetrics.dnsUdpPackets}, TCP ${tunMetrics.dnsTcp}. No representa DoH/DoT."
         "decisions" -> "Contadores del servicio: ${tunMetrics.dnsBlocked} bloqueadas, ${tunMetrics.dnsObserved} observadas y ${tunMetrics.dnsAllowed} permitidas."
         "threats" -> "Catálogo local curado: ${catalog.size} proveedores. Coincidencias en el historial visible: $knownObserved dominios."
-        "apps" -> "Aplicaciones distintas identificadas en el historial visible: $observedApps. No es un contador total de apps instaladas."
+        "apps" -> "Nombres de aplicaciones resueltos en el historial visible: $observedApps. Los eventos cuyo UID no pudo resolverse se excluyen; no es el total de apps instaladas."
         "rules" -> "Reglas personalizadas: ${customBlock.size} bloqueos y ${customAllow.size} permisos. Listas descargadas no se incluyen en esta cifra."
         "upstream" -> "Respuestas upstream exitosas: ${tunMetrics.upstreamSuccess}; fallidas: ${tunMetrics.upstreamFailure}."
         else -> "VPN: ${if (vpnRunning) "activa" else "detenida"}. Modo inteligente: ${if (smartModeEnabled) "activo" else "inactivo"}. Observación: ${if (observationModeEnabled) "activa" else "inactiva"}."
