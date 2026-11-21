@@ -393,11 +393,10 @@ class DnsFirewallService : VpnService() {
                                 try {
                                     // Segunda comprobación: el cierre puede ocurrir tras encolar.
                                     if (session.active.get()) {
-                                        val parsed = TunTransportPacketParser.parse(copy)
-                                        val isDnsTcp = parsed?.protocol == 6 && parsed.destinationPort == 53
+                                        val isDnsTcp = isDnsTcpPacket(copy)
                                         val tcpCoordinator = session.tcpCoordinator
                                         if (isDnsTcp && tcpCoordinator != null) {
-                                            if (parsed?.isIpv6 == true) FirewallDnsTrafficMetrics.ipv6Packet()
+                                            if (((copy[0].toInt() ushr 4) and 0x0f) == 6) FirewallDnsTrafficMetrics.ipv6Packet()
                                             else FirewallDnsTrafficMetrics.ipv4Packet()
                                             FirewallDnsTrafficMetrics.tcpDns()
                                             if (tcpCoordinator.offerPacket(copy) != NativeTcpDnsTransport.RESULT_OK) {
@@ -560,6 +559,60 @@ class DnsFirewallService : VpnService() {
                 packetWriteErrors.incrementAndGet()
                 FirewallDnsTrafficMetrics.writeError()
             }
+        }
+    }
+
+    private fun isDnsTcpPacket(packet: ByteArray): Boolean {
+        if (packet.size < 20) return false
+        return when ((packet[0].toInt() ushr 4) and 0x0f) {
+            4 -> {
+                val headerLength = (packet[0].toInt() and 0x0f) * 4
+                if (headerLength < 20 || headerLength + 4 > packet.size) return false
+                if ((packet[9].toInt() and 0xff) != 6) return false
+                val fragment = ((packet[6].toInt() and 0xff) shl 8) or
+                    (packet[7].toInt() and 0xff)
+                if ((fragment and 0x1fff) != 0) return false
+                val destinationPort = ((packet[headerLength + 2].toInt() and 0xff) shl 8) or
+                    (packet[headerLength + 3].toInt() and 0xff)
+                destinationPort == 53
+            }
+            6 -> {
+                if (packet.size < 40) return false
+                val payloadLength = ((packet[4].toInt() and 0xff) shl 8) or
+                    (packet[5].toInt() and 0xff)
+                if (payloadLength == 0 || 40 + payloadLength > packet.size) return false
+                val end = 40 + payloadLength
+                var nextHeader = packet[6].toInt() and 0xff
+                var offset = 40
+                var extensionCount = 0
+                while (nextHeader in IPV6_EXTENSION_HEADERS) {
+                    if (++extensionCount > 8 || offset + 2 > end) return false
+                    if (nextHeader == 44) {
+                        if (offset + 8 > end) return false
+                        val fragment = ((packet[offset + 2].toInt() and 0xff) shl 8) or
+                            (packet[offset + 3].toInt() and 0xff)
+                        if ((fragment and 0xfff8) != 0) return false
+                        nextHeader = packet[offset].toInt() and 0xff
+                        offset += 8
+                        continue
+                    }
+                    if (nextHeader == 50) return false
+                    val following = packet[offset].toInt() and 0xff
+                    val extensionLength = if (nextHeader == 51) {
+                        ((packet[offset + 1].toInt() and 0xff) + 2) * 4
+                    } else {
+                        ((packet[offset + 1].toInt() and 0xff) + 1) * 8
+                    }
+                    if (extensionLength < 8 || offset + extensionLength > end) return false
+                    nextHeader = following
+                    offset += extensionLength
+                }
+                if (nextHeader != 6 || offset + 4 > end) return false
+                val destinationPort = ((packet[offset + 2].toInt() and 0xff) shl 8) or
+                    (packet[offset + 3].toInt() and 0xff)
+                destinationPort == 53
+            }
+            else -> false
         }
     }
 
