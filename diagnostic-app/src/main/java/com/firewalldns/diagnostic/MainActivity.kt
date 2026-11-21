@@ -206,6 +206,7 @@ class MainActivity : Activity() {
                 collected += metricDeltaResult("Sesiones smoltcp abiertas", "smoltcpSessionsOpened")
                 collected += protectUdpResult()
                 collected += protectTcpResult()
+                collected += upstreamFailureBreakdownResult()
                 collected += metricDeltaResult("Paquetes TCP aceptados por JNI", "smoltcpPacketsAccepted")
                 collected += metricDeltaResult("Eventos DNS TCP recibidos", "smoltcpDataEvents")
                 collected += metricDeltaResult("Respuestas DNS TCP encoladas", "smoltcpResponsesQueued")
@@ -436,6 +437,33 @@ class MainActivity : Activity() {
             "Protect UDP upstream",
             if (passed) TestStatus.APPROVED else TestStatus.FAILED,
             "Intentos=$attempts, protect true=$successes, protect false=$failures."
+        )
+    }
+
+    private fun upstreamFailureBreakdownResult(): TestResult {
+        val keys = listOf(
+            "upstreamAttemptFailures",
+            "upstreamFailureTimeouts",
+            "upstreamFailureProtection",
+            "upstreamFailureIo",
+            "upstreamFailureValidation",
+            "upstreamFailureOther",
+            "upstreamCancelled",
+        )
+        if (keys.any { it !in beforeMetrics || it !in afterMetrics }) {
+            return TestResult("Causas de fallos upstream", TestStatus.NOT_VERIFIED, "La compilación instalada no expone el desglose de fallos.")
+        }
+        fun delta(key: String) = (afterMetrics[key] ?: 0L) - (beforeMetrics[key] ?: 0L)
+        val failures = delta("upstreamAttemptFailures")
+        val cancelled = delta("upstreamCancelled")
+        val detail = "Intentos fallidos=$failures; timeout=${delta("upstreamFailureTimeouts")}; " +
+            "protección=${delta("upstreamFailureProtection")}; I/O=${delta("upstreamFailureIo")}; " +
+            "respuesta inválida=${delta("upstreamFailureValidation")}; otros=${delta("upstreamFailureOther")}; " +
+            "canceladas=$cancelled."
+        return TestResult(
+            "Causas de fallos upstream",
+            if (failures == 0L) TestStatus.APPROVED else TestStatus.FAILED,
+            detail,
         )
     }
 
