@@ -22,9 +22,12 @@ android {
     val releaseKeyAlias = providers.environmentVariable("KEY_ALIAS").orNull
     val releaseKeyPassword = providers.environmentVariable("KEY_PASSWORD").orNull
         ?: releaseStorePassword
+    val sharedSigningReady = releaseKeystore != null &&
+        !releaseStorePassword.isNullOrBlank() && !releaseKeyAlias.isNullOrBlank() &&
+        !releaseKeyPassword.isNullOrBlank()
 
     signingConfigs {
-        if (releaseKeystore != null) {
+        if (sharedSigningReady) {
             create("sharedRelease") {
                 storeFile = releaseKeystore
                 storePassword = requireNotNull(releaseStorePassword) { "KEYSTORE_PASSWORD is required" }
@@ -39,7 +42,7 @@ android {
     val releaseTaskRequested = gradle.startParameter.taskNames.any { taskName ->
         taskName.substringAfterLast(":").contains("release", ignoreCase = true)
     }
-    if (releaseTaskRequested && releaseKeystore == null) {
+    if (releaseTaskRequested && !sharedSigningReady) {
         throw GradleException(
             "Release requires the shared signing keystore. Set KEYSTORE_PATH, " +
                 "KEYSTORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD. Debug builds remain available."
@@ -51,7 +54,7 @@ android {
             isMinifyEnabled = false
             // Null means unsigned only for non-Release tasks; Release tasks are
             // stopped by the explicit guard above rather than falling back to debug.
-            signingConfig = releaseKeystore?.let { signingConfigs.getByName("sharedRelease") }
+            signingConfig = if (sharedSigningReady) signingConfigs.getByName("sharedRelease") else null
         }
     }
 
