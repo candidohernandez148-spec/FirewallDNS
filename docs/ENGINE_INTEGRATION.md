@@ -92,6 +92,6 @@ El servicio productivo reensambla fragmentos antes de clasificar. DNS UDP/53 se 
 
 `DnsTcpFrameCodec` y `DnsTcpSessionProcessor` manejan el framing incremental, las decisiones `BLOCK / OBSERVE / ALLOW` y el upstream. `DnsUpstreamClient` protege sockets UDP/TCP con `VpnService.protect()` antes de conectarlos y reintenta por TCP cuando la respuesta UDP upstream trae TC=1.
 
-En `main` de FirewallDNS (`f1c124a`), el `DnsFirewallService` ya conecta su lector TUN al `NativeTcpDnsTransport` JNI y al `SmoltcpDnsTcpCoordinator` para TCP/53 IPv4/IPv6. El lector conserva el orden de paquetes; un único hilo propietario ejecuta `poll`, consume eventos y escribe respuestas al mismo TUN. No se crea otro `VpnService`.
+En `main` de FirewallDNS (`5080526`, después del PR #80), el `DnsFirewallService` ya conecta su lector TUN al `NativeTcpDnsTransport` JNI y al `SmoltcpDnsTcpCoordinator` para TCP/53 IPv4/IPv6. El lector conserva el orden de paquetes; un único hilo propietario ejecuta `poll`, consume eventos y escribe respuestas al mismo TUN. No se crea otro `VpnService`.
 
 La integración de código y CI no equivalen a una prueba física completa. Falta verificar en Samsung A34 5G handshake, retransmisión, FIN/RST, concurrencia, límites de cola, expiración, cambios Wi-Fi/móvil, `protect()` upstream, pérdidas y latencia. No se habilita TCP/UDP general ni se afirma inspección de DoH/DoT/DoQ.
