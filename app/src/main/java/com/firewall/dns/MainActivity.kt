@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,6 +53,8 @@ import com.firewall.dns.ui.screens.LogsScreen
 import com.firewall.dns.ui.screens.RulesScreen
 import com.firewall.dns.ui.screens.SecurityCenterScreen
 import com.firewall.dns.ui.screens.SocDashboardScreen
+import com.firewall.dns.ui.screens.ThreatMapScreen
+import com.firewall.dns.ui.screens.ProtectionHubScreen
 import com.firewall.dns.ui.screens.IntegratedDiagnosticsScreen
 import com.firewall.dns.ui.theme.FirewallTheme
 import com.firewall.dns.ui.viewmodel.FirewallViewModel
@@ -296,7 +299,7 @@ fun FirewallApp(
         "Monitor" to Icons.Default.Search,
         "Amenazas" to Icons.Default.Warning,
         "Protección" to Icons.Default.Lock,
-        "Sistema" to Icons.Default.Settings,
+        "Mapa" to Icons.Default.Share,
         "Diagnóstico" to Icons.Default.Search
     )
 
@@ -316,7 +319,7 @@ fun FirewallApp(
                                     1 -> "Monitor DNS"
                                     2 -> "Centro de amenazas"
                                     3 -> "Protección"
-                                    4 -> "Sistema y aplicaciones"
+                                    4 -> "Mapa de conocimiento"
                                     else -> "Diagnóstico del motor"
                                 },
                                 fontWeight = FontWeight.Bold,
@@ -403,7 +406,7 @@ fun FirewallApp(
                     otherVpnActive = otherVpnActive,
                     onOpenActivity = { selectedDestination = 1 }
                 )
-                3 -> RulesScreen(
+                3 -> ProtectionHubScreen(
                     stats = stats,
                     customBlock = customBlock,
                     customAllow = customAllow,
@@ -416,19 +419,22 @@ fun FirewallApp(
                     onRemoveBlocklistUrl = viewModel::removeBlocklistUrl,
                     onDownloadBlocklist = viewModel::downloadBlocklist,
                     onAddCustomRule = viewModel::setCustomRule,
-                    onRemoveCustomRule = viewModel::removeCustomRule
-                )
-                4 -> AppsSettingsScreen(
-                    stats = stats,
+                    onRemoveCustomRule = viewModel::removeCustomRule,
                     apps = apps,
                     excludedPackages = excludedPackages,
                     blockedApps = blockedApps,
-                    onToggleBlockedApp = viewModel::toggleBlockedApp,
                     appSearch = appSearch,
                     onAppSearchChange = viewModel::onAppSearchChange,
+                    onToggleBlockedApp = viewModel::toggleBlockedApp,
                     onToggleExcludedApp = viewModel::toggleExcludedApp,
                     onOpenBatteryOpt = onOpenBatteryOpt,
                     onOpenVpnSettings = onOpenVpnSettings
+                )
+                4 -> ThreatMapScreen(
+                    logs = activityLogs,
+                    customBlock = customBlock,
+                    customAllow = customAllow,
+                    onSetRule = viewModel::setCustomRule
                 )
                 5 -> IntegratedDiagnosticsScreen(
                     vpnRunning = stats.isRunning,
