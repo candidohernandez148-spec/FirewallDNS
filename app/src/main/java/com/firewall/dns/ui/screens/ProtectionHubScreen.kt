@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.weight
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -29,9 +28,11 @@ fun ProtectionHubScreen(
     customAllow: List<String>,
     blocklistUrls: List<String>,
     smartModeEnabled: Boolean,
+    observationModeEnabled: Boolean,
     isDownloading: Boolean,
     downloadProgress: BlocklistDownloadProgress?,
     onToggleSmartMode: (Boolean) -> Unit,
+    onToggleObservationMode: (Boolean) -> Unit,
     onAddBlocklistUrl: (String) -> Unit,
     onRemoveBlocklistUrl: (String) -> Unit,
     onDownloadBlocklist: () -> Unit,
@@ -64,9 +65,11 @@ fun ProtectionHubScreen(
                 customAllow = customAllow,
                 blocklistUrls = blocklistUrls,
                 smartModeEnabled = smartModeEnabled,
+                observationModeEnabled = observationModeEnabled,
                 isDownloading = isDownloading,
                 downloadProgress = downloadProgress,
                 onToggleSmartMode = onToggleSmartMode,
+                onToggleObservationMode = onToggleObservationMode,
                 onAddBlocklistUrl = onAddBlocklistUrl,
                 onRemoveBlocklistUrl = onRemoveBlocklistUrl,
                 onDownloadBlocklist = onDownloadBlocklist,
