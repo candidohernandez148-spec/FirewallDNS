@@ -64,7 +64,7 @@ object DnsTcpPacketClassifier {
     private const val IPV6_HEADER = 40
     private const val TCP_MIN_HEADER = 20
     private const val TCP_MAX_HEADER = 60
-    private const val IPV4_FRAGMENT_MASK = 0x3fff
+    private const val IPV4_FRAGMENT_MASK = 0xbfff
     private const val IPPROTO_TCP = 6
     private const val DNS_PORT = 53
 }
