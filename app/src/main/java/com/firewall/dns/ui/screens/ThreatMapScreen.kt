@@ -140,10 +140,10 @@ fun ThreatMapScreen(
         "tun" -> "Contador del servicio TUN: ${tunMetrics.packetsRead} paquetes leídos. Es acumulado del proceso actual."
         "dns" -> "Consultas contabilizadas: UDP ${tunMetrics.dnsUdpPackets}, TCP ${tunMetrics.dnsTcp}. No representa DoH/DoT."
         "decisions" -> "Contadores del servicio: ${tunMetrics.dnsBlocked} bloqueadas, ${tunMetrics.dnsObserved} observadas y ${tunMetrics.dnsAllowed} permitidas."
-        "threats" -> "Catálogo local curado: ${catalog.size} proveedores. Coincidencias en el historial visible: $knownObserved dominios."
+        "threats" -> "Catálogo local curado de ${catalog.size} referencias. Es una fuente de consulta de esta pantalla; no prueba que el motor compartido haya utilizado cada entrada."
         "apps" -> "Nombres de aplicaciones resueltos en el historial visible: $observedApps. Los eventos cuyo UID no pudo resolverse se excluyen; no es el total de apps instaladas."
         "rules" -> "Reglas personalizadas: ${customBlock.size} bloqueos y ${customAllow.size} permisos. Listas descargadas no se incluyen en esta cifra."
-        "upstream" -> "Respuestas upstream exitosas: ${tunMetrics.upstreamSuccess}; fallidas: ${tunMetrics.upstreamFailure}."
+        "upstream" -> "Contadores de la ruta upstream DNS UDP: ${tunMetrics.upstreamSuccess} respuestas exitosas y ${tunMetrics.upstreamFailure} fallidas. No atribuye aquí estadísticas TCP."
         else -> "VPN: ${if (vpnRunning) "activa" else "detenida"}. Modo inteligente: ${if (smartModeEnabled) "activo" else "inactivo"}. Observación: ${if (observationModeEnabled) "activa" else "inactiva"}."
     }
 
