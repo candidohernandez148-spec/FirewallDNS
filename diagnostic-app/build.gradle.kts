@@ -15,17 +15,21 @@ android {
         versionName = "1.0"
     }
 
-    // Diagnostic must share the exact signing certificate with FirewallDNS:
-    // the production snapshot provider is protected by a signature permission.
-    val releaseKeystore = System.getenv("KEYSTORE_PATH")?.let { file(it) }?.takeIf { it.exists() }
+    // Must be byte-for-byte the same signing identity as :app.
+    val releaseKeystorePath = providers.environmentVariable("KEYSTORE_PATH").orNull
+    val releaseKeystore = releaseKeystorePath?.let { rootProject.file(it) }?.takeIf { it.isFile }
+    val releaseStorePassword = providers.environmentVariable("KEYSTORE_PASSWORD").orNull
+    val releaseKeyAlias = providers.environmentVariable("KEY_ALIAS").orNull
+    val releaseKeyPassword = providers.environmentVariable("KEY_PASSWORD").orNull
+        ?: releaseStorePassword
 
     signingConfigs {
         if (releaseKeystore != null) {
-            create("release") {
+            create("sharedRelease") {
                 storeFile = releaseKeystore
-                storePassword = System.getenv("KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("KEY_ALIAS")
-                keyPassword = System.getenv("KEYSTORE_PASSWORD")
+                storePassword = requireNotNull(releaseStorePassword) { "KEYSTORE_PASSWORD is required" }
+                keyAlias = requireNotNull(releaseKeyAlias) { "KEY_ALIAS is required" }
+                keyPassword = requireNotNull(releaseKeyPassword) { "KEY_PASSWORD (or KEYSTORE_PASSWORD) is required" }
             }
         }
     }
@@ -33,13 +37,11 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = if (releaseKeystore != null) {
-                signingConfigs.getByName("release")
-            } else {
-                // Local builds remain installable, but CI verifies both APKs use
-                // the shared release keystore before publishing diagnostic artifacts.
-                signingConfigs.getByName("debug")
-            }
+            signingConfig = signingConfigs.findByName("sharedRelease")
+                ?: throw GradleException(
+                    "Release requires the shared signing keystore. Set KEYSTORE_PATH, " +
+                        "KEYSTORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD. Debug builds remain available."
+                )
         }
     }
 
