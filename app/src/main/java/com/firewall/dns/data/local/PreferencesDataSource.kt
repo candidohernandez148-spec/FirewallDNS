@@ -100,8 +100,9 @@ class PreferencesDataSource(context: Context) {
         prefs.edit().putBoolean(KEY_SMART_MODE, enabled).apply()
     }
 
+    // El modo normal debe aplicar las decisiones; observar es una opción explícita de diagnóstico.
     fun getObservationModeEnabled(): Boolean =
-        prefs.getBoolean(KEY_OBSERVATION_MODE, true)
+        prefs.getBoolean(KEY_OBSERVATION_MODE, false)
 
     fun saveObservationModeEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_OBSERVATION_MODE, enabled).apply()

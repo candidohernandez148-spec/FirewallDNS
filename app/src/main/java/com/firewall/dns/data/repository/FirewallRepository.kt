@@ -85,7 +85,7 @@ object FirewallRepository {
     private val _smartModeEnabled = MutableStateFlow(true)
     val smartModeEnabled: StateFlow<Boolean> = _smartModeEnabled.asStateFlow()
 
-    private val _observationModeEnabled = MutableStateFlow(true)
+    private val _observationModeEnabled = MutableStateFlow(false)
     val observationModeEnabled: StateFlow<Boolean> = _observationModeEnabled.asStateFlow()
 
     private val _cacheInvalidateEvent = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
@@ -153,8 +153,6 @@ object FirewallRepository {
             startNetworkTypeMonitor()
             prefsDataSource = PreferencesDataSource(appContext)
             blocklistDataSource = BlocklistDataSource(appContext)
-            _blocklistsDownloaded.value = blocklistDataSource.hasSavedBlocklists()
-
             customBlockSet.clear()
             customBlockSet.addAll(prefsDataSource.getCustomBlockSet())
             _customBlockList.value = customBlockSet.sorted()
@@ -169,6 +167,7 @@ object FirewallRepository {
             val savedBlocklistUrls = prefsDataSource.getBlocklistUrls()
             val normalizedBlocklistUrls = savedBlocklistUrls.mapNotNull(BlocklistSourcePolicy::canonicalize).distinct()
             _blocklistUrls.value = normalizedBlocklistUrls
+            _blocklistsDownloaded.value = normalizedBlocklistUrls.isNotEmpty() && blocklistDataSource.hasSavedBlocklists()
             if (normalizedBlocklistUrls != savedBlocklistUrls) {
                 prefsDataSource.saveBlocklistUrls(normalizedBlocklistUrls)
             }
@@ -197,6 +196,11 @@ object FirewallRepository {
             val generationAtStart = blocklistGeneration.get()
             ioScope.launch {
                 try {
+                    if (normalizedBlocklistUrls.isEmpty()) {
+                        // Evita reactivar una lista descargada antigua cuando no había fuentes al iniciar.
+                        blocklistDataSource.clearSavedBlocklists()
+                        _blocklistsDownloaded.value = false
+                    }
                     val snapshot = blocklistDataSource.loadFromDisk(defaultDomains)
                     if (blocklistGeneration.get() == generationAtStart) {
                         publishBlocklist(snapshot)
@@ -269,6 +273,25 @@ object FirewallRepository {
         val updated = _blocklistUrls.value.filter { it != url }
         _blocklistUrls.value = updated
         prefsDataSource.saveBlocklistUrls(updated)
+        if (updated.isEmpty()) {
+            ioScope.launch {
+                blocklistDownloadMutex.withLock {
+                    if (_blocklistUrls.value.isEmpty()) {
+                        blocklistGeneration.incrementAndGet()
+                        blocklistDataSource.clearSavedBlocklists()
+                        publishBlocklist(
+                            BlocklistSnapshot(
+                                blocked = defaultDomains.toSet(),
+                                exceptions = emptySet(),
+                                threatDomainsByCategory = emptyMap()
+                            )
+                        )
+                        _blocklistsDownloaded.value = false
+                        _cacheInvalidateEvent.tryEmit(Unit)
+                    }
+                }
+            }
+        }
     }
 
     fun toggleExcludedApp(pkg: String) {
@@ -471,10 +494,15 @@ object FirewallRepository {
     }
 
     private fun updateRulesCount() {
-        // Cuenta cada dominio una sola vez, incluso si aparece en una lista descargada
-        // y también en las reglas personalizadas.
-        val uniqueRuleCount = activeBlocklistSnapshot.blocked.union(customBlockSet).size
-        _stats.update { it.copy(loadedRulesCount = uniqueRuleCount) }
+        // Este indicador cuenta solo reglas externas (listas descargadas + reglas manuales).
+        // Los dominios semilla integrados se aplican siempre, pero no se presentan como listas cargadas.
+        val downloadedRules = activeBlocklistSnapshot.blocked - defaultDomains.toSet()
+        val externalRuleCount = downloadedRules
+            .union(activeBlocklistSnapshot.exceptions)
+            .union(customBlockSet)
+            .union(customAllowSet)
+            .size
+        _stats.update { it.copy(loadedRulesCount = externalRuleCount) }
     }
 
     private fun recordDnsDecision(domain: String, allowed: Boolean, appName: String, reason: String, queryType: String) {

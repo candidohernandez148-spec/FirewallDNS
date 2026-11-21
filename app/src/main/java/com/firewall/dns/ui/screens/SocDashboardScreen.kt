@@ -117,7 +117,7 @@ fun SocDashboardScreen(
             MetricCard("Permitidos", stats.totalAllowed.toString(), MaterialTheme.colorScheme.primary, Modifier.weight(1f))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            MetricCard("Reglas cargadas", stats.loadedRulesCount.toString(), MaterialTheme.colorScheme.onSurface, Modifier.weight(1f))
+            MetricCard("Reglas externas", stats.loadedRulesCount.toString(), MaterialTheme.colorScheme.onSurface, Modifier.weight(1f))
             MetricCard("Tasa de bloqueo", "$blockRate%", MaterialTheme.colorScheme.onSurface, Modifier.weight(1f))
         }
 
