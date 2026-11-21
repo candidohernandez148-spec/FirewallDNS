@@ -24,6 +24,7 @@ import com.firewall.dns.domain.engine.AppFirewallManager
 import com.firewall.dns.domain.engine.DnsPacketEngine
 import com.firewall.dns.domain.engine.TunTransportPacketParser
 import com.firewalldns.engine.android.AndroidEngineRuntime
+import com.firewalldns.engine.android.AndroidDnsSocketProtector
 import com.firewalldns.engine.android.FragmentReassemblerConfig
 import com.firewalldns.engine.android.IpFragmentReassembler
 import com.firewalldns.engine.android.NativeTcpDnsTransport
@@ -638,7 +639,7 @@ class DnsFirewallService : VpnService() {
         return try {
             socket = DatagramSocket()
             socket.soTimeout = 3500
-            if (!protect(socket)) return null
+            if (!AndroidDnsSocketProtector(this).protect(socket)) return null
             val addr = InetAddress.getByName(FirewallRepository.getUpstreamDns())
             // A connected UDP socket accepts datagrams only from this upstream endpoint.
             socket.connect(addr, 53)
