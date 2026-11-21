@@ -205,13 +205,19 @@ class MainActivity : Activity() {
                 collected += metricDeltaResult("Contador TUN DNS TCP", "dnsTcp")
                 collected += metricDeltaResult("Sesiones smoltcp abiertas", "smoltcpSessionsOpened")
                 collected += protectUdpResult()
+                collected += protectTcpResult()
+                collected += metricDeltaResult("Paquetes TCP aceptados por JNI", "smoltcpPacketsAccepted")
+                collected += metricDeltaResult("Eventos DNS TCP recibidos", "smoltcpDataEvents")
+                collected += metricDeltaResult("Respuestas DNS TCP encoladas", "smoltcpResponsesQueued")
                 collected += metricDeltaResult("Rechazos internos smoltcp", "smoltcpIngressRejected", expectIncrease = false)
                 collected += metricDeltaResult("Errores nativos smoltcp", "smoltcpNativeErrors", expectIncrease = false)
                 collected += metricDeltaResult("Paquetes rechazados por cola", "queueRejected", expectIncrease = false)
                 collected += metricDeltaResult("Errores de escritura TUN", "writeErrors", expectIncrease = false)
             } else {
                 listOf("Contador TUN DNS UDP", "Contador TUN DNS TCP", "Sesiones smoltcp abiertas",
-                    "Protect UDP upstream", "Rechazos internos smoltcp", "Errores nativos smoltcp", "Paquetes rechazados por cola", "Errores de escritura TUN")
+                    "Protect UDP upstream", "Protect TCP upstream", "Paquetes TCP aceptados por JNI",
+                    "Eventos DNS TCP recibidos", "Respuestas DNS TCP encoladas",
+                    "Rechazos internos smoltcp", "Errores nativos smoltcp", "Paquetes rechazados por cola", "Errores de escritura TUN")
                     .forEach { collected += TestResult(it, TestStatus.NOT_VERIFIED, "No hubo una sesión VPN verificable durante la prueba.") }
             }
 
@@ -390,6 +396,8 @@ class MainActivity : Activity() {
     private fun probeTcp(host: String, label: String): TestResult {
         val query = buildDnsQuery("probe-${SystemClock.elapsedRealtimeNanos()}.example.com")
         return try {
+            // Intentionally do not protect this client socket: it must enter the
+            // active VPN TUN so the production smoltcp path is exercised.
             Socket().use { socket ->
                 socket.connect(InetSocketAddress(InetAddress.getByName(host), 53), 3500)
                 socket.soTimeout = 3500
@@ -426,6 +434,27 @@ class MainActivity : Activity() {
         val passed = successes == attempts && failures == 0L
         return TestResult(
             "Protect UDP upstream",
+            if (passed) TestStatus.APPROVED else TestStatus.FAILED,
+            "Intentos=$attempts, protect true=$successes, protect false=$failures."
+        )
+    }
+
+    private fun protectTcpResult(): TestResult {
+        val beforeAttempts = beforeMetrics["upstreamProtectTcpAttempts"]
+            ?: return TestResult("Protect TCP upstream", TestStatus.NOT_VERIFIED, "Métrica de intentos no disponible.")
+        val afterAttempts = afterMetrics["upstreamProtectTcpAttempts"]
+            ?: return TestResult("Protect TCP upstream", TestStatus.NOT_VERIFIED, "Métrica de intentos no disponible.")
+        val attempts = afterAttempts - beforeAttempts
+        if (attempts <= 0L) {
+            return TestResult("Protect TCP upstream", TestStatus.NOT_VERIFIED, "Las consultas de prueba no necesitaron DNS upstream TCP (por ejemplo, no hubo respuesta UDP truncada).")
+        }
+        val successes = (afterMetrics["upstreamProtectTcpSuccess"] ?: beforeMetrics["upstreamProtectTcpSuccess"] ?: 0L) -
+            (beforeMetrics["upstreamProtectTcpSuccess"] ?: 0L)
+        val failures = (afterMetrics["upstreamProtectTcpFailure"] ?: beforeMetrics["upstreamProtectTcpFailure"] ?: 0L) -
+            (beforeMetrics["upstreamProtectTcpFailure"] ?: 0L)
+        val passed = successes == attempts && failures == 0L
+        return TestResult(
+            "Protect TCP upstream",
             if (passed) TestStatus.APPROVED else TestStatus.FAILED,
             "Intentos=$attempts, protect true=$successes, protect false=$failures."
         )
