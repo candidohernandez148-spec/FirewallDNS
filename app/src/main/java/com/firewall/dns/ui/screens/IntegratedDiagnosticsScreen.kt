@@ -72,6 +72,12 @@ fun IntegratedDiagnosticsScreen(
             put("cacheMisses", metrics.cacheMisses)
             put("upstreamSuccess", metrics.upstreamSuccess)
             put("upstreamFailure", metrics.upstreamFailure)
+            put("upstreamUdpProtectAttempts", metrics.upstreamUdpProtectAttempts)
+            put("upstreamUdpProtectSuccesses", metrics.upstreamUdpProtectSuccesses)
+            put("upstreamUdpProtectFailures", metrics.upstreamUdpProtectFailures)
+            put("upstreamTcpProtectAttempts", metrics.upstreamTcpProtectAttempts)
+            put("upstreamTcpProtectSuccesses", metrics.upstreamTcpProtectSuccesses)
+            put("upstreamTcpProtectFailures", metrics.upstreamTcpProtectFailures)
             put("noDnsResponse", metrics.noDnsResponse)
             put("packetsWritten", metrics.packetsWritten)
             put("writeErrors", metrics.writeErrors)
@@ -87,7 +93,6 @@ fun IntegratedDiagnosticsScreen(
             put("smoltcpNativeErrors", metrics.smoltcpNativeErrors)
         })
         put("notVerified", listOf(
-            "VpnService.protect upstream socket outcome (no dedicated counter)",
             "fragment reassembly success/failure (no dedicated counter)",
             "DoH/DoT/DoQ inspection",
             "long-duration CPU and battery behavior on device"
@@ -176,6 +181,8 @@ fun IntegratedDiagnosticsScreen(
                 Metric("Errores de escritura", metrics.writeErrors)
                 Metric("Errores de workers", metrics.workerErrors)
                 Metric("Upstream correcto / fallido", metrics.upstreamSuccess, metrics.upstreamFailure)
+                Text("Protect UDP: ${metrics.upstreamUdpProtectSuccesses}/${metrics.upstreamUdpProtectAttempts} correctos · ${metrics.upstreamUdpProtectFailures} fallos")
+                Text("Protect TCP: ${metrics.upstreamTcpProtectSuccesses}/${metrics.upstreamTcpProtectAttempts} correctos · ${metrics.upstreamTcpProtectFailures} fallos")
                 Metric("Sin respuesta DNS", metrics.noDnsResponse)
             }
         }
@@ -183,7 +190,7 @@ fun IntegratedDiagnosticsScreen(
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Cobertura y límites", style = MaterialTheme.typography.titleMedium)
                 Text("MEDIDO: contadores del recorrido TUN real mientras FirewallDNS está activo.")
-                Text("NO VERIFICADO: resultado individual de VpnService.protect(), éxito del reensamblado de fragmentos y estabilidad prolongada de CPU/batería.")
+                Text("MEDIDO: resultados true/false de VpnService.protect() para sockets upstream UDP/TCP. NO VERIFICADO: éxito del reensamblado de fragmentos en una sesión de tráfico real y estabilidad prolongada de CPU/batería.")
                 Text("Fuera del alcance de inspección DNS/53: DoH, DoT y DoQ. No se presentan como tráfico inspeccionado.")
                 Button(onClick = {
                     val send = Intent(Intent.ACTION_SEND).apply {
