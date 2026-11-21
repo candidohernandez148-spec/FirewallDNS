@@ -751,6 +751,8 @@ class DnsFirewallService : VpnService() {
         FirewallRepository.setRunning(false)
         sharedEngine = null
         sharedUpstream = null
+        activeUpstreamServers = emptyList()
+        FirewallDnsTrafficMetrics.upstreamResolversChanged(emptyList())
 
         val session = activeTunSession
         activeTunSession = null
