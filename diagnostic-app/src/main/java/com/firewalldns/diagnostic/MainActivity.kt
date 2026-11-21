@@ -36,6 +36,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import java.util.concurrent.atomic.AtomicInteger
 
 private enum class TestStatus { APPROVED, FAILED, NOT_VERIFIED }
 private data class TestResult(
@@ -74,7 +75,7 @@ class MainActivity : Activity() {
             setTypeface(null, android.graphics.Typeface.BOLD)
         }
         val subtitle = TextView(this).apply {
-            text = "Pruebas del motor · smoltcp · DNS real · métricas TUN"
+            text = "Motor local Kotlin + Rust/JNI · smoltcp · red real · integración VPN"
             textSize = 13f
             setPadding(0, 6, 0, 18)
             setTextColor(0xFF526174.toInt())
@@ -247,15 +248,51 @@ class MainActivity : Activity() {
     private fun testNativeTransport(): TestResult {
         val v4Dns = byteArrayOf(10, 77, 0, 1)
         val v4Client = byteArrayOf(10, 77, 0, 2)
-        val v6Dns = ByteArray(16).apply { this[0] = 0x20.toByte(); this[1] = 0x01.toByte(); this[2] = 0x0d.toByte(); this[3] = 0xb8.toByte(); this[15] = 1.toByte() }
+        val v6Dns = ByteArray(16).apply {
+            this[0] = 0x20.toByte(); this[1] = 0x01.toByte()
+            this[2] = 0x0d.toByte(); this[3] = 0xb8.toByte(); this[15] = 1
+        }
         val v6Client = v6Dns.copyOf().apply { this[15] = 2 }
         return try {
             val transport = NativeTcpDnsTransport.create(1500, v4Dns, v4Client, v6Dns, v6Client, 16)
                 ?: return TestResult("", TestStatus.FAILED, "JNI no pudo crear la instancia smoltcp.")
-            transport.use {
-                val polled = it.poll(SystemClock.elapsedRealtime(), 0)
-                if (polled >= 0) TestResult("", TestStatus.APPROVED, "JNI inicializó smoltcp con direcciones IPv4/IPv6 y completó poll().")
-                else TestResult("", TestStatus.FAILED, "smoltcp devolvió error $polled al iniciar.")
+            transport.use { native ->
+                // These calls exercise the packaged Rust .so, not a Kotlin mock.
+                val emptyPacket = native.enqueuePacket(byteArrayOf())
+                val oversizedPacket = native.enqueuePacket(ByteArray(1501))
+                val pollResult = native.poll(SystemClock.elapsedRealtime(), 0)
+                val missingSession = native.queueResponse(
+                    Long.MAX_VALUE,
+                    byteArrayOf(0, 12, 0x12, 0x34, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0),
+                )
+                val noUnexpectedOutput = native.takePacket() == null && native.takeEvent() == null
+
+                val wrongOwnerResult = AtomicInteger(Int.MIN_VALUE)
+                val otherThread = Thread {
+                    wrongOwnerResult.set(native.poll(SystemClock.elapsedRealtime(), 0))
+                }.apply { name = "diagnostic-wrong-owner-probe"; start() }
+                otherThread.join(2_000)
+
+                val checks = listOf(
+                    "poll=$pollResult" to (pollResult >= 0),
+                    "empty=$emptyPacket" to (emptyPacket == -1),
+                    "oversized=$oversizedPacket" to (oversizedPacket == -1),
+                    "missingSession=$missingSession" to (missingSession == -5),
+                    "ownerGuard=${wrongOwnerResult.get()}" to (wrongOwnerResult.get() == -3),
+                    "emptyQueues=$noUnexpectedOutput" to noUnexpectedOutput,
+                )
+                val failures = checks.filterNot { it.second }.map { it.first }
+                if (otherThread.isAlive) {
+                    otherThread.interrupt()
+                    return@use TestResult("", TestStatus.FAILED, "La prueba de exclusividad del hilo no terminó.")
+                }
+                if (failures.isEmpty()) {
+                    TestResult("", TestStatus.APPROVED,
+                        "Rust/JNI smoltcp IPv4+IPv6 inicializado; validación de paquetes, sesión inexistente, colas vacías y protección del hilo propietario correctas.")
+                } else {
+                    TestResult("", TestStatus.FAILED,
+                        "Fallaron comprobaciones nativas: ${failures.joinToString()}.")
+                }
             }
         } catch (t: Throwable) {
             TestResult("", TestStatus.FAILED, "Error JNI: ${t.javaClass.simpleName}: ${t.message ?: "sin detalle"}")
