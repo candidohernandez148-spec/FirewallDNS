@@ -110,10 +110,11 @@ class MainActivity : Activity() {
         executor.execute {
             val collected = mutableListOf<TestResult>()
             beforeMetrics = readProductionMetrics()
-            val vpnActive = isVpnActive()
-            collected += timed("VPN principal activa") {
-                if (vpnActive) TestResult("VPN principal activa", TestStatus.APPROVED, "Android informa una VPN activa.")
-                else TestResult("VPN principal activa", TestStatus.NOT_VERIFIED, "Activa FirewallDNS para ejecutar pruebas de tráfico real.")
+            val systemVpnActive = isVpnActive()
+            val firewallDnsActive = systemVpnActive && beforeMetrics["firewallDnsRunning"] == 1L
+            collected += timed("FirewallDNS VPN activa") {
+                if (firewallDnsActive) TestResult("FirewallDNS VPN activa", TestStatus.APPROVED, "La aplicación principal informa el servicio activo y Android informa transporte VPN.")
+                else TestResult("FirewallDNS VPN activa", TestStatus.NOT_VERIFIED, "Activa el servicio VPN de FirewallDNS; otra VPN del sistema no es suficiente.")
             }
             collected += runPolicyTest("Política BLOCK", PolicyAction.BLOCK)
             collected += runPolicyTest("Política OBSERVE", PolicyAction.OBSERVE)
@@ -174,7 +175,7 @@ class MainActivity : Activity() {
                 TestResult("Puente de métricas FirewallDNS", TestStatus.NOT_VERIFIED, "No se pudo leer el proveedor protegido. Reinstala ambos APK del mismo paquete de compilación.")
             }
 
-            if (vpnActive && bridgeAvailable) {
+            if (firewallDnsActive && bridgeAvailable) {
                 collected += timed("DNS UDP IPv4 por VPN") { probeUdp("1.1.1.1", "IPv4 UDP") }
                 collected += timed("DNS TCP IPv4 por VPN (smoltcp)") { probeTcp("1.1.1.1", "IPv4 TCP") }
                 val hasIpv6 = hasGlobalIpv6()
@@ -400,7 +401,8 @@ class MainActivity : Activity() {
   "created_at_epoch_ms": ${System.currentTimeMillis()},
   "device": "${jsonEscape(device)}",
   "android_sdk": ${android.os.Build.VERSION.SDK_INT},
-  "vpn_active": ${isVpnActive()},
+  "system_vpn_active": ${isVpnActive()},
+  "firewall_dns_active": ${beforeMetrics["firewallDnsRunning"] == 1L && isVpnActive()},
   "results": [
 $body
   ]
