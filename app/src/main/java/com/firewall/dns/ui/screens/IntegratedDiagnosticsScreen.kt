@@ -92,9 +92,15 @@ fun IntegratedDiagnosticsScreen(
             put("smoltcpResponsesQueued", metrics.smoltcpResponsesQueued)
             put("smoltcpResponseFailures", metrics.smoltcpResponseFailures)
             put("smoltcpNativeErrors", metrics.smoltcpNativeErrors)
+            put("fragmentsAccepted", metrics.fragmentsAccepted)
+            put("packetsReassembled", metrics.packetsReassembled)
+            put("fragmentsDroppedInvalid", metrics.fragmentsDroppedInvalid)
+            put("fragmentsDroppedLimit", metrics.fragmentsDroppedLimit)
+            put("fragmentAssembliesExpired", metrics.fragmentAssembliesExpired)
+            put("fragmentPendingAssemblies", metrics.fragmentPendingAssemblies)
+            put("fragmentBufferedBytes", metrics.fragmentBufferedBytes)
         })
         put("notVerified", listOf(
-            "fragment reassembly success/failure (no dedicated counter)",
             "DoH/DoT/DoQ inspection",
             "long-duration CPU and battery behavior on device"
         ))
@@ -194,7 +200,7 @@ fun IntegratedDiagnosticsScreen(
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Cobertura y límites", style = MaterialTheme.typography.titleMedium)
                 Text("MEDIDO: contadores del recorrido TUN real mientras FirewallDNS está activo. “Aceptados en cola JNI” no significa que el paquete ya haya sido procesado por smoltcp.")
-                Text("MEDIDO: intentos y resultado booleano de VpnService.protect() para sockets upstream UDP/TCP. NO VERIFICADO: éxito del reensamblado de fragmentos y estabilidad prolongada de CPU/batería.")
+                Text("MEDIDO: intentos y resultado booleano de VpnService.protect() para sockets upstream UDP/TCP. También se exponen fragmentos aceptados, paquetes reensamblados, descartes por límite/validez y ensamblajes expirados. La prueba de tráfico fragmentado a través del TUN productivo aún requiere instrumentación en dispositivo.")
                 Text("Fuera del alcance de inspección DNS/53: DoH, DoT y DoQ. No se presentan como tráfico inspeccionado.")
                 Button(onClick = {
                     val send = Intent(Intent.ACTION_SEND).apply {
