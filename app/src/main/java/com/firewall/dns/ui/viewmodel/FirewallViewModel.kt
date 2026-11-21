@@ -145,8 +145,8 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
     fun setObservationModeEnabled(enabled: Boolean) {
         FirewallRepository.setObservationModeEnabled(enabled)
         _toastMessage.tryEmit(
-            if (enabled) "Monitoreo activo: se registran consultas y las reglas de bloqueo se aplican"
-            else "Bloqueo DNS activo"
+            if (enabled) "Modo observación activo: las consultas DNS UDP se reenvían sin aplicar bloqueos; DNS TCP tiene una ruta diferenciada."
+            else "Modo de bloqueo DNS UDP activo."
         )
     }
 
