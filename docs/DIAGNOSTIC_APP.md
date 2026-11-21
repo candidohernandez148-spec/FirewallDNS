@@ -9,7 +9,7 @@ El diagnóstico soportado se ejecuta dentro de la aplicación principal, en la p
 - Contadores del transporte Rust/JNI smoltcp: sesiones, paquetes aceptados, respuestas encoladas, rechazos y errores nativos.
 - Estado de fragmentos IPv4/IPv6: aceptados, reensamblados, descartados y expirados.
 - Resultado de una prueba de límites Rust/JNI.
-- Prueba DNS/TCP upstream forzada a los resolvers activos, sin caché ni fallback UDP, usando el socket protegido de producción. La prueba requiere VPN activa y solo aprueba si recibe una respuesta DNS válida por TCP.
+- Prueba DNS/TCP upstream forzada a los resolvers activos, sin caché ni fallback UDP, usando el socket protegido de producción. La prueba requiere VPN activa y solo aprueba si recibe una respuesta DNS válida por TCP. Esta es una prueba de salida upstream; no inyecta una conexión TCP/53 entrante al TUN ni acredita por sí sola el funcionamiento de smoltcp.
 - Identidad de la red física seleccionada (Wi-Fi/celular/Ethernet), validación y resolvers obtenidos de un único snapshot de Android.
 - Los sockets upstream UDP/TCP se enlazan a esa misma instancia de `Network` antes de `VpnService.protect()` y de conectar. Cuando se enlaza explícitamente, el servicio publica la red subyacente mediante `setUnderlyingNetworks()`.
 
