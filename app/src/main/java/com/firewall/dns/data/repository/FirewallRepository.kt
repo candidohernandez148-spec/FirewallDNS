@@ -85,7 +85,7 @@ object FirewallRepository {
     private val _smartModeEnabled = MutableStateFlow(true)
     val smartModeEnabled: StateFlow<Boolean> = _smartModeEnabled.asStateFlow()
 
-    private val _observationModeEnabled = MutableStateFlow(false)
+    private val _observationModeEnabled = MutableStateFlow(true)
     val observationModeEnabled: StateFlow<Boolean> = _observationModeEnabled.asStateFlow()
 
     private val _cacheInvalidateEvent = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
@@ -172,7 +172,6 @@ object FirewallRepository {
                 prefsDataSource.saveBlocklistUrls(normalizedBlocklistUrls)
             }
             _smartModeEnabled.value = prefsDataSource.getSmartModeEnabled()
-            _observationModeEnabled.value = prefsDataSource.getObservationModeEnabled()
             val activitySnapshot = prefsDataSource.getActivitySnapshot()
             _logs.value = activitySnapshot.logs
             logCounter.set(activitySnapshot.logs.maxOfOrNull { it.id } ?: 0L)
@@ -244,13 +243,11 @@ object FirewallRepository {
     // El filtro clásico de respaldo reenvía a los DNS de la red activa.
     fun getUpstreamDns(): String = NetworkDns.firstActiveDns(appContext)
 
-    fun isObservationModeEnabled(): Boolean = _observationModeEnabled.value
+    /** Observation is passive telemetry, never a global bypass for blocking rules. */
+    fun isObservationModeEnabled(): Boolean = false
 
-    fun setObservationModeEnabled(enabled: Boolean) {
-        _observationModeEnabled.value = enabled
-        prefsDataSource.saveObservationModeEnabled(enabled)
-        _cacheInvalidateEvent.tryEmit(Unit)
-    }
+    /** Compatibility shim for old UI callers; observation is always on. */
+    fun setObservationModeEnabled(enabled: Boolean) = Unit
 
     fun setSmartModeEnabled(enabled: Boolean) {
         _smartModeEnabled.value = enabled
