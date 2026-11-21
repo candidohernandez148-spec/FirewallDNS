@@ -42,36 +42,26 @@ jobs:
         with:
           gradle-version: "8.14"
 
-      - name: Restaurar clave de firma
-        id: signing-cache
-        uses: actions/cache@v6
-        with:
-          path: signing
-          key: firewalldns-signing-v1
-
-      - name: Preparar firma de release
+      - name: Preparar firma de release compartida
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD_SECRET: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD_SECRET: ${{ secrets.KEY_PASSWORD }}
           KEY_ALIAS_SECRET: ${{ secrets.KEY_ALIAS }}
         run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_BASE64" || { echo "::error::Falta el secreto KEYSTORE_BASE64"; exit 1; }
+          test -n "$KEYSTORE_PASSWORD_SECRET" || { echo "::error::Falta el secreto KEYSTORE_PASSWORD"; exit 1; }
+          test -n "$KEY_ALIAS_SECRET" || { echo "::error::Falta el secreto KEY_ALIAS"; exit 1; }
           mkdir -p signing
-          if [[ -n "$KEYSTORE_BASE64" ]]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > signing/release.jks
-            echo "$KEYSTORE_PASSWORD_SECRET" > signing/password
-            echo "$KEY_ALIAS_SECRET" > signing/alias
-          elif [[ ! -s signing/release.jks ]]; then
-            head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24 > signing/password
-            echo firewalldns > signing/alias
-            keytool -genkeypair -keystore signing/release.jks -alias firewalldns \
-              -keyalg RSA -keysize 4096 -validity 36500 \
-              -storepass "$(cat signing/password)" -keypass "$(cat signing/password)" \
-              -dname "CN=Candido y Elizabeth, O=FirewallDNS"
-          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > signing/release.jks
+          test -s signing/release.jks
           echo "KEYSTORE_PATH=$PWD/signing/release.jks" >> "$GITHUB_ENV"
-          echo "KEYSTORE_PASSWORD=$(cat signing/password)" >> "$GITHUB_ENV"
-          echo "KEY_ALIAS=$(cat signing/alias)" >> "$GITHUB_ENV"
-          echo "::add-mask::$(cat signing/password)"
+          echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD_SECRET" >> "$GITHUB_ENV"
+          echo "KEY_PASSWORD=${KEY_PASSWORD_SECRET:-$KEYSTORE_PASSWORD_SECRET}" >> "$GITHUB_ENV"
+          echo "KEY_ALIAS=$KEY_ALIAS_SECRET" >> "$GITHUB_ENV"
+          echo "::add-mask::$KEYSTORE_PASSWORD_SECRET"
+          if [[ -n "$KEY_PASSWORD_SECRET" ]]; then echo "::add-mask::$KEY_PASSWORD_SECRET"; fi
 
       - name: Ejecutar pruebas unitarias
         run: gradle testDebugUnitTest --no-daemon --stacktrace
