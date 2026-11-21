@@ -50,6 +50,8 @@ class DnsTcpPacketClassifierTest {
     fun rejectsFragmentsAndIpv6ExtensionHeaders() {
         val fragment = ipv4Tcp(destinationPort = 53).also { putU16(it, 6, 0x2000) }
         assertFalse(DnsTcpPacketClassifier.isClientDnsTcpPacket(fragment))
+        val reservedFlag = ipv4Tcp(destinationPort = 53).also { putU16(it, 6, 0x8000) }
+        assertFalse(DnsTcpPacketClassifier.isClientDnsTcpPacket(reservedFlag))
 
         val extension = ipv6Tcp(destinationPort = 53).also { it[6] = 0 }
         assertFalse(DnsTcpPacketClassifier.isClientDnsTcpPacket(extension))
