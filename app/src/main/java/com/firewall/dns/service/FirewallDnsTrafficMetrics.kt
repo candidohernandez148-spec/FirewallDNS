@@ -1,5 +1,6 @@
 package com.firewall.dns.service
 
+import com.firewalldns.engine.android.SmoltcpDnsTcpMetrics
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -36,6 +37,13 @@ object FirewallDnsTrafficMetrics {
         val packetsWritten: Long,
         val writeErrors: Long,
         val workerErrors: Long,
+        val smoltcpSessionsActive: Long,
+        val smoltcpSessionsOpened: Long,
+        val smoltcpSessionsClosed: Long,
+        val smoltcpIngressRejected: Long,
+        val smoltcpDataEvents: Long,
+        val smoltcpResponseFailures: Long,
+        val smoltcpNativeErrors: Long,
     )
 
     private val packetsRead = AtomicLong()
@@ -64,6 +72,13 @@ object FirewallDnsTrafficMetrics {
     private val packetsWritten = AtomicLong()
     private val writeErrors = AtomicLong()
     private val workerErrors = AtomicLong()
+    private val smoltcpSessionsActive = AtomicLong()
+    private val smoltcpSessionsOpened = AtomicLong()
+    private val smoltcpSessionsClosed = AtomicLong()
+    private val smoltcpIngressRejected = AtomicLong()
+    private val smoltcpDataEvents = AtomicLong()
+    private val smoltcpResponseFailures = AtomicLong()
+    private val smoltcpNativeErrors = AtomicLong()
 
     internal fun packetRead() { packetsRead.incrementAndGet() }
     internal fun queueRejected() { queueRejected.incrementAndGet() }
@@ -91,6 +106,15 @@ object FirewallDnsTrafficMetrics {
     internal fun responseWritten() { packetsWritten.incrementAndGet() }
     internal fun writeError() { writeErrors.incrementAndGet() }
     internal fun workerError() { workerErrors.incrementAndGet() }
+    internal fun smoltcpSnapshot(metrics: SmoltcpDnsTcpMetrics) {
+        smoltcpSessionsActive.set(metrics.activeSessions.toLong())
+        smoltcpSessionsOpened.set(metrics.sessionsOpened)
+        smoltcpSessionsClosed.set(metrics.sessionsClosed)
+        smoltcpIngressRejected.set(metrics.ingressRejected)
+        smoltcpDataEvents.set(metrics.dataEvents)
+        smoltcpResponseFailures.set(metrics.responseFailures)
+        smoltcpNativeErrors.set(metrics.nativeErrors)
+    }
 
     /** Returns a non-blocking point-in-time aggregate snapshot for UI/diagnostics. */
     fun snapshot(): Snapshot = Snapshot(
@@ -120,5 +144,12 @@ object FirewallDnsTrafficMetrics {
         packetsWritten = packetsWritten.get(),
         writeErrors = writeErrors.get(),
         workerErrors = workerErrors.get(),
+        smoltcpSessionsActive = smoltcpSessionsActive.get(),
+        smoltcpSessionsOpened = smoltcpSessionsOpened.get(),
+        smoltcpSessionsClosed = smoltcpSessionsClosed.get(),
+        smoltcpIngressRejected = smoltcpIngressRejected.get(),
+        smoltcpDataEvents = smoltcpDataEvents.get(),
+        smoltcpResponseFailures = smoltcpResponseFailures.get(),
+        smoltcpNativeErrors = smoltcpNativeErrors.get(),
     )
 }

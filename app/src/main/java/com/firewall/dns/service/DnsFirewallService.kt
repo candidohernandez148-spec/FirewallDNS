@@ -364,10 +364,12 @@ class DnsFirewallService : VpnService() {
                                 break
                             }
                             if (!session.active.get() || !isRunning) break
-                            runCatching { tcpCoordinator.pollOwner() }.onFailure {
-                                packetProcessingErrors.incrementAndGet()
-                                FirewallDnsTrafficMetrics.workerError()
-                            }
+                            runCatching { tcpCoordinator.pollOwner() }
+                                .onSuccess(FirewallDnsTrafficMetrics::smoltcpSnapshot)
+                                .onFailure {
+                                    packetProcessingErrors.incrementAndGet()
+                                    FirewallDnsTrafficMetrics.workerError()
+                                }
                         }
                     }, "FirewallDNS-smoltcp-owner").apply { start() }
                 } else {
@@ -395,6 +397,8 @@ class DnsFirewallService : VpnService() {
                                         val isDnsTcp = parsed?.protocol == 6 && parsed.destinationPort == 53
                                         val tcpCoordinator = session.tcpCoordinator
                                         if (isDnsTcp && tcpCoordinator != null) {
+                                            if (parsed?.isIpv6 == true) FirewallDnsTrafficMetrics.ipv6Packet()
+                                            else FirewallDnsTrafficMetrics.ipv4Packet()
                                             FirewallDnsTrafficMetrics.tcpDns()
                                             if (tcpCoordinator.offerPacket(copy) != NativeTcpDnsTransport.RESULT_OK) {
                                                 queueRejectedPackets.incrementAndGet()
@@ -676,6 +680,7 @@ class DnsFirewallService : VpnService() {
                 }
             }
             session.tcpCoordinator?.close()
+            session.tcpCoordinator?.metrics()?.let(FirewallDnsTrafficMetrics::smoltcpSnapshot)
             session.tcpCoordinator = null
             session.tcpOwner = null
             try { session.input.close() } catch (_: IOException) {}
