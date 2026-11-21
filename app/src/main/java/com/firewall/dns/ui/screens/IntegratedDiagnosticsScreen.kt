@@ -187,8 +187,10 @@ fun IntegratedDiagnosticsScreen(
                 Metric("Errores de escritura", metrics.writeErrors)
                 Metric("Errores de workers", metrics.workerErrors)
                 Metric("Upstream correcto / fallido", metrics.upstreamSuccess, metrics.upstreamFailure)
-                Text("Protect UDP: ${metrics.upstreamUdpProtectSuccesses}/${metrics.upstreamUdpProtectAttempts} correctos · ${metrics.upstreamUdpProtectFailures} fallos")
-                Text("Protect TCP: ${metrics.upstreamTcpProtectSuccesses}/${metrics.upstreamTcpProtectAttempts} correctos · ${metrics.upstreamTcpProtectFailures} fallos")
+                Text(if (metrics.upstreamUdpProtectAttempts == 0L) "Protect UDP: sin intentos medidos" else
+                    "Protect UDP: ${metrics.upstreamUdpProtectSuccesses}/${metrics.upstreamUdpProtectAttempts} correctos · ${metrics.upstreamUdpProtectFailures} fallos")
+                Text(if (metrics.upstreamTcpProtectAttempts == 0L) "Protect TCP: sin intentos medidos" else
+                    "Protect TCP: ${metrics.upstreamTcpProtectSuccesses}/${metrics.upstreamTcpProtectAttempts} correctos · ${metrics.upstreamTcpProtectFailures} fallos")
                 Metric("Sin respuesta DNS", metrics.noDnsResponse)
             }
         }
