@@ -4,6 +4,7 @@ import com.firewalldns.engine.android.DnsSocketProtectionProtocol
 import com.firewalldns.engine.android.FragmentReassemblerMetrics
 import com.firewalldns.engine.android.SmoltcpDnsTcpMetrics
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Aggregate-only counters for the production DNS-only TUN path.
@@ -34,6 +35,9 @@ object FirewallDnsTrafficMetrics {
         val cacheMisses: Long,
         val upstreamSuccess: Long,
         val upstreamFailure: Long,
+        val upstreamResolvers: String,
+        val upstreamResolverRefreshes: Long,
+        val upstreamResolverUpdatedAtEpochMs: Long,
         val upstreamAttemptFailures: Long,
         val upstreamFailureTimeouts: Long,
         val upstreamFailureProtection: Long,
@@ -92,6 +96,9 @@ object FirewallDnsTrafficMetrics {
     private val cacheMisses = AtomicLong()
     private val upstreamSuccess = AtomicLong()
     private val upstreamFailure = AtomicLong()
+    private val upstreamResolvers = AtomicReference("")
+    private val upstreamResolverRefreshes = AtomicLong()
+    private val upstreamResolverUpdatedAtEpochMs = AtomicLong()
     private val upstreamAttemptFailures = AtomicLong()
     private val upstreamFailureTimeouts = AtomicLong()
     private val upstreamFailureProtection = AtomicLong()
@@ -149,6 +156,13 @@ object FirewallDnsTrafficMetrics {
     internal fun cacheMiss() { cacheMisses.incrementAndGet() }
     internal fun upstreamSuccess() { upstreamSuccess.incrementAndGet() }
     internal fun upstreamFailure() { upstreamFailure.incrementAndGet() }
+    internal fun upstreamResolversChanged(servers: List<String>) {
+        val value = servers.joinToString(",")
+        if (upstreamResolvers.getAndSet(value) != value) {
+            upstreamResolverRefreshes.incrementAndGet()
+            upstreamResolverUpdatedAtEpochMs.set(System.currentTimeMillis())
+        }
+    }
     internal fun upstreamAttemptFailure(reason: String) {
         upstreamAttemptFailures.incrementAndGet()
         when {
@@ -234,6 +248,9 @@ object FirewallDnsTrafficMetrics {
         cacheMisses = cacheMisses.get(),
         upstreamSuccess = upstreamSuccess.get(),
         upstreamFailure = upstreamFailure.get(),
+        upstreamResolvers = upstreamResolvers.get(),
+        upstreamResolverRefreshes = upstreamResolverRefreshes.get(),
+        upstreamResolverUpdatedAtEpochMs = upstreamResolverUpdatedAtEpochMs.get(),
         upstreamAttemptFailures = upstreamAttemptFailures.get(),
         upstreamFailureTimeouts = upstreamFailureTimeouts.get(),
         upstreamFailureProtection = upstreamFailureProtection.get(),

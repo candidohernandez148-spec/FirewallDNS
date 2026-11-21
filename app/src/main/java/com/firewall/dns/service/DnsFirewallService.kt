@@ -100,6 +100,9 @@ class DnsFirewallService : VpnService() {
     private lateinit var connectivityManager: ConnectivityManager
     @Volatile private var sharedEngine: AndroidEngineRuntime? = null
     @Volatile private var sharedUpstream: DnsUpstreamFailoverClient? = null
+    @Volatile private var activeUpstreamServers: List<String> = emptyList()
+    @Volatile private var physicalNetworkCallback: ConnectivityManager.NetworkCallback? = null
+    private val upstreamRefreshLock = Any()
 
     companion object {
         const val ACTION_START = "com.firewall.dns.action.START_TUN"
@@ -141,6 +144,7 @@ class DnsFirewallService : VpnService() {
         super.onCreate()
         FirewallRepository.init(applicationContext)
         connectivityManager = getSystemService(ConnectivityManager::class.java)
+        registerPhysicalNetworkCallback()
 
         serviceScope.launch {
             FirewallRepository.cacheInvalidateEvent.collect {
@@ -510,7 +514,7 @@ class DnsFirewallService : VpnService() {
         if (shouldBlock) {
             dnsResponse = DnsPacketEngine.buildNxDomainResponse(dnsPayload, query.questionEndOffset)
         } else {
-            val cacheKey = "${query.domain.lowercase()}:${query.qType}:${FirewallRepository.getUpstreamDns()}"
+            val cacheKey = "${query.domain.lowercase()}:${query.qType}:${activeUpstreamServers.joinToString(",")}"
             val now = System.currentTimeMillis()
             val cached = dnsCache[cacheKey]?.takeIf { it.expiresAt > now }
             val cachedResponse = cached?.response?.copyOf()?.apply {
@@ -606,6 +610,8 @@ class DnsFirewallService : VpnService() {
         if (!BuildConfig.USE_SHARED_ENGINE) {
             sharedEngine = null
             sharedUpstream = null
+            activeUpstreamServers = emptyList()
+            FirewallDnsTrafficMetrics.upstreamResolversChanged(emptyList())
             return
         }
         val runtime = runCatching {
@@ -620,11 +626,75 @@ class DnsFirewallService : VpnService() {
             }
         }.getOrNull()
         sharedEngine = runtime
-        sharedUpstream = runtime?.let { engine ->
-            runCatching {
-                engine.createDnsFailover(listOf(DnsUpstreamConfig(FirewallRepository.getUpstreamDns(), timeoutMillis = 2_000)))
-            }.getOrNull()
+        synchronized(upstreamRefreshLock) {
+            activeUpstreamServers = emptyList()
+            sharedUpstream = null
+            refreshSharedUpstreamLocked()
         }
+    }
+
+    /**
+     * Android may replace the physical network while this VPN remains the default.
+     * Rebuild only the protected DNS clients; never tear down or re-establish TUN.
+     */
+    private fun registerPhysicalNetworkCallback() {
+        if (physicalNetworkCallback != null) return
+        val request = android.net.NetworkRequest.Builder()
+            .addCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .addCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+            .build()
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            private fun refresh() {
+                serviceScope.launch(Dispatchers.IO) {
+                    if (isRunning) refreshSharedUpstream()
+                }
+            }
+
+            override fun onAvailable(network: android.net.Network) = refresh()
+            override fun onLinkPropertiesChanged(
+                network: android.net.Network,
+                linkProperties: android.net.LinkProperties
+            ) = refresh()
+            override fun onCapabilitiesChanged(
+                network: android.net.Network,
+                networkCapabilities: android.net.NetworkCapabilities
+            ) = refresh()
+            override fun onLost(network: android.net.Network) = refresh()
+        }
+        try {
+            connectivityManager.registerNetworkCallback(request, callback)
+            physicalNetworkCallback = callback
+        } catch (_: Throwable) {
+            // Keep the startup resolver selection if the platform rejects callback registration.
+        }
+    }
+
+    private fun refreshSharedUpstream() {
+        synchronized(upstreamRefreshLock) {
+            refreshSharedUpstreamLocked()
+        }
+    }
+
+    private fun refreshSharedUpstreamLocked() {
+        val runtime = sharedEngine ?: return
+        val discovered = NetworkDns.activeServers(this).ifEmpty {
+            listOf(NetworkDns.EMERGENCY_DNS)
+        }
+        if (discovered == activeUpstreamServers && sharedUpstream != null) return
+        val replacement = runCatching {
+            runtime.createDnsFailover(
+                discovered.map { address ->
+                    DnsUpstreamConfig(address, timeoutMillis = 2_000)
+                }
+            )
+        }.getOrNull() ?: return
+
+        // Publish the fully constructed client atomically; in-flight exchanges can
+        // finish on their previous immutable client while new requests use this one.
+        sharedUpstream = replacement
+        activeUpstreamServers = discovered
+        FirewallDnsTrafficMetrics.upstreamResolversChanged(discovered)
+        dnsCache.clear()
     }
 
     private fun resolvePackageName(uid: Int): String? =
@@ -681,6 +751,8 @@ class DnsFirewallService : VpnService() {
         FirewallRepository.setRunning(false)
         sharedEngine = null
         sharedUpstream = null
+        activeUpstreamServers = emptyList()
+        FirewallDnsTrafficMetrics.upstreamResolversChanged(emptyList())
 
         val session = activeTunSession
         activeTunSession = null
@@ -747,6 +819,10 @@ class DnsFirewallService : VpnService() {
     }
 
     override fun onDestroy() {
+        physicalNetworkCallback?.let { callback ->
+            runCatching { connectivityManager.unregisterNetworkCallback(callback) }
+        }
+        physicalNetworkCallback = null
         serviceScope.cancel()
         isRunning = false
         Thread {
