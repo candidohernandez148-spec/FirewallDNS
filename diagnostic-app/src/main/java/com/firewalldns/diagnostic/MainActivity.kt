@@ -181,8 +181,9 @@ class MainActivity : Activity() {
             }
 
             if (firewallDnsActive && bridgeAvailable) {
-                collected += timed("DNS UDP IPv4 por VPN") { probeUdp("1.1.1.1", "IPv4 UDP") }
-                collected += timed("DNS TCP IPv4 por VPN (smoltcp)") { probeTcp("1.1.1.1", "IPv4 TCP") }
+                val ipv4ProbeDns = chooseIpv4ProbeDns()
+                collected += timed("DNS UDP IPv4 por VPN") { probeUdp(ipv4ProbeDns, "IPv4 UDP") }
+                collected += timed("DNS TCP IPv4 por VPN (smoltcp)") { probeTcp(ipv4ProbeDns, "IPv4 TCP") }
                 val hasIpv6 = hasGlobalIpv6()
                 if (hasIpv6) {
                     collected += timed("DNS UDP IPv6 por VPN") { probeUdp("2606:4700:4700::1111", "IPv6 UDP") }
@@ -466,6 +467,33 @@ class MainActivity : Activity() {
         val manager = getSystemService(ConnectivityManager::class.java)
         val network = manager.activeNetwork ?: return false
         return manager.getNetworkCapabilities(network)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
+    }
+
+    /**
+     * Avoids the selected physical upstream: its route is intentionally excluded
+     * from the VPN to prevent recursion, so probing it would bypass the TUN.
+     */
+    private fun chooseIpv4ProbeDns(): String {
+        val manager = getSystemService(ConnectivityManager::class.java)
+        val active = manager.activeNetwork
+        val activeCaps = active?.let { manager.getNetworkCapabilities(it) }
+        val physical = if (active != null && activeCaps != null &&
+            activeCaps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            !activeCaps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+        ) {
+            active
+        } else {
+            manager.allNetworks.firstOrNull { network ->
+                manager.getNetworkCapabilities(network)?.let { caps ->
+                    caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                        !caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+                } == true
+            }
+        }
+        val upstream = manager.getLinkProperties(physical)?.dnsServers
+            ?.firstOrNull()?.hostAddress?.substringBefore('%') ?: "1.1.1.1"
+        return listOf("1.1.1.1", "8.8.8.8", "1.0.0.1", "8.8.4.4")
+            .firstOrNull { it != upstream } ?: "8.8.8.8"
     }
 
     private fun hasGlobalIpv6(): Boolean {
