@@ -111,7 +111,10 @@ class DnsUpstreamClient(
             if (!cancellation.register(socket)) return UdpAttempt.Cancelled
             try {
             socket.soTimeout = config.timeoutMillis
-            if (!socketProtector.protect(socket)) {
+            val wasProtected = cancellation.protectSocket(socket) {
+                socketProtector.protect(socket)
+            } ?: return UdpAttempt.Cancelled
+            if (!wasProtected) {
                 return UdpAttempt.Failure("dns_upstream_udp_socket_protection_failed")
             }
             socket.connect(InetSocketAddress(config.host, config.port))
@@ -141,7 +144,10 @@ class DnsUpstreamClient(
         Socket().use { socket ->
             if (!cancellation.register(socket)) return DnsUpstreamResult.Cancelled
             try {
-            if (!socketProtector.protect(socket)) {
+            val wasProtected = cancellation.protectSocket(socket) {
+                socketProtector.protect(socket)
+            } ?: return DnsUpstreamResult.Cancelled
+            if (!wasProtected) {
                 return DnsUpstreamResult.Failure("dns_upstream_tcp_socket_protection_failed")
             }
             socket.connect(InetSocketAddress(config.host, config.port), config.timeoutMillis)
