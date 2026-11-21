@@ -609,8 +609,8 @@ class DnsFirewallService : VpnService() {
             AndroidEngineRuntime(
                 this,
                 FirewallRepository.isSmartModeEnabled(),
-                onSocketProtectionResult = { protocol, protected ->
-                    FirewallDnsTrafficMetrics.socketProtectionResult(protocol, protected)
+                onSocketProtectionResult = { protocol, wasProtected ->
+                    FirewallDnsTrafficMetrics.socketProtectionResult(protocol, wasProtected)
                 },
             ).also {
                 it.engine.replaceRules(FirewallRepository.enginePolicyRules())
@@ -647,9 +647,9 @@ class DnsFirewallService : VpnService() {
         return try {
             socket = DatagramSocket()
             socket.soTimeout = 3500
-            val protected = protect(socket)
-            FirewallDnsTrafficMetrics.socketProtectionResult(DnsSocketProtectionProtocol.UDP, protected)
-            if (!protected) return null
+            val wasProtected = protect(socket)
+            FirewallDnsTrafficMetrics.socketProtectionResult(DnsSocketProtectionProtocol.UDP, wasProtected)
+            if (!wasProtected) return null
             val addr = InetAddress.getByName(FirewallRepository.getUpstreamDns())
             // A connected UDP socket accepts datagrams only from this upstream endpoint.
             socket.connect(addr, 53)
