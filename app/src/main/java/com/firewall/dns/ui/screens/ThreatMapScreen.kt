@@ -54,6 +54,19 @@ import com.firewall.dns.service.FirewallDnsTrafficMetrics
 import kotlin.math.cos
 import kotlin.math.sin
 
+private data class MindMapEdge(val from: String, val to: String)
+
+private val architectureEdges = listOf(
+    MindMapEdge("core", "tun"),
+    MindMapEdge("tun", "dns"),
+    MindMapEdge("dns", "decisions"),
+    MindMapEdge("threats", "decisions"),
+    MindMapEdge("rules", "decisions"),
+    MindMapEdge("apps", "decisions"),
+    MindMapEdge("decisions", "upstream"),
+    MindMapEdge("decisions", "tun")
+)
+
 private data class MindMapNode(
     val id: String,
     val label: String,
@@ -163,6 +176,34 @@ fun ThreatMapScreen(
                     Text(selectedDescription, style = MaterialTheme.typography.bodySmall)
                     Text("Las ramas muestran componentes del proceso. Los valores vienen de contadores del servicio, reglas e historial; no se generan eventos ficticios.",
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        item {
+            val latest = logs.firstOrNull()
+            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+                Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text("ÚLTIMA ACTIVIDAD REGISTRADA", style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold)
+                    if (latest == null) {
+                        Text("Sin eventos DNS registrados todavía.", style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        val eventStatus = when {
+                            latest.isBlocked -> "BLOQUEADO"
+                            latest.reason.startsWith("OBSERVE:", ignoreCase = true) -> "OBSERVADO · REENVIADO"
+                            else -> "PERMITIDO · REENVIADO"
+                        }
+                        Text(latest.domain, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Text("$eventStatus · ${latest.queryType} · ${latest.appName}",
+                            style = MaterialTheme.typography.bodySmall)
+                        Text(latest.reason, style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (latest.timestamp.isNotBlank()) {
+                            Text(latest.timestamp, style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                 }
             }
         }
@@ -333,14 +374,18 @@ private fun ThreeDimensionalMindMap(
                         canvas.drawOval(oval, basePaint)
                     }
 
-                    // Draw branches first, then moving signal particles along each branch.
-                    val center = projected.getValue(nodes.first())
-                    nodes.drop(1).forEachIndexed { _, node ->
-                        val point = projected.getValue(node)
+                    // Edges are the real code-path topology: TUN -> DNS -> policy,
+                    // with catalog, rules and app identity feeding policy decisions.
+                    val byId = nodes.associateBy { it.id }
+                    architectureEdges.forEach { edge ->
+                        val from = byId[edge.from] ?: return@forEach
+                        val to = byId[edge.to] ?: return@forEach
+                        val start = projected.getValue(from)
+                        val end = projected.getValue(to)
                         basePaint.style = Paint.Style.STROKE
                         basePaint.strokeWidth = 2.1f
-                        basePaint.color = node.tint.copy(alpha = .56f).toArgb()
-                        canvas.drawLine(center.x, center.y, point.x, point.y, basePaint)
+                        basePaint.color = to.tint.copy(alpha = .58f).toArgb()
+                        canvas.drawLine(start.x, start.y, end.x, end.y, basePaint)
                     }
 
                     // Back-to-front sorting makes nearer nodes larger and visually layered.
@@ -373,7 +418,7 @@ private fun ThreeDimensionalMindMap(
                     }
                 }
             }
-            Text("La animación solo aporta perspectiva. Las líneas representan la arquitectura del proceso; no son paquetes ni conexiones activas.",
+            Text("Las líneas muestran rutas reales del código (TUN, DNS, política y upstream). No son paquetes en movimiento ni conexiones activas.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
