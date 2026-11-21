@@ -497,7 +497,11 @@ object FirewallRepository {
         // Este indicador cuenta solo reglas externas (listas descargadas + reglas manuales).
         // Los dominios semilla integrados se aplican siempre, pero no se presentan como listas cargadas.
         val downloadedRules = activeBlocklistSnapshot.blocked - defaultDomains.toSet()
-        val externalRuleCount = downloadedRules.union(customBlockSet).size
+        val externalRuleCount = downloadedRules
+            .union(activeBlocklistSnapshot.exceptions)
+            .union(customBlockSet)
+            .union(customAllowSet)
+            .size
         _stats.update { it.copy(loadedRulesCount = externalRuleCount) }
     }
 
