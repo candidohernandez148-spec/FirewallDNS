@@ -101,6 +101,7 @@ fun IntegratedDiagnosticsScreen(
             put("fragmentBufferedBytes", metrics.fragmentBufferedBytes)
         })
         put("notVerified", listOf(
+            "fragmented traffic injection through production TUN (counters are exposed, active injection is not yet automated)",
             "DoH/DoT/DoQ inspection",
             "long-duration CPU and battery behavior on device"
         ))
@@ -186,6 +187,9 @@ fun IntegratedDiagnosticsScreen(
                 Text("Salud del procesamiento", style = MaterialTheme.typography.titleMedium)
                 Metric("Cola saturada", metrics.queueRejected)
                 Metric("Parser rechazó", metrics.parserRejected)
+                Metric("Fragmentos aceptados / reensamblados", metrics.fragmentsAccepted, metrics.packetsReassembled)
+                Metric("Fragmentos descartados inválidos / límite", metrics.fragmentsDroppedInvalid, metrics.fragmentsDroppedLimit)
+                Metric("Ensamblajes pendientes / expirados", metrics.fragmentPendingAssemblies, metrics.fragmentAssembliesExpired)
                 Metric("Errores de escritura", metrics.writeErrors)
                 Metric("Errores de workers", metrics.workerErrors)
                 Metric("Upstream correcto / fallido", metrics.upstreamSuccess, metrics.upstreamFailure)
