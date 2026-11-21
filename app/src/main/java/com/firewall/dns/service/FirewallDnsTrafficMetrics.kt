@@ -120,12 +120,12 @@ object FirewallDnsTrafficMetrics {
     internal fun cacheMiss() { cacheMisses.incrementAndGet() }
     internal fun upstreamSuccess() { upstreamSuccess.incrementAndGet() }
     internal fun upstreamFailure() { upstreamFailure.incrementAndGet() }
-    internal fun socketProtectionResult(protocol: DnsSocketProtectionProtocol, protected: Boolean) {
+    internal fun socketProtectionResult(protocol: DnsSocketProtectionProtocol, wasProtected: Boolean) {
         val attempts = if (protocol == DnsSocketProtectionProtocol.UDP) upstreamProtectUdpAttempts else upstreamProtectTcpAttempts
         val successes = if (protocol == DnsSocketProtectionProtocol.UDP) upstreamProtectUdpSuccess else upstreamProtectTcpSuccess
         val failures = if (protocol == DnsSocketProtectionProtocol.UDP) upstreamProtectUdpFailure else upstreamProtectTcpFailure
         attempts.incrementAndGet()
-        if (protected) successes.incrementAndGet() else failures.incrementAndGet()
+        if (wasProtected) successes.incrementAndGet() else failures.incrementAndGet()
     }
     internal fun noDnsResponse() { noDnsResponse.incrementAndGet() }
     internal fun responseBuilt() { dnsResponsesBuilt.incrementAndGet() }
