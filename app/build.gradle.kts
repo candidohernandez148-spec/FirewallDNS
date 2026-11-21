@@ -37,14 +37,24 @@ android {
         }
     }
 
+    // Fail closed only when a Release task is requested. Gradle configures all
+    // variants even for testDebugUnitTest, which must remain usable without secrets.
+    val releaseTaskRequested = gradle.startParameter.taskNames.any { taskName ->
+        taskName.substringAfterLast(":").contains("release", ignoreCase = true)
+    }
+    if (releaseTaskRequested && releaseKeystore == null) {
+        throw GradleException(
+            "Release requires the shared signing keystore. Set KEYSTORE_PATH, " +
+                "KEYSTORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD. Debug builds remain available."
+        )
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.findByName("sharedRelease")
-                ?: throw GradleException(
-                    "Release requires the shared signing keystore. Set KEYSTORE_PATH, " +
-                        "KEYSTORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD. Debug builds remain available."
-                )
+            // Null means unsigned only for non-Release tasks; Release tasks are
+            // stopped by the explicit guard above rather than falling back to debug.
+            signingConfig = releaseKeystore?.let { signingConfigs.getByName("sharedRelease") }
         }
     }
 
