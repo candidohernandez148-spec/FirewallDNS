@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,6 +52,7 @@ import com.firewall.dns.ui.screens.LogsScreen
 import com.firewall.dns.ui.screens.RulesScreen
 import com.firewall.dns.ui.screens.SecurityCenterScreen
 import com.firewall.dns.ui.screens.SocDashboardScreen
+import com.firewall.dns.ui.screens.IntegratedDiagnosticsScreen
 import com.firewall.dns.ui.theme.FirewallTheme
 import com.firewall.dns.ui.viewmodel.FirewallViewModel
 import com.firewall.dns.work.BlocklistUpdateScheduler
@@ -294,7 +296,8 @@ fun FirewallApp(
         "Monitor" to Icons.Default.Search,
         "Amenazas" to Icons.Default.Warning,
         "Protección" to Icons.Default.Lock,
-        "Sistema" to Icons.Default.Settings
+        "Sistema" to Icons.Default.Settings,
+        "Diagnóstico" to Icons.Default.BugReport
     )
 
     Scaffold(
@@ -313,7 +316,8 @@ fun FirewallApp(
                                     1 -> "Monitor DNS"
                                     2 -> "Centro de amenazas"
                                     3 -> "Protección"
-                                    else -> "Sistema y aplicaciones"
+                                    4 -> "Sistema y aplicaciones"
+                                    else -> "Diagnóstico del motor"
                                 },
                                 fontWeight = FontWeight.Bold,
                                 style = MaterialTheme.typography.titleMedium
@@ -424,6 +428,13 @@ fun FirewallApp(
                     onAppSearchChange = viewModel::onAppSearchChange,
                     onToggleExcludedApp = viewModel::toggleExcludedApp,
                     onOpenBatteryOpt = onOpenBatteryOpt,
+                    onOpenVpnSettings = onOpenVpnSettings
+                )
+                5 -> IntegratedDiagnosticsScreen(
+                    vpnRunning = stats.isRunning,
+                    engine = stats.engine,
+                    observedEvents = activityLogs.size,
+                    onToggleVpn = onToggleVpn,
                     onOpenVpnSettings = onOpenVpnSettings
                 )
             }
