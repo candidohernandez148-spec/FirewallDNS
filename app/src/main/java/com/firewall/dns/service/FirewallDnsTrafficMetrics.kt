@@ -1,5 +1,6 @@
 package com.firewall.dns.service
 
+import com.firewalldns.engine.android.AndroidSocketProtectionMetrics
 import com.firewalldns.engine.android.SmoltcpDnsTcpMetrics
 import java.util.concurrent.atomic.AtomicLong
 
@@ -32,6 +33,12 @@ object FirewallDnsTrafficMetrics {
         val cacheMisses: Long,
         val upstreamSuccess: Long,
         val upstreamFailure: Long,
+        val upstreamUdpProtectAttempts: Long,
+        val upstreamUdpProtectSuccesses: Long,
+        val upstreamUdpProtectFailures: Long,
+        val upstreamTcpProtectAttempts: Long,
+        val upstreamTcpProtectSuccesses: Long,
+        val upstreamTcpProtectFailures: Long,
         val noDnsResponse: Long,
         val dnsResponsesBuilt: Long,
         val packetsWritten: Long,
@@ -123,7 +130,9 @@ object FirewallDnsTrafficMetrics {
     }
 
     /** Returns a non-blocking point-in-time aggregate snapshot for UI/diagnostics. */
-    fun snapshot(): Snapshot = Snapshot(
+    fun snapshot(): Snapshot {
+        val socketProtection = AndroidSocketProtectionMetrics.snapshot()
+        return Snapshot(
         packetsRead = packetsRead.get(),
         queueRejected = queueRejected.get(),
         parserRejected = parserRejected.get(),
@@ -145,6 +154,12 @@ object FirewallDnsTrafficMetrics {
         cacheMisses = cacheMisses.get(),
         upstreamSuccess = upstreamSuccess.get(),
         upstreamFailure = upstreamFailure.get(),
+        upstreamUdpProtectAttempts = socketProtection.datagramAttempts,
+        upstreamUdpProtectSuccesses = socketProtection.datagramSuccesses,
+        upstreamUdpProtectFailures = socketProtection.datagramFailures,
+        upstreamTcpProtectAttempts = socketProtection.streamAttempts,
+        upstreamTcpProtectSuccesses = socketProtection.streamSuccesses,
+        upstreamTcpProtectFailures = socketProtection.streamFailures,
         noDnsResponse = noDnsResponse.get(),
         dnsResponsesBuilt = dnsResponsesBuilt.get(),
         packetsWritten = packetsWritten.get(),
@@ -159,5 +174,6 @@ object FirewallDnsTrafficMetrics {
         smoltcpResponsesQueued = smoltcpResponsesQueued.get(),
         smoltcpResponseFailures = smoltcpResponseFailures.get(),
         smoltcpNativeErrors = smoltcpNativeErrors.get(),
-    )
+        )
+    }
 }
