@@ -112,12 +112,12 @@ jobs:
           MAIN_OUTPUT="$("$APKSIGNER" verify --print-certs "$MAIN_APK" 2>&1)"
           DIAGNOSTIC_OUTPUT="$("$APKSIGNER" verify --print-certs "$DIAGNOSTIC_APK" 2>&1)"
           echo "Certificado APK FirewallDNS:"
-          printf '%s\\n' "$MAIN_OUTPUT"
+          printf '%s\n' "$MAIN_OUTPUT"
           echo "Certificado APK Diagnostic:"
-          printf '%s\\n' "$DIAGNOSTIC_OUTPUT"
+          printf '%s\n' "$DIAGNOSTIC_OUTPUT"
 
-          MAIN_CERT="$(printf '%s\\n' "$MAIN_OUTPUT" | awk -F': ' 'tolower($0) ~ /certificate sha-256 digest/ {print $NF; exit}')"
-          DIAGNOSTIC_CERT="$(printf '%s\\n' "$DIAGNOSTIC_OUTPUT" | awk -F': ' 'tolower($0) ~ /certificate sha-256 digest/ {print $NF; exit}')"
+          MAIN_CERT="$(printf '%s\n' "$MAIN_OUTPUT" | awk -F': ' 'tolower($0) ~ /certificate sha-256 digest/ {print $NF; exit}')"
+          DIAGNOSTIC_CERT="$(printf '%s\n' "$DIAGNOSTIC_OUTPUT" | awk -F': ' 'tolower($0) ~ /certificate sha-256 digest/ {print $NF; exit}')"
 
           if [[ -z "$MAIN_CERT" || -z "$DIAGNOSTIC_CERT" ]]; then
             echo "::error::No se pudo extraer la huella SHA-256 de uno o ambos APK."
