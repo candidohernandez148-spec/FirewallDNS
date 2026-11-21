@@ -154,7 +154,10 @@ class DnsFirewallService : VpnService() {
                     }
                     is DnsUpstreamResult.Failure -> {
                         FirewallDnsTrafficMetrics.upstreamAttemptFailure(attemptResult.reason)
-                        attemptResult.reason
+                        buildString {
+                            append(attemptResult.reason)
+                            attemptResult.detail?.let { append(" [").append(it).append(']') }
+                        }
                     }
                     DnsUpstreamResult.Cancelled -> "cancelada"
                 }
