@@ -204,7 +204,7 @@ fun IntegratedDiagnosticsScreen(
         Card {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Prueba DNS/TCP upstream real", style = MaterialTheme.typography.titleMedium)
-                Text("Envía una consulta DNS de prueba (example.com, tipo A) por TCP/53 a los resolvers configurados, usando los mismos sockets protegidos del servicio VPN. No crea otra VPN ni modifica las reglas.")
+                Text("Envía una consulta DNS de prueba (example.com, tipo A) por TCP/53 a los resolvers configurados, usando los mismos sockets protegidos del servicio VPN. No crea otra VPN ni modifica las reglas. Esta prueba mide la salida upstream; no inyecta una conexión TCP/53 entrante por el TUN ni valida por sí sola smoltcp. Por eso sus contadores pueden permanecer en cero.")
                 Button(
                     enabled = vpnRunning && !tcpProbeRunning,
                     onClick = {
