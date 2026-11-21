@@ -33,6 +33,13 @@ object FirewallDnsTrafficMetrics {
         val cacheMisses: Long,
         val upstreamSuccess: Long,
         val upstreamFailure: Long,
+        val upstreamAttemptFailures: Long,
+        val upstreamFailureTimeouts: Long,
+        val upstreamFailureProtection: Long,
+        val upstreamFailureIo: Long,
+        val upstreamFailureValidation: Long,
+        val upstreamFailureOther: Long,
+        val upstreamCancelled: Long,
         val upstreamProtectUdpAttempts: Long,
         val upstreamProtectUdpSuccess: Long,
         val upstreamProtectUdpFailure: Long,
@@ -77,6 +84,13 @@ object FirewallDnsTrafficMetrics {
     private val cacheMisses = AtomicLong()
     private val upstreamSuccess = AtomicLong()
     private val upstreamFailure = AtomicLong()
+    private val upstreamAttemptFailures = AtomicLong()
+    private val upstreamFailureTimeouts = AtomicLong()
+    private val upstreamFailureProtection = AtomicLong()
+    private val upstreamFailureIo = AtomicLong()
+    private val upstreamFailureValidation = AtomicLong()
+    private val upstreamFailureOther = AtomicLong()
+    private val upstreamCancelled = AtomicLong()
     private val upstreamProtectUdpAttempts = AtomicLong()
     private val upstreamProtectUdpSuccess = AtomicLong()
     private val upstreamProtectUdpFailure = AtomicLong()
@@ -120,6 +134,26 @@ object FirewallDnsTrafficMetrics {
     internal fun cacheMiss() { cacheMisses.incrementAndGet() }
     internal fun upstreamSuccess() { upstreamSuccess.incrementAndGet() }
     internal fun upstreamFailure() { upstreamFailure.incrementAndGet() }
+    internal fun upstreamAttemptFailure(reason: String) {
+        upstreamAttemptFailures.incrementAndGet()
+        when {
+            reason.contains("timeout", ignoreCase = true) ->
+                upstreamFailureTimeouts.incrementAndGet()
+            reason.contains("protection", ignoreCase = true) ||
+                reason.contains("security", ignoreCase = true) ->
+                upstreamFailureProtection.incrementAndGet()
+            reason.contains("io_error", ignoreCase = true) ||
+                reason.contains("incomplete", ignoreCase = true) ->
+                upstreamFailureIo.incrementAndGet()
+            reason.startsWith("dns_upstream_response_") ||
+                reason.contains("mismatch", ignoreCase = true) ||
+                reason.contains("malformed", ignoreCase = true) ||
+                reason.contains("truncated", ignoreCase = true) ->
+                upstreamFailureValidation.incrementAndGet()
+            else -> upstreamFailureOther.incrementAndGet()
+        }
+    }
+    internal fun upstreamCancelled() { upstreamCancelled.incrementAndGet() }
     internal fun socketProtectionResult(protocol: DnsSocketProtectionProtocol, wasProtected: Boolean) {
         val attempts = if (protocol == DnsSocketProtectionProtocol.UDP) upstreamProtectUdpAttempts else upstreamProtectTcpAttempts
         val successes = if (protocol == DnsSocketProtectionProtocol.UDP) upstreamProtectUdpSuccess else upstreamProtectTcpSuccess
@@ -173,6 +207,13 @@ object FirewallDnsTrafficMetrics {
         cacheMisses = cacheMisses.get(),
         upstreamSuccess = upstreamSuccess.get(),
         upstreamFailure = upstreamFailure.get(),
+        upstreamAttemptFailures = upstreamAttemptFailures.get(),
+        upstreamFailureTimeouts = upstreamFailureTimeouts.get(),
+        upstreamFailureProtection = upstreamFailureProtection.get(),
+        upstreamFailureIo = upstreamFailureIo.get(),
+        upstreamFailureValidation = upstreamFailureValidation.get(),
+        upstreamFailureOther = upstreamFailureOther.get(),
+        upstreamCancelled = upstreamCancelled.get(),
         upstreamProtectUdpAttempts = upstreamProtectUdpAttempts.get(),
         upstreamProtectUdpSuccess = upstreamProtectUdpSuccess.get(),
         upstreamProtectUdpFailure = upstreamProtectUdpFailure.get(),
