@@ -204,6 +204,7 @@ private fun AnimatedNetworkMap(catalogCount: Int, observedCount: Int, blockedCou
     val primary = MaterialTheme.colorScheme.primary
     val secondary = MaterialTheme.colorScheme.secondary
     val error = MaterialTheme.colorScheme.error
+    val surfaceColor = MaterialTheme.colorScheme.surface
     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -227,7 +228,7 @@ private fun AnimatedNetworkMap(catalogCount: Int, observedCount: Int, blockedCou
                 }
                 drawCircle(primary.copy(alpha = .12f + .18f * pulse), radius = 25.dp.toPx() * pulse, center = center)
                 drawCircle(primary, radius = 13.dp.toPx(), center = center)
-                drawCircle(MaterialTheme.colorScheme.surface, radius = 5.dp.toPx(), center = center)
+                drawCircle(surfaceColor, radius = 5.dp.toPx(), center = center)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 MapLegendDot(primary, "Catálogo")
