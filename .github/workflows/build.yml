@@ -89,8 +89,8 @@ jobs:
           APKSIGNER="$BUILD_TOOLS/apksigner"
           MAIN_OUTPUT="$("$APKSIGNER" verify --print-certs "$MAIN_APK" 2>&1)"
           DIAGNOSTIC_OUTPUT="$("$APKSIGNER" verify --print-certs "$DIAGNOSTIC_APK" 2>&1)"
-          MAIN_CERT="$(printf '%s\\n' "$MAIN_OUTPUT" | awk -F': ' 'tolower($0) ~ /certificate sha-256 digest/ {print $NF; exit}')"
-          DIAGNOSTIC_CERT="$(printf '%s\\n' "$DIAGNOSTIC_OUTPUT" | awk -F': ' 'tolower($0) ~ /certificate sha-256 digest/ {print $NF; exit}')"
+          MAIN_CERT="$(printf '%s\n' "$MAIN_OUTPUT" | awk -F': ' 'tolower($0) ~ /certificate sha-256 digest/ {print $NF; exit}')"
+          DIAGNOSTIC_CERT="$(printf '%s\n' "$DIAGNOSTIC_OUTPUT" | awk -F': ' 'tolower($0) ~ /certificate sha-256 digest/ {print $NF; exit}')"
           test -n "$MAIN_CERT"
           test -n "$DIAGNOSTIC_CERT"
           if [[ "$MAIN_CERT" != "$DIAGNOSTIC_CERT" ]]; then
