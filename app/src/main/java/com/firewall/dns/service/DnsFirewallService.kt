@@ -28,7 +28,6 @@ import com.firewalldns.engine.android.NativeTcpDnsTransport
 import com.firewalldns.engine.android.SmoltcpDnsTcpCoordinator
 import com.firewalldns.engine.core.PolicyAction
 import com.firewalldns.engine.dns.DnsEvaluation
-import com.firewalldns.engine.dns.DnsExchangeCancellation
 import com.firewalldns.engine.dns.DnsUpstreamConfig
 import com.firewalldns.engine.dns.DnsUpstreamFailoverClient
 import com.firewalldns.engine.dns.DnsUpstreamResult
@@ -281,15 +280,15 @@ class DnsFirewallService : VpnService() {
                             val effective = when {
                                 base is DnsEvaluation.Rejected -> base
                                 observationMode && (base is DnsEvaluation.Blocked || appBlocked) -> {
-                                    val question = when (base) {
-                                        is DnsEvaluation.Blocked -> base.question
-                                        is DnsEvaluation.Forward -> base.question
-                                        is DnsEvaluation.Rejected -> return@SmoltcpDnsTcpCoordinator base
+                                    val question = if (base is DnsEvaluation.Blocked) {
+                                        base.question
+                                    } else {
+                                        (base as DnsEvaluation.Forward).question
                                     }
-                                    val decision = when (base) {
-                                        is DnsEvaluation.Blocked -> base.decision
-                                        is DnsEvaluation.Forward -> base.decision
-                                        is DnsEvaluation.Rejected -> error("Rejected evaluation handled above")
+                                    val decision = if (base is DnsEvaluation.Blocked) {
+                                        base.decision
+                                    } else {
+                                        (base as DnsEvaluation.Forward).decision
                                     }
                                     DnsEvaluation.Forward(
                                         question,
