@@ -24,6 +24,7 @@ import com.firewall.dns.domain.engine.AppFirewallManager
 import com.firewall.dns.domain.engine.DnsPacketEngine
 import com.firewall.dns.domain.engine.TunTransportPacketParser
 import com.firewalldns.engine.android.AndroidEngineRuntime
+import com.firewalldns.engine.android.IpFragmentReassembler
 import com.firewalldns.engine.android.NativeTcpDnsTransport
 import com.firewalldns.engine.android.SmoltcpDnsTcpCoordinator
 import com.firewalldns.engine.core.PolicyAction
@@ -62,6 +63,7 @@ class DnsFirewallService : VpnService() {
         val active = AtomicBoolean(true)
         val inFlightWorkers = AtomicInteger(0)
         val tcpOwnerWake = ArrayBlockingQueue<Unit>(1)
+        val fragmentReassembler = IpFragmentReassembler()
         @Volatile var tcpCoordinator: SmoltcpDnsTcpCoordinator? = null
         @Volatile var tcpOwner: Thread? = null
         @Volatile var reader: Thread? = null
@@ -94,7 +96,6 @@ class DnsFirewallService : VpnService() {
     @Volatile private var sharedUpstream: DnsUpstreamFailoverClient? = null
 
     companion object {
-        private val IPV6_EXTENSION_HEADERS = setOf(0, 43, 44, 50, 51, 60, 135, 139, 140)
         const val ACTION_START = "com.firewall.dns.action.START_TUN"
         const val ACTION_STOP = "com.firewall.dns.action.STOP_TUN"
 
@@ -388,36 +389,48 @@ class DnsFirewallService : VpnService() {
                     if (length > 0 && session.active.get()) {
                         FirewallDnsTrafficMetrics.packetRead()
                         val copy = buffer.copyOf(length)
-                        try {
-                            executor.execute {
-                                session.inFlightWorkers.incrementAndGet()
-                                try {
-                                    // Segunda comprobación: el cierre puede ocurrir tras encolar.
-                                    if (session.active.get()) {
-                                        val isDnsTcp = isDnsTcpPacket(copy)
-                                        val tcpCoordinator = session.tcpCoordinator
-                                        if (isDnsTcp && tcpCoordinator != null) {
-                                            if (((copy[0].toInt() ushr 4) and 0x0f) == 6) FirewallDnsTrafficMetrics.ipv6Packet()
-                                            else FirewallDnsTrafficMetrics.ipv4Packet()
-                                            FirewallDnsTrafficMetrics.tcpDns()
-                                            if (tcpCoordinator.offerPacket(copy) != NativeTcpDnsTransport.RESULT_OK) {
-                                                queueRejectedPackets.incrementAndGet()
-                                                FirewallDnsTrafficMetrics.queueRejected()
-                                            }
-                                        } else {
-                                            handlePacket(copy, session)
-                                        }
-                                    }
-                                } catch (_: Exception) {
-                                    packetProcessingErrors.incrementAndGet()
-                                    FirewallDnsTrafficMetrics.workerError()
-                                } finally {
-                                    session.inFlightWorkers.decrementAndGet()
-                                }
+                        val normalized = when (val result = session.fragmentReassembler.process(copy)) {
+                            IpFragmentReassembler.Result.Pending -> continue
+                            is IpFragmentReassembler.Result.Dropped -> {
+                                FirewallDnsTrafficMetrics.parserRejected()
+                                continue
                             }
-                        } catch (_: RejectedExecutionException) {
-                            queueRejectedPackets.incrementAndGet()
-                            FirewallDnsTrafficMetrics.queueRejected()
+                            is IpFragmentReassembler.Result.Ready -> result.packet.copyOf(result.length)
+                        }
+                        session.fragmentReassembler.evictExpired()
+
+                        // Keep TCP SYN/ACK/data order: the one TUN reader feeds smoltcp
+                        // directly. DNS policy and upstream work run on per-session workers.
+                        val tcpCoordinator = session.tcpCoordinator
+                        if (tcpCoordinator != null && isDnsTcpPacket(normalized)) {
+                            if (((normalized[0].toInt() ushr 4) and 0x0f) == 6) {
+                                FirewallDnsTrafficMetrics.ipv6Packet()
+                            } else {
+                                FirewallDnsTrafficMetrics.ipv4Packet()
+                            }
+                            FirewallDnsTrafficMetrics.tcpDns()
+                            if (tcpCoordinator.offerPacket(normalized) != NativeTcpDnsTransport.RESULT_OK) {
+                                queueRejectedPackets.incrementAndGet()
+                                FirewallDnsTrafficMetrics.queueRejected()
+                            }
+                        } else {
+                            try {
+                                executor.execute {
+                                    session.inFlightWorkers.incrementAndGet()
+                                    try {
+                                        // Segunda comprobación: el cierre puede ocurrir tras encolar.
+                                        if (session.active.get()) handlePacket(normalized, session)
+                                    } catch (_: Exception) {
+                                        packetProcessingErrors.incrementAndGet()
+                                        FirewallDnsTrafficMetrics.workerError()
+                                    } finally {
+                                        session.inFlightWorkers.decrementAndGet()
+                                    }
+                                }
+                            } catch (_: RejectedExecutionException) {
+                                queueRejectedPackets.incrementAndGet()
+                                FirewallDnsTrafficMetrics.queueRejected()
+                            }
                         }
                     }
                 }
@@ -572,45 +585,22 @@ class DnsFirewallService : VpnService() {
                 if ((packet[9].toInt() and 0xff) != 6) return false
                 val fragment = ((packet[6].toInt() and 0xff) shl 8) or
                     (packet[7].toInt() and 0xff)
-                if ((fragment and 0x1fff) != 0) return false
+                // Reassembly happens before classification; reject any fragment
+                // flags that remain instead of sending a partial IP packet to smoltcp.
+                if ((fragment and 0x3fff) != 0) return false
                 val destinationPort = ((packet[headerLength + 2].toInt() and 0xff) shl 8) or
                     (packet[headerLength + 3].toInt() and 0xff)
                 destinationPort == 53
             }
             6 -> {
-                if (packet.size < 40) return false
+                // smoltcp receives plain IPv6/TCP packets only. Extension headers
+                // remain on the validated legacy fallback until separately covered.
+                if (packet.size < 60 || (packet[6].toInt() and 0xff) != 6) return false
                 val payloadLength = ((packet[4].toInt() and 0xff) shl 8) or
                     (packet[5].toInt() and 0xff)
-                if (payloadLength == 0 || 40 + payloadLength > packet.size) return false
-                val end = 40 + payloadLength
-                var nextHeader = packet[6].toInt() and 0xff
-                var offset = 40
-                var extensionCount = 0
-                while (nextHeader in IPV6_EXTENSION_HEADERS) {
-                    if (++extensionCount > 8 || offset + 2 > end) return false
-                    if (nextHeader == 44) {
-                        if (offset + 8 > end) return false
-                        val fragment = ((packet[offset + 2].toInt() and 0xff) shl 8) or
-                            (packet[offset + 3].toInt() and 0xff)
-                        if ((fragment and 0xfff8) != 0) return false
-                        nextHeader = packet[offset].toInt() and 0xff
-                        offset += 8
-                        continue
-                    }
-                    if (nextHeader == 50) return false
-                    val following = packet[offset].toInt() and 0xff
-                    val extensionLength = if (nextHeader == 51) {
-                        ((packet[offset + 1].toInt() and 0xff) + 2) * 4
-                    } else {
-                        ((packet[offset + 1].toInt() and 0xff) + 1) * 8
-                    }
-                    if (extensionLength < 8 || offset + extensionLength > end) return false
-                    nextHeader = following
-                    offset += extensionLength
-                }
-                if (nextHeader != 6 || offset + 4 > end) return false
-                val destinationPort = ((packet[offset + 2].toInt() and 0xff) shl 8) or
-                    (packet[offset + 3].toInt() and 0xff)
+                if (payloadLength < 20 || 40 + payloadLength > packet.size) return false
+                val destinationPort = ((packet[42].toInt() and 0xff) shl 8) or
+                    (packet[43].toInt() and 0xff)
                 destinationPort == 53
             }
             else -> false
@@ -734,6 +724,7 @@ class DnsFirewallService : VpnService() {
                 }
             }
             session.tcpCoordinator?.close()
+            session.fragmentReassembler.clear()
             session.tcpCoordinator?.metrics()?.let(FirewallDnsTrafficMetrics::smoltcpSnapshot)
             session.tcpCoordinator = null
             session.tcpOwner = null
