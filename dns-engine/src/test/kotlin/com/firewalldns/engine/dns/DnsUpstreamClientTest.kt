@@ -4,6 +4,7 @@ import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
 import kotlin.concurrent.thread
+import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -219,6 +220,47 @@ class DnsUpstreamClientTest {
                 val success = assertIs<DnsUpstreamResult.Success>(result)
                 assertEquals(DnsUpstreamTransport.TCP, success.response.transport)
             }
+        }
+    }
+
+    @Test fun bindsTcpSocketBeforeProtectionAndProtectsBeforeConnect() {
+        java.net.ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { server ->
+            server.soTimeout = 2_000
+            val query = query("tcp-protect.example")
+            val accepted = java.util.concurrent.CountDownLatch(1)
+            val responder = thread {
+                server.accept().use { peer ->
+                    peer.soTimeout = 2_000
+                    val input = java.io.DataInputStream(peer.getInputStream())
+                    val length = input.readUnsignedShort()
+                    val received = ByteArray(length)
+                    input.readFully(received)
+                    val response = responseFor(received)
+                    peer.getOutputStream().apply {
+                        write(DnsTcpFrameCodec.encode(response))
+                        flush()
+                    }
+                    accepted.countDown()
+                }
+            }
+            val protector = object : DnsSocketProtector {
+                override fun protect(socket: DatagramSocket) = true
+                override fun protect(socket: java.net.Socket): Boolean {
+                    assertEquals(true, socket.isBound, "Socket must have a native local endpoint before protect")
+                    assertEquals(false, socket.isConnected, "Socket must not connect before protect")
+                    return true
+                }
+            }
+
+            val result = DnsUpstreamClient(
+                DnsUpstreamConfig("127.0.0.1", server.localPort, timeoutMillis = 2_000),
+                protector,
+            ).exchangeTcpOnly(query, DnsExchangeCancellation())
+
+            assertIs<DnsUpstreamResult.Success>(result)
+            assertEquals(true, accepted.await(2, TimeUnit.SECONDS))
+            responder.join(2_000)
+            assertEquals(false, responder.isAlive)
         }
     }
 

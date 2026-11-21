@@ -127,7 +127,16 @@ class DnsFirewallService : VpnService() {
                     putString("detail", "El servicio FirewallDNS o sus resolvers protegidos no están activos.")
                 }
             }
-            return when (val result = upstream.exchangeTcp(query, DnsExchangeCancellation())) {
+            return when (val result = upstream.exchangeTcp(
+                query,
+                DnsExchangeCancellation(),
+            ) { attempt ->
+                // The forced diagnostic path bypasses normal DNS processing, so
+                // explicitly feed its failures into the same cause breakdown.
+                (attempt.result as? DnsUpstreamResult.Failure)?.let {
+                    FirewallDnsTrafficMetrics.upstreamAttemptFailure(it.reason)
+                }
+            }) {
                 is DnsUpstreamResult.Success -> Bundle().apply {
                     putBoolean("approved", result.response.transport == com.firewalldns.engine.dns.DnsUpstreamTransport.TCP)
                     putString("detail", "Transporte=${result.response.transport}; respuesta DNS validada.")
