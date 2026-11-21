@@ -490,8 +490,9 @@ class MainActivity : Activity() {
                 } == true
             }
         }
-        val upstream = manager.getLinkProperties(physical)?.dnsServers
-            ?.firstOrNull()?.hostAddress?.substringBefore('%') ?: "1.1.1.1"
+        val upstream = physical?.let { network ->
+            manager.getLinkProperties(network)?.dnsServers?.firstOrNull()?.hostAddress?.substringBefore('%')
+        } ?: "1.1.1.1"
         return listOf("1.1.1.1", "8.8.8.8", "1.0.0.1", "8.8.4.4")
             .firstOrNull { it != upstream } ?: "8.8.8.8"
     }
