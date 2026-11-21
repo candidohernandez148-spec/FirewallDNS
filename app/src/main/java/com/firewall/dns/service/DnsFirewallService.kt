@@ -355,7 +355,13 @@ class DnsFirewallService : VpnService() {
                             resolvePackageName(uid)?.also { appUidByPackage[it] = uid }
                         },
                         exchangeUpstream = { query, cancellation ->
-                            upstreamClient.exchange(query, cancellation)
+                            val result = upstreamClient.exchange(query, cancellation)
+                            when (result) {
+                                is DnsUpstreamResult.Success -> FirewallDnsTrafficMetrics.upstreamSuccess()
+                                is DnsUpstreamResult.Failure, DnsUpstreamResult.Cancelled ->
+                                    FirewallDnsTrafficMetrics.upstreamFailure()
+                            }
+                            result
                         },
                         onTunPacket = { packet -> writePacket(session, packet) },
                         wakeOwner = { session.tcpOwnerWake.offer(Unit) },
