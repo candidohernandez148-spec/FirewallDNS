@@ -437,6 +437,10 @@ fun FirewallApp(
                     logs = activityLogs,
                     customBlock = customBlock,
                     customAllow = customAllow,
+                    tunMetrics = tunMetrics,
+                    vpnRunning = stats.isRunning,
+                    smartModeEnabled = smartModeEnabled,
+                    observationModeEnabled = observationModeEnabled,
                     onSetRule = viewModel::setCustomRule
                 )
                 5 -> IntegratedDiagnosticsScreen(
