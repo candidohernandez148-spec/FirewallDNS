@@ -3,7 +3,7 @@ package com.firewalldns.engine.threat
 import com.firewalldns.engine.core.PolicyAction
 import com.firewalldns.engine.core.RuleSource
 
-enum class ThreatCategory { ADVERTISING, TRACKING, MALWARE, PHISHING, SUSPICIOUS }
+enum class ThreatCategory { ADVERTISING, TRACKING, ANALYTICS, MALWARE, PHISHING, SUSPICIOUS }
 
 data class ThreatIndicator(
     val id: String,

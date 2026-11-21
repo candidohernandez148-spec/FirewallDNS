@@ -3,6 +3,8 @@ package com.firewall.dns.domain.engine
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import com.firewalldns.engine.core.PolicyAction
+import com.firewalldns.engine.threat.ThreatAnalyzer
 import org.junit.Test
 
 class ThreatKnowledgeGraphTest {
@@ -71,6 +73,18 @@ class ThreatKnowledgeGraphTest {
     @Test fun unknownDomainsDoNotReceiveInventedPlatformRelations() {
         assertTrue(ThreatKnowledgeGraph.relationsFor("ads.unknown-social.example").isEmpty())
         assertNull(ThreatKnowledgeGraph.inspect("ads.unknown-social.example"))
+    }
+
+    @Test fun everyMapCatalogProviderHasTheSameDecisionInTheProductionThreatAnalyzer() {
+        val analyzer = ThreatAnalyzer()
+        ThreatKnowledgeGraph.catalogSnapshot().forEach { evidence ->
+            val expected = if (evidence.confidence == ThreatKnowledgeGraph.Confidence.HIGH) {
+                PolicyAction.BLOCK
+            } else {
+                PolicyAction.OBSERVE
+            }
+            assertEquals(evidence.provider, expected, analyzer.analyze(evidence.provider).action)
+        }
     }
 
     @Test fun dashboardSnapshotExposesCuratedProvidersWithoutChangingDnsDecisions() {

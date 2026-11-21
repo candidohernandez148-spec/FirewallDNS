@@ -109,8 +109,9 @@ class DnsFirewallService : VpnService() {
         @Volatile private var diagnosticInstance: DnsFirewallService? = null
 
         /**
-         * Invoked only through the signature-protected diagnostic provider.
-         * Executes on the provider Binder thread, never on the TUN packet loop.
+         * Runs the forced upstream TCP diagnostic from the in-app diagnostics screen
+         * or the legacy signature-protected provider. Call from an I/O thread, never
+         * from the TUN packet loop.
          */
         fun runDiagnosticTcpProbe(query: ByteArray): Bundle {
             if (query.size !in 12..65_535) {
@@ -139,7 +140,10 @@ class DnsFirewallService : VpnService() {
                     ?: "resolver#${attempt.resolverIndex + 1}"
                 val elapsedMs = TimeUnit.NANOSECONDS.toMillis(attempt.elapsedNanos)
                 val outcome = when (val attemptResult = attempt.result) {
-                    is DnsUpstreamResult.Success -> "OK ${attemptResult.response.transport}"
+                    is DnsUpstreamResult.Success -> {
+                        FirewallDnsTrafficMetrics.upstreamSuccess()
+                        "OK ${attemptResult.response.transport}"
+                    }
                     is DnsUpstreamResult.Failure -> {
                         FirewallDnsTrafficMetrics.upstreamAttemptFailure(attemptResult.reason)
                         attemptResult.reason
@@ -149,27 +153,36 @@ class DnsFirewallService : VpnService() {
                 attemptDetails += "$resolver: $outcome (${elapsedMs} ms)"
             }) {
                 is DnsUpstreamResult.Success -> Bundle().apply {
-                    putBoolean("approved", result.response.transport == com.firewalldns.engine.dns.DnsUpstreamTransport.TCP)
+                    putBoolean(
+                        "approved",
+                        result.response.transport == com.firewalldns.engine.dns.DnsUpstreamTransport.TCP,
+                    )
                     putString(
                         "detail",
                         "Transporte=${result.response.transport}; respuesta DNS validada. " +
                             "Intentos: ${attemptDetails.joinToString("; ")}",
                     )
                 }
-                is DnsUpstreamResult.Failure -> Bundle().apply {
-                    putBoolean("approved", false)
-                    putString(
-                        "detail",
-                        "DNS/TCP upstream falló: ${result.reason}. " +
-                            "Intentos por resolver: ${attemptDetails.joinToString("; ")}",
-                    )
+                is DnsUpstreamResult.Failure -> {
+                    FirewallDnsTrafficMetrics.upstreamFailure()
+                    Bundle().apply {
+                        putBoolean("approved", false)
+                        putString(
+                            "detail",
+                            "DNS/TCP upstream falló: ${result.reason}. " +
+                                "Intentos por resolver: ${attemptDetails.joinToString("; ")}",
+                        )
+                    }
                 }
-                DnsUpstreamResult.Cancelled -> Bundle().apply {
-                    putBoolean("approved", false)
-                    putString(
-                        "detail",
-                        "La prueba DNS/TCP fue cancelada. Intentos: ${attemptDetails.joinToString("; ")}",
-                    )
+                DnsUpstreamResult.Cancelled -> {
+                    FirewallDnsTrafficMetrics.upstreamCancelled()
+                    Bundle().apply {
+                        putBoolean("approved", false)
+                        putString(
+                            "detail",
+                            "La prueba DNS/TCP fue cancelada. Intentos: ${attemptDetails.joinToString("; ")}",
+                        )
+                    }
                 }
             }
         }

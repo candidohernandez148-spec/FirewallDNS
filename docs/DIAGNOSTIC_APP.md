@@ -1,58 +1,38 @@
-# FirewallDNS Diagnostic
+# Diagnóstico integrado de FirewallDNS
 
-Companion Android APK for exercising the shared FirewallDNS engine and validating the production VPN path on a real device.
+El diagnóstico soportado se ejecuta dentro de la aplicación principal, en la pantalla **Diagnóstico**. No requiere instalar el APK companion ni crear una segunda VPN.
 
-## Safety and architecture
+## Qué mide la pantalla integrada
 
-- This application does **not** declare or implement a `VpnService`.
-- The only production VPN remains `DnsFirewallService` in the FirewallDNS app.
-- The diagnostic APK links the same `:engine-core`, `:engine-runtime` and `:android-adapter` modules used by the host app.
-- Live counters are read through a read-only `ContentProvider` protected by the signature permission `com.firewall.dns.permission.READ_DIAGNOSTICS`.
-- The provider exports aggregate counters only. It does not expose packet payloads, queried domains, IP addresses, UIDs, package names, or browsing history.
-- Install the two APKs produced by the same CI run so Android grants the signature permission.
+- Estado del único servicio productivo `DnsFirewallService`.
+- Contadores en vivo del recorrido TUN: paquetes IPv4/IPv6, DNS UDP/TCP, decisiones, respuestas, errores y colas.
+- Contadores del transporte Rust/JNI smoltcp: sesiones, paquetes aceptados, respuestas encoladas, rechazos y errores nativos.
+- Estado de fragmentos IPv4/IPv6: aceptados, reensamblados, descartados y expirados.
+- Resultado de una prueba de límites Rust/JNI.
+- Prueba DNS/TCP upstream forzada a los resolvers activos, sin caché ni fallback UDP, usando el socket protegido de producción. La prueba requiere VPN activa y solo aprueba si recibe una respuesta DNS válida por TCP.
 
-## Test groups
+## Interpretación
 
-### In-process engine tests
+- **APROBADO**: el escenario concreto se ejecutó y cumplió su condición.
+- **FALLIDO**: el escenario se ejecutó y produjo un error medible.
+- **PENDIENTE / NO VERIFICADO**: no se ejecutó o no hay evidencia suficiente. No se debe convertir en aprobado por inferencia.
 
-- BLOCK, OBSERVE and ALLOW policy decisions against synthetic DNS questions.
-- Malformed/truncated DNS rejection.
-- Built-in threat intelligence for a known advertising domain.
-- Explicit user ALLOW precedence over a built-in indicator.
-- Per-application rule matching in the shared policy engine.
-- JNI/smoltcp native initialization with IPv4 and IPv6 address families and a poll smoke test.
+Un resultado positivo de `VpnService.protect()` solo acredita que Android aceptó excluir el socket del túnel; no acredita que el resolver responda ni que TCP/53 esté permitido en la red.
 
-### Live device tests
+## Límites conocidos
 
-Only run when Android reports an active VPN and the protected metrics provider is readable:
+- El motor inspecciona DNS tradicional en puerto 53. No afirma inspeccionar DoH, DoT ni DoQ.
+- Los contadores TUN son métricas agregadas; no equivalen a una captura completa de paquetes.
+- La pantalla expone métricas de fragmentación, pero una prueba de inyección de fragmentos a través del TUN productivo sigue pendiente.
+- La prueba nativa de límites no sustituye una prueba de tráfico TCP real a través del TUN.
+- La estabilidad prolongada, consumo de batería y CPU deben validarse en el dispositivo durante sesiones extendidas.
 
-- DNS UDP/53 over IPv4.
-- DNS TCP/53 over IPv4, including the two-byte DNS-over-TCP length prefix.
-- DNS UDP/53 and TCP/53 over IPv6 when a global IPv6 address is available.
-- Before/after deltas for DNS UDP/TCP packets, smoltcp sessions, native errors, TUN queue rejections and TUN write errors.
+## Alcance real de captura DNS
 
-The probes use synthetic requests for `example.com` and a public DNS endpoint. They do not record ordinary browsing traffic.
+El TUN configura las direcciones DNS virtuales de FirewallDNS y rutas explícitas para los resolvers públicos IPv4/IPv6 conocidos en el servicio. No instala una ruta predeterminada para todo el tráfico IP. Por tanto, una aplicación que ignore el DNS del sistema y envíe consultas a una IP DNS arbitraria que no esté entre las rutas configuradas puede quedar fuera de la captura actual. No debe afirmarse protección contra fugas DNS universal hasta cubrir y probar ese escenario.
 
-## Explicitly not verified by this APK yet
+El tráfico general TCP/UDP tampoco se reenvía a través de este motor; la inspección de esta etapa se limita a DNS/53. DoH, DoT y DoQ permanecen fuera de cobertura.
 
-These are deliberately reported as **NO VERIFICADO**, not passed:
+## Privacidad
 
-- IPv4/IPv6 fragment reassembly through the production TUN.
-- The actual `VpnService.protect()` result for upstream sockets.
-- Persistence and real-time behavior of the intelligent learning store.
-- Blocklist download integrity, hashes and 24-hour refresh behavior.
-- DoH, DoT or DoQ inspection. Intercepting DNS/53 does not prove inspection of encrypted DNS.
-- Long-duration stability, CPU and battery consumption.
-- Full packet-level TCP edge cases (retransmission, out-of-order delivery, FIN/RST, backpressure) on the physical device.
-
-These require additional read-only diagnostic hooks or dedicated instrumented tests in the production service. The diagnostic app must not create a second VPN to simulate them.
-
-## Report
-
-The app creates `FirewallDNS_Diagnostico_<timestamp>.zip` with:
-
-- `diagnostico.json`: machine-readable test outcomes and elapsed times.
-- `diagnostico.txt`: human-readable APROBADO/FALLIDO/NO VERIFICADO summary.
-- `metricas_iniciales.csv` and `metricas_finales.csv`: aggregate counters from the main app.
-
-No DNS payloads or personal browsing history are included.
+El informe compartido contiene estado y métricas agregadas. No debe incluir payloads DNS, historial de navegación, direcciones IP consultadas ni identificadores de aplicaciones.

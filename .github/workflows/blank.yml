@@ -44,6 +44,7 @@ jobs:
         with:
           gradle-version: "8.14"
 
+
       # Reuse the exact signing JKS that produced previous published APKs.
       # Restore-only: never create or overwrite a cache entry with a new random key.
       - name: Restaurar identidad de firma anterior
@@ -93,71 +94,25 @@ jobs:
       - name: Ejecutar pruebas unitarias
         run: gradle testDebugUnitTest --no-daemon --stacktrace
 
-      - name: Compilar ambos APK Release con la misma firma
-        run: |
-          gradle :app:assembleRelease :diagnostic-app:assembleRelease --no-daemon --stacktrace
+      - name: Compilar APK FirewallDNS Release
+        run: gradle :app:assembleRelease --no-daemon --stacktrace
 
-      - name: Verificar motor Rust/JNI dentro de ambos APK Release
+      - name: Verificar motor Rust/JNI en FirewallDNS Release
         shell: bash
         run: |
           set -euo pipefail
-          for apk in app/build/outputs/apk/release/app-release.apk diagnostic-app/build/outputs/apk/release/diagnostic-app-release.apk; do
-            test -s "$apk"
-            if ! unzip -l "$apk" | grep -q 'lib/arm64-v8a/libfirewalldns_native.so'; then
-              echo "::error::El APK Release no contiene el motor nativo ARM64: $apk"
-              exit 1
-            fi
-            echo "Motor Rust/JNI ARM64 incluido: $apk"
-          done
-
-      - name: Verificar certificado compartido entre APK
-        shell: bash
-        run: |
-          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libfirewalldns_native.so' || {
+            echo "::error::El APK Release no contiene el motor nativo ARM64"; exit 1;
+          }
           BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
-          APKSIGNER="$BUILD_TOOLS/apksigner"
-          MAIN_APK="app/build/outputs/apk/release/app-release.apk"
-          DIAGNOSTIC_APK="diagnostic-app/build/outputs/apk/release/diagnostic-app-release.apk"
-          for apk in "$MAIN_APK" "$DIAGNOSTIC_APK"; do
-            if [[ ! -s "$apk" ]]; then
-              echo "::error::No se encontró el APK esperado: $apk"
-              exit 1
-            fi
-            "$APKSIGNER" verify "$apk"
-          done
-
-          MAIN_OUTPUT="$("$APKSIGNER" verify --print-certs "$MAIN_APK" 2>&1)"
-          DIAGNOSTIC_OUTPUT="$("$APKSIGNER" verify --print-certs "$DIAGNOSTIC_APK" 2>&1)"
-          echo "Certificado APK FirewallDNS:"
-          printf '%s\n' "$MAIN_OUTPUT"
-          echo "Certificado APK Diagnostic:"
-          printf '%s\n' "$DIAGNOSTIC_OUTPUT"
-
-          MAIN_CERT="$(printf '%s\n' "$MAIN_OUTPUT" | awk -F': ' 'tolower($0) ~ /certificate sha-256 digest/ {print $NF; exit}')"
-          DIAGNOSTIC_CERT="$(printf '%s\n' "$DIAGNOSTIC_OUTPUT" | awk -F': ' 'tolower($0) ~ /certificate sha-256 digest/ {print $NF; exit}')"
-
-          if [[ -z "$MAIN_CERT" || -z "$DIAGNOSTIC_CERT" ]]; then
-            echo "::error::No se pudo extraer la huella SHA-256 de uno o ambos APK."
-            exit 1
-          fi
-          if [[ "$MAIN_CERT" != "$DIAGNOSTIC_CERT" ]]; then
-            echo "::error::Las firmas son diferentes."
-            echo "FirewallDNS: $MAIN_CERT"
-            echo "Diagnostic: $DIAGNOSTIC_CERT"
-            exit 1
-          fi
-          echo "Certificado compartido verificado: $MAIN_CERT"
+          "$BUILD_TOOLS/apksigner" verify "$APK"
+          echo "APK FirewallDNS Release: motor Rust/JNI ARM64 y firma verificados"
 
       - name: Subir APK FirewallDNS
         uses: actions/upload-artifact@v7
         with:
           name: FirewallDNS-APK
           path: app/build/outputs/apk/release/app-release.apk
-          if-no-files-found: error
-
-      - name: Subir APK de diagnóstico
-        uses: actions/upload-artifact@v7
-        with:
-          name: FirewallDNS-Diagnostic-APK
-          path: diagnostic-app/build/outputs/apk/release/diagnostic-app-release.apk
           if-no-files-found: error
