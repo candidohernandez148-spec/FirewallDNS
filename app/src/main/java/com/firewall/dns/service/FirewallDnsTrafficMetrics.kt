@@ -1,6 +1,7 @@
 package com.firewall.dns.service
 
 import com.firewalldns.engine.android.DnsSocketProtectionProtocol
+import com.firewalldns.engine.android.FragmentReassemblerMetrics
 import com.firewalldns.engine.android.SmoltcpDnsTcpMetrics
 import java.util.concurrent.atomic.AtomicLong
 
@@ -61,6 +62,13 @@ object FirewallDnsTrafficMetrics {
         val smoltcpResponsesQueued: Long,
         val smoltcpResponseFailures: Long,
         val smoltcpNativeErrors: Long,
+        val fragmentsAccepted: Long,
+        val packetsReassembled: Long,
+        val fragmentsDroppedInvalid: Long,
+        val fragmentsDroppedLimit: Long,
+        val fragmentAssembliesExpired: Long,
+        val fragmentPendingAssemblies: Long,
+        val fragmentBufferedBytes: Long,
     )
 
     private val packetsRead = AtomicLong()
@@ -112,6 +120,13 @@ object FirewallDnsTrafficMetrics {
     private val smoltcpResponsesQueued = AtomicLong()
     private val smoltcpResponseFailures = AtomicLong()
     private val smoltcpNativeErrors = AtomicLong()
+    private val fragmentsAccepted = AtomicLong()
+    private val packetsReassembled = AtomicLong()
+    private val fragmentsDroppedInvalid = AtomicLong()
+    private val fragmentsDroppedLimit = AtomicLong()
+    private val fragmentAssembliesExpired = AtomicLong()
+    private val fragmentPendingAssemblies = AtomicLong()
+    private val fragmentBufferedBytes = AtomicLong()
 
     internal fun packetRead() { packetsRead.incrementAndGet() }
     internal fun queueRejected() { queueRejected.incrementAndGet() }
@@ -173,6 +188,16 @@ object FirewallDnsTrafficMetrics {
         smoltcpTransportAvailable.set(0L)
         smoltcpSessionsActive.set(0L)
     }
+    internal fun fragmentSnapshot(metrics: FragmentReassemblerMetrics) {
+        fragmentsAccepted.set(metrics.fragmentsAccepted)
+        packetsReassembled.set(metrics.packetsReassembled)
+        fragmentsDroppedInvalid.set(metrics.fragmentsDroppedInvalid)
+        fragmentsDroppedLimit.set(metrics.fragmentsDroppedLimit)
+        fragmentAssembliesExpired.set(metrics.assembliesExpired)
+        fragmentPendingAssemblies.set(metrics.pendingAssemblies.toLong())
+        fragmentBufferedBytes.set(metrics.bufferedBytes.toLong())
+    }
+
     internal fun smoltcpSnapshot(metrics: SmoltcpDnsTcpMetrics) {
         smoltcpTransportAvailable.set(1L)
         smoltcpSessionsActive.set(metrics.activeSessions.toLong())
@@ -237,5 +262,12 @@ object FirewallDnsTrafficMetrics {
         smoltcpResponsesQueued = smoltcpResponsesQueued.get(),
         smoltcpResponseFailures = smoltcpResponseFailures.get(),
         smoltcpNativeErrors = smoltcpNativeErrors.get(),
+        fragmentsAccepted = fragmentsAccepted.get(),
+        packetsReassembled = packetsReassembled.get(),
+        fragmentsDroppedInvalid = fragmentsDroppedInvalid.get(),
+        fragmentsDroppedLimit = fragmentsDroppedLimit.get(),
+        fragmentAssembliesExpired = fragmentAssembliesExpired.get(),
+        fragmentPendingAssemblies = fragmentPendingAssemblies.get(),
+        fragmentBufferedBytes = fragmentBufferedBytes.get(),
     )
 }
