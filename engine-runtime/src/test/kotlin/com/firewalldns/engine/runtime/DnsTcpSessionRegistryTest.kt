@@ -104,6 +104,32 @@ class DnsTcpSessionRegistryTest {
     }
 
     @Test
+    fun expiresIncompleteFrameIndependentlyOfIdleConnectionDeadline() {
+        val clock = AtomicLong(100L)
+        val registry = registry(
+            idleTimeoutNanos = 60_000_000_000L,
+            nowNanos = { clock.get() },
+            incompleteFrameTimeoutNanos = 10L,
+        )
+        try {
+            assertEquals(DnsTcpSessionRegistry.OpenResult.Opened, registry.openSession(77))
+            assertEquals(
+                DnsTcpSessionRegistry.OfferResult.WorkerResult(DnsTcpSessionWorker.OfferResult.Accepted),
+                registry.offer(77, byteArrayOf(0x00)),
+            )
+            repeat(100) {
+                if (registry.isIdle(77)) return@repeat
+                Thread.sleep(5)
+            }
+            clock.set(111L)
+            assertEquals(listOf(77L), registry.expireIdleSessions())
+            assertEquals(0, registry.activeSessionCount)
+        } finally {
+            registry.close()
+        }
+    }
+
+    @Test
     fun closeAllIsIdempotentAndRejectsFurtherSessions() {
         val registry = registry()
         registry.openSession(1)
@@ -119,6 +145,7 @@ class DnsTcpSessionRegistryTest {
         nowNanos: () -> Long = System::nanoTime,
         cancel: (Long) -> Unit = {},
         onReady: (Long) -> Unit = {},
+        incompleteFrameTimeoutNanos: Long = DnsTcpSessionProcessor.DEFAULT_INCOMPLETE_FRAME_TIMEOUT_NANOS,
     ) = DnsTcpSessionRegistry(
         processorFactory = {
             DnsTcpSessionProcessor(
@@ -128,6 +155,8 @@ class DnsTcpSessionRegistryTest {
                         DnsUpstreamResponse(response(message), DnsUpstreamTransport.UDP),
                     )
                 },
+                incompleteFrameTimeoutNanos = incompleteFrameTimeoutNanos,
+                clockNanos = nowNanos,
             )
         },
         cancelUpstream = cancel,

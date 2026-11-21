@@ -50,6 +50,8 @@ class DnsTcpSessionWorker(
     }
 
     val isClosed: Boolean get() = closed.get()
+    fun isIncompleteFrameExpired(nowNanos: Long): Boolean = processor.isIncompleteFrameExpired(nowNanos)
+
     val isIdle: Boolean
         get() = synchronized(inputLock) {
             !pendingWork && !processing.get() && input.isEmpty() &&

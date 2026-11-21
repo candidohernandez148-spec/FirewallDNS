@@ -134,7 +134,10 @@ class DnsTcpSessionRegistry(
     fun expireIdleSessions(now: Long = nowNanos()): List<Long> {
         val expired = synchronized(lock) {
             val ids = sessions.entries
-                .filter { (_, entry) -> now - entry.lastActivityNanos.get() >= idleTimeoutNanos }
+                .filter { (_, entry) ->
+                    entry.worker.isIncompleteFrameExpired(now) ||
+                        now - entry.lastActivityNanos.get() >= idleTimeoutNanos
+                }
                 .map { it.key }
             ids.mapNotNull { id -> sessions.remove(id)?.let { id to it } }
         }
