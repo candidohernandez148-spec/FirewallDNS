@@ -340,15 +340,15 @@ private fun ThreeDimensionalMindMap(selectedNode: String, onSelectNode: (String)
                         basePaint.textAlign = Paint.Align.CENTER
                         basePaint.typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
                         basePaint.textSize = 10.5f * density
-                        canvas.drawText(node.label, point.x, point.y + nodeRadius + 15f * resourcesDensity(), basePaint)
+                        canvas.drawText(node.label, point.x, point.y + nodeRadius + 15f * density, basePaint)
                     }
 
                     // Core label remains visually dominant and readable.
                     basePaint.color = onSurface.toArgb()
                     basePaint.textAlign = Paint.Align.CENTER
-                    basePaint.textSize = 9f * resourcesDensity()
+                    basePaint.textSize = 9f * density
                     basePaint.typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
-                    canvas.drawText("NÚCLEO", centerX, centerY + 3f * resourcesDensity(), basePaint)
+                    canvas.drawText("NÚCLEO", centerX, centerY + 3f * density, basePaint)
                 }
             }
             Text("Selecciona un nodo para consultar su función. Las órbitas y partículas son animación de interfaz, no tráfico simulado.",
