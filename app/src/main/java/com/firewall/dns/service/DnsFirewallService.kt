@@ -281,7 +281,7 @@ class DnsFirewallService : VpnService() {
                     SmoltcpDnsTcpCoordinator(
                         transport = nativeTransport,
                         evaluateDns = { query, appPackage ->
-                            val base = engineRuntime.engine.evaluateDns(query, appPackage)
+                            val base = (sharedEngine ?: engineRuntime).engine.evaluateDns(query, appPackage)
                             val uid = appPackage?.let(appUidByPackage::get) ?: Process.INVALID_UID
                             val appBlocked = uid >= 0 && AppFirewallManager.isUidBlocked(uid)
                             val observationMode = FirewallRepository.isObservationModeEnabled()
@@ -355,7 +355,7 @@ class DnsFirewallService : VpnService() {
                             resolvePackageName(uid)?.also { appUidByPackage[it] = uid }
                         },
                         exchangeUpstream = { query, cancellation ->
-                            val result = upstreamClient.exchange(query, cancellation)
+                            val result = (sharedUpstream ?: upstreamClient).exchange(query, cancellation)
                             when (result) {
                                 is DnsUpstreamResult.Success -> FirewallDnsTrafficMetrics.upstreamSuccess()
                                 is DnsUpstreamResult.Failure, DnsUpstreamResult.Cancelled ->
