@@ -55,3 +55,15 @@ app/src/main/java/com/firewall/dns/
 │   ├── screens/       # Pantallas Jetpack Compose (LogsScreen, RulesScreen, AppsSettingsScreen)
 │   └── theme/         # Paleta clara/oscura, tipografía y formas (Theme)
 └── MainActivity.kt    # Punto de entrada, permisos de red/notificaciones y visor de fallos
+
+## Diagnóstico integral del motor
+
+El módulo `:diagnostic-app` genera un segundo APK llamado **FirewallDNS Diagnostic**. Instala los dos APK incluidos en el mismo artefacto de GitHub Actions:
+
+1. Instala o actualiza **Firewall DNS**.
+2. Instala **FirewallDNS Diagnostic** del mismo artefacto de compilación.
+3. Abre Firewall DNS y activa la protección.
+4. Abre FirewallDNS Diagnostic y pulsa **EJECUTAR DIAGNÓSTICO COMPLETO**.
+5. Exporta el ZIP generado y comparte el informe para revisar los resultados.
+
+La aplicación de diagnóstico no crea otra VPN. Lee únicamente contadores agregados mediante un proveedor protegido por permiso de firma. Los resultados distinguen **APROBADO**, **FALLIDO** y **NO VERIFICADO**. Consulta [docs/DIAGNOSTIC_APP.md](docs/DIAGNOSTIC_APP.md) para conocer el alcance y las limitaciones de cada prueba.
