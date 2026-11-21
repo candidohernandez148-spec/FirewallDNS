@@ -78,6 +78,13 @@ fun IntegratedDiagnosticsScreen(
             put("upstreamTcpProtectAttempts", metrics.upstreamTcpProtectAttempts)
             put("upstreamTcpProtectSuccesses", metrics.upstreamTcpProtectSuccesses)
             put("upstreamTcpProtectFailures", metrics.upstreamTcpProtectFailures)
+            put("fragmentPendingAssemblies", metrics.fragmentPendingAssemblies)
+            put("fragmentBufferedBytes", metrics.fragmentBufferedBytes)
+            put("fragmentsAccepted", metrics.fragmentsAccepted)
+            put("fragmentPacketsReassembled", metrics.fragmentPacketsReassembled)
+            put("fragmentDroppedInvalid", metrics.fragmentDroppedInvalid)
+            put("fragmentDroppedLimit", metrics.fragmentDroppedLimit)
+            put("fragmentAssembliesExpired", metrics.fragmentAssembliesExpired)
             put("noDnsResponse", metrics.noDnsResponse)
             put("packetsWritten", metrics.packetsWritten)
             put("writeErrors", metrics.writeErrors)
@@ -93,7 +100,6 @@ fun IntegratedDiagnosticsScreen(
             put("smoltcpNativeErrors", metrics.smoltcpNativeErrors)
         })
         put("notVerified", listOf(
-            "fragment reassembly success/failure (no dedicated counter)",
             "DoH/DoT/DoQ inspection",
             "long-duration CPU and battery behavior on device"
         ))
@@ -188,9 +194,19 @@ fun IntegratedDiagnosticsScreen(
         }
         Card {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Reensamblado de fragmentos IP", style = MaterialTheme.typography.titleMedium)
+                Metric("Fragmentos aceptados", metrics.fragmentsAccepted)
+                Metric("Paquetes reensamblados", metrics.fragmentPacketsReassembled)
+                Metric("Pendientes / bytes en memoria", metrics.fragmentPendingAssemblies, metrics.fragmentBufferedBytes)
+                Metric("Descartados inválidos / por límite", metrics.fragmentDroppedInvalid, metrics.fragmentDroppedLimit)
+                Metric("Ensamblajes expirados", metrics.fragmentAssembliesExpired)
+            }
+        }
+        Card {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Cobertura y límites", style = MaterialTheme.typography.titleMedium)
                 Text("MEDIDO: contadores del recorrido TUN real mientras FirewallDNS está activo.")
-                Text("MEDIDO: resultados true/false de VpnService.protect() para sockets upstream UDP/TCP. NO VERIFICADO: éxito del reensamblado de fragmentos en una sesión de tráfico real y estabilidad prolongada de CPU/batería.")
+                Text("MEDIDO: resultados true/false de VpnService.protect() y contadores reales de reensamblado IP. Una sesión sin fragmentos mostrará cero; la estabilidad prolongada de CPU/batería requiere una prueba de carga.")
                 Text("Fuera del alcance de inspección DNS/53: DoH, DoT y DoQ. No se presentan como tráfico inspeccionado.")
                 Button(onClick = {
                     val send = Intent(Intent.ACTION_SEND).apply {
