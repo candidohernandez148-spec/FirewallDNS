@@ -9,7 +9,6 @@ on:
       - "dns-engine/**"
       - "engine-runtime/**"
       - "app/**"
-      - "diagnostic-app/**"
       - "build.gradle.kts"
       - "settings.gradle.kts"
       - ".github/workflows/build.yml"
@@ -56,42 +55,20 @@ jobs:
       - name: Ejecutar pruebas unitarias
         run: gradle testDebugUnitTest test --no-daemon --stacktrace
 
-      - name: Compilar APK FirewallDNS y APK de diagnóstico
-        run: gradle :app:assembleDebug :diagnostic-app:assembleDebug --no-daemon --stacktrace
+      - name: Compilar APK FirewallDNS
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
 
-      - name: Verificar motor Rust/JNI dentro de ambos APK
+      - name: Verificar motor Rust/JNI en APK FirewallDNS
         shell: bash
         run: |
           set -euo pipefail
-          for apk in app/build/outputs/apk/debug/app-debug.apk diagnostic-app/build/outputs/apk/debug/diagnostic-app-debug.apk; do
-            test -s "$apk"
-            if ! unzip -l "$apk" | grep -q 'lib/arm64-v8a/libfirewalldns_native.so'; then
-              echo "::error::El APK no contiene el motor nativo ARM64: $apk"
-              exit 1
-            fi
-            echo "Motor Rust/JNI ARM64 incluido: $apk"
-          done
-
-      - name: Verificar certificado compartido en Debug
-        shell: bash
-        run: |
-          set -euo pipefail
-          MAIN_APK="app/build/outputs/apk/debug/app-debug.apk"
-          DIAGNOSTIC_APK="diagnostic-app/build/outputs/apk/debug/diagnostic-app-debug.apk"
-          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
-          APKSIGNER="$BUILD_TOOLS/apksigner"
-          MAIN_OUTPUT="$("$APKSIGNER" verify --print-certs "$MAIN_APK" 2>&1)"
-          DIAGNOSTIC_OUTPUT="$("$APKSIGNER" verify --print-certs "$DIAGNOSTIC_APK" 2>&1)"
-          MAIN_CERT="$(printf '%s\\n' "$MAIN_OUTPUT" | awk -F': ' 'tolower($0) ~ /certificate sha-256 digest/ {print $NF; exit}')"
-          DIAGNOSTIC_CERT="$(printf '%s\\n' "$DIAGNOSTIC_OUTPUT" | awk -F': ' 'tolower($0) ~ /certificate sha-256 digest/ {print $NF; exit}')"
-          test -n "$MAIN_CERT"
-          test -n "$DIAGNOSTIC_CERT"
-          test "$MAIN_CERT" = "$DIAGNOSTIC_CERT"
-          echo "Los dos APK Debug comparten certificado: $MAIN_CERT"
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libfirewalldns_native.so'
+          echo "APK FirewallDNS Debug: motor Rust/JNI ARM64 incluido"
 
       - uses: actions/upload-artifact@v4
         with:
           name: FirewallDNS-debug-apks
           path: |
             app/build/outputs/apk/debug/*.apk
-            diagnostic-app/build/outputs/apk/debug/*.apk
