@@ -608,7 +608,9 @@ class DnsFirewallService : VpnService() {
         if (shouldBlock) {
             dnsResponse = DnsPacketEngine.buildNxDomainResponse(dnsPayload, query.questionEndOffset)
         } else {
-            val cacheKey = "${query.domain.lowercase()}:${query.qType}:${upstreamSnapshot?.resolvers.orEmpty().joinToString(",")}"
+            // Use one network generation for both the cache identity and the exchange.
+            val queryUpstream = upstreamSnapshot
+            val cacheKey = "${query.domain.lowercase()}:${query.qType}:${queryUpstream?.resolvers.orEmpty().joinToString(",")}"
             val now = System.currentTimeMillis()
             val cached = dnsCache[cacheKey]?.takeIf { it.expiresAt > now }
             val cachedResponse = cached?.response?.copyOf()?.apply {
@@ -620,7 +622,7 @@ class DnsFirewallService : VpnService() {
                 dnsResponse = cachedResponse
             } else {
                 FirewallDnsTrafficMetrics.cacheMiss()
-                val upstreamResult = upstreamSnapshot?.client?.exchange(
+                val upstreamResult = queryUpstream?.client?.exchange(
                     dnsPayload,
                     DnsExchangeCancellation(),
                 ) { attempt ->
