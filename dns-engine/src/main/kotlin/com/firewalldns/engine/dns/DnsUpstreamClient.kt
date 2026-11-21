@@ -55,7 +55,7 @@ data class DnsUpstreamResponse(
 
 sealed interface DnsUpstreamResult {
     data class Success(val response: DnsUpstreamResponse) : DnsUpstreamResult
-    data class Failure(val reason: String) : DnsUpstreamResult
+    data class Failure(val reason: String, val detail: String? = null) : DnsUpstreamResult
     data object Cancelled : DnsUpstreamResult
 }
 
@@ -153,55 +153,87 @@ class DnsUpstreamClient(
         UdpAttempt.Failure("dns_upstream_udp_endpoint_invalid")
     }
 
-    private fun exchangeTcp(query: ByteArray, question: DnsQuestion, cancellation: DnsExchangeCancellation): DnsUpstreamResult = try {
-        Socket().use { socket ->
-            if (!cancellation.register(socket)) return DnsUpstreamResult.Cancelled
-            try {
-            // Android's Socket may defer creation of its native descriptor until
-            // bind/connect. VpnService.protect(Socket) needs a live descriptor,
-            // while protection must still happen before connect to avoid the TUN.
-            // Bind an ephemeral local port first; this creates the descriptor
-            // without selecting or connecting a network route.
-            socket.bind(InetSocketAddress(0))
-            val wasProtected = cancellation.protectSocket(socket) {
-                socketProtector.protect(socket)
-            } ?: return DnsUpstreamResult.Cancelled
-            if (!wasProtected) {
-                return DnsUpstreamResult.Failure("dns_upstream_tcp_socket_protection_failed")
+    private fun exchangeTcp(
+        query: ByteArray,
+        question: DnsQuestion,
+        cancellation: DnsExchangeCancellation,
+    ): DnsUpstreamResult {
+        var stage = "socket_create"
+        return try {
+            Socket().use { socket ->
+                if (!cancellation.register(socket)) return DnsUpstreamResult.Cancelled
+                try {
+                    // Android may defer creation of its native descriptor until
+                    // bind/connect. Bind an ephemeral port before protect(), then
+                    // protect before connect so upstream traffic cannot loop into TUN.
+                    stage = "socket_bind"
+                    socket.bind(InetSocketAddress(0))
+                    stage = "socket_protect"
+                    val wasProtected = cancellation.protectSocket(socket) {
+                        socketProtector.protect(socket)
+                    } ?: return DnsUpstreamResult.Cancelled
+                    if (!wasProtected) {
+                        return DnsUpstreamResult.Failure("dns_upstream_tcp_socket_protection_failed")
+                    }
+
+                    stage = "socket_connect"
+                    socket.connect(InetSocketAddress(config.host, config.port), config.timeoutMillis)
+                    socket.soTimeout = config.timeoutMillis
+
+                    stage = "write_query"
+                    socket.getOutputStream().apply {
+                        write(DnsTcpFrameCodec.encode(query))
+                        flush()
+                    }
+
+                    stage = "read_frame_length"
+                    val input = DataInputStream(socket.getInputStream())
+                    val frameLength = input.readUnsignedShort()
+                    if (frameLength < DNS_HEADER_SIZE) {
+                        return DnsUpstreamResult.Failure("dns_upstream_tcp_frame_too_short")
+                    }
+
+                    stage = "read_response_body"
+                    val response = ByteArray(frameLength)
+                    input.readFully(response)
+                    stage = "validate_response"
+                    val invalidReason = validateResponse(query, question, response)
+                    if (invalidReason != null) return DnsUpstreamResult.Failure(invalidReason)
+                    if (flags(response) and FLAG_TRUNCATED != 0) {
+                        return DnsUpstreamResult.Failure("dns_upstream_tcp_response_truncated")
+                    }
+                    DnsUpstreamResult.Success(DnsUpstreamResponse(response, DnsUpstreamTransport.TCP))
+                } finally {
+                    cancellation.unregister(socket)
+                }
             }
-            socket.connect(InetSocketAddress(config.host, config.port), config.timeoutMillis)
-            socket.soTimeout = config.timeoutMillis
-            socket.getOutputStream().apply {
-                write(DnsTcpFrameCodec.encode(query))
-                flush()
-            }
-            val input = DataInputStream(socket.getInputStream())
-            val frameLength = input.readUnsignedShort()
-            if (frameLength < DNS_HEADER_SIZE) {
-                return DnsUpstreamResult.Failure("dns_upstream_tcp_frame_too_short")
-            }
-            val response = ByteArray(frameLength)
-            input.readFully(response)
-            val invalidReason = validateResponse(query, question, response)
-            if (invalidReason != null) return DnsUpstreamResult.Failure(invalidReason)
-            if (flags(response) and FLAG_TRUNCATED != 0) {
-                return DnsUpstreamResult.Failure("dns_upstream_tcp_response_truncated")
-            }
-            DnsUpstreamResult.Success(DnsUpstreamResponse(response, DnsUpstreamTransport.TCP))
-            } finally {
-                cancellation.unregister(socket)
-            }
+        } catch (error: SocketTimeoutException) {
+            if (cancellation.isCancelled) DnsUpstreamResult.Cancelled
+            else DnsUpstreamResult.Failure(
+                "dns_upstream_tcp_timeout",
+                "$stage:${error.javaClass.simpleName}",
+            )
+        } catch (error: EOFException) {
+            if (cancellation.isCancelled) DnsUpstreamResult.Cancelled
+            else DnsUpstreamResult.Failure(
+                "dns_upstream_tcp_response_incomplete",
+                "$stage:${error.javaClass.simpleName}",
+            )
+        } catch (error: SecurityException) {
+            if (cancellation.isCancelled) DnsUpstreamResult.Cancelled
+            else DnsUpstreamResult.Failure(
+                "dns_upstream_tcp_security_error",
+                "$stage:${error.javaClass.simpleName}",
+            )
+        } catch (error: IOException) {
+            if (cancellation.isCancelled) DnsUpstreamResult.Cancelled
+            else DnsUpstreamResult.Failure(
+                "dns_upstream_tcp_io_error",
+                "$stage:${error.javaClass.simpleName}:${error.message.orEmpty().take(120)}",
+            )
+        } catch (_: IllegalArgumentException) {
+            DnsUpstreamResult.Failure("dns_upstream_tcp_endpoint_invalid")
         }
-    } catch (_: SocketTimeoutException) {
-        if (cancellation.isCancelled) DnsUpstreamResult.Cancelled else DnsUpstreamResult.Failure("dns_upstream_tcp_timeout")
-    } catch (_: EOFException) {
-        if (cancellation.isCancelled) DnsUpstreamResult.Cancelled else DnsUpstreamResult.Failure("dns_upstream_tcp_response_incomplete")
-    } catch (_: SecurityException) {
-        if (cancellation.isCancelled) DnsUpstreamResult.Cancelled else DnsUpstreamResult.Failure("dns_upstream_tcp_security_error")
-    } catch (_: IOException) {
-        if (cancellation.isCancelled) DnsUpstreamResult.Cancelled else DnsUpstreamResult.Failure("dns_upstream_tcp_io_error")
-    } catch (_: IllegalArgumentException) {
-        DnsUpstreamResult.Failure("dns_upstream_tcp_endpoint_invalid")
     }
 
     private fun validateResponse(query: ByteArray, question: DnsQuestion, response: ByteArray): String? {
