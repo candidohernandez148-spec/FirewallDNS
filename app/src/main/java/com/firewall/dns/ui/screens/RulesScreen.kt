@@ -78,7 +78,7 @@ fun RulesScreen(
         item {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Reglas y listas", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Text("Controla qué dominios se bloquean o permiten.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Bloqueo y observación funcionan juntos: las reglas se aplican y cada consulta se registra en tiempo real.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
 
@@ -102,30 +102,6 @@ fun RulesScreen(
                         )
                     }
                     Switch(checked = smartModeEnabled, onCheckedChange = onToggleSmartMode)
-                }
-            }
-        }
-
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                        Text("Modo de observación DNS", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text(
-                            "En DNS por UDP registra las decisiones y reenvía las consultas en lugar de bloquearlas. La ruta DNS TCP tiene evaluación diferenciada; revisa Diagnóstico para comprobarla.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(checked = observationModeEnabled, onCheckedChange = onToggleObservationMode)
                 }
             }
         }
