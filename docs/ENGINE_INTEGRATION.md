@@ -25,9 +25,9 @@ El campo `USE_SHARED_ENGINE` de `app/build.gradle.kts` funciona como interruptor
 
 ## Semántica
 
-- `BLOCK` bloquea cuando el modo de observación está desactivado.
-- El modo de observación convierte el resultado efectivo en no bloqueante y lo registra como `OBSERVE`.
-- `ALLOW` y `OBSERVE` reenvían la consulta.
+- `BLOCK` bloquea siempre, también mientras la observación está activa.
+- La observación es telemetría continua y pasiva: las consultas DNS se registran mientras se aplican las decisiones de bloqueo y permiso. No existe un modo global que desactive los bloqueos.
+- `ALLOW` y `OBSERVE` reenvían la consulta; `OBSERVE` identifica una decisión no bloqueante con indicadores sospechosos.
 - Las reglas personalizadas tienen prioridad sobre las listas administradas; las excepciones administradas prevalecen sobre los bloqueos de listas.
 - El análisis de amenazas puede desactivarse con la preferencia existente de modo inteligente.
 - La protección sigue siendo DNS-only. No se inspeccionan tráfico TCP/UDP general, DoH ni DoT.

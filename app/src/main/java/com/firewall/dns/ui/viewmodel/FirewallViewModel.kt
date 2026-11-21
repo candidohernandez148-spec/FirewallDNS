@@ -142,13 +142,8 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
         FirewallRepository.setSmartModeEnabled(enabled)
     }
 
-    fun setObservationModeEnabled(enabled: Boolean) {
-        FirewallRepository.setObservationModeEnabled(enabled)
-        _toastMessage.tryEmit(
-            if (enabled) "Modo observación activo: las consultas DNS UDP se reenvían sin aplicar bloqueos; DNS TCP tiene una ruta diferenciada."
-            else "Modo de bloqueo DNS UDP activo."
-        )
-    }
+    /** Observation runs continuously alongside blocking; there is no mode switch. */
+    fun setObservationModeEnabled(enabled: Boolean) = Unit
 
     fun addBlocklistUrl(url: String) {
         if (FirewallRepository.addBlocklistUrl(url)) {
