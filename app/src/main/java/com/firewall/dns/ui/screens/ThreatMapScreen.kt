@@ -60,7 +60,7 @@ private val architectureEdges = listOf(
     MindMapEdge("core", "tun"),
     MindMapEdge("tun", "dns"),
     MindMapEdge("dns", "decisions"),
-    MindMapEdge("threats", "decisions"),
+    MindMapEdge("core", "threats"),
     MindMapEdge("rules", "decisions"),
     MindMapEdge("apps", "decisions"),
     MindMapEdge("decisions", "upstream"),
@@ -94,8 +94,6 @@ fun ThreatMapScreen(
     var showObserved by remember { mutableStateOf(false) }
     var selectedNode by remember { mutableStateOf("core") }
     val catalog = remember { ThreatKnowledgeGraph.catalogSnapshot() }
-    val knownObserved = logs.map { it.domain.trim().lowercase().trimEnd('.') }
-        .distinct().count { ThreatKnowledgeGraph.inspect(it) != null }
     val observedApps = logs.map { it.appName }.filter { it.isNotBlank() }.distinct().size
     val mindMapNodes = remember(logs, customBlock, customAllow, tunMetrics, vpnRunning,
         smartModeEnabled, observationModeEnabled, catalog) {
@@ -110,13 +108,13 @@ fun ThreatMapScreen(
             MindMapNode("decisions", "DECISIONES", "Bloqueadas / observadas / permitidas",
                 "${tunMetrics.dnsBlocked} / ${tunMetrics.dnsObserved} / ${tunMetrics.dnsAllowed}",
                 -0.96f, 0.48f, 0.24f, Color(0xFFFF667D)),
-            MindMapNode("threats", "CATÁLOGO", "Proveedores curados / dominios coincidentes",
-                "${catalog.size} / $knownObserved",
+            MindMapNode("threats", "REFERENCIAS", "Catálogo local de consulta; no prueba de detección del motor",
+                catalog.size.toString(),
                 0.96f, 0.46f, -0.22f, Color(0xFFFFB454)),
             MindMapNode("rules", "REGLAS", "Reglas personalizadas de usuario",
                 "${customBlock.size} bloqueo · ${customAllow.size} permiso",
                 -0.18f, 0.94f, -0.42f, Color(0xFFB69CFF)),
-            MindMapNode("upstream", "DNS ASCENDENTE", "Respuestas / fallos upstream",
+            MindMapNode("upstream", "UPSTREAM UDP", "Respuestas / fallos de la ruta DNS UDP",
                 "${tunMetrics.upstreamSuccess} / ${tunMetrics.upstreamFailure}",
                 0.20f, -0.98f, 0.42f, Color(0xFF68D9A5)),
             MindMapNode("apps", "APLICACIONES", "Apps identificadas en el historial",
@@ -174,7 +172,7 @@ fun ThreatMapScreen(
                     Text(selected.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
                         color = selected.tint)
                     Text(selectedDescription, style = MaterialTheme.typography.bodySmall)
-                    Text("Las ramas muestran componentes del proceso. Los valores vienen de contadores del servicio, reglas e historial; no se generan eventos ficticios.",
+                    Text("La telemetría viene del servicio. El catálogo local se identifica como referencia separada y no como detección activa.",
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -211,7 +209,7 @@ fun ThreatMapScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 MapStatPill("VPN", if (vpnRunning) "ACTIVA" else "DETENIDA", MaterialTheme.colorScheme.secondaryContainer)
                 MapStatPill("TUN", tunMetrics.packetsRead.toString(), MaterialTheme.colorScheme.primaryContainer)
-                MapStatPill("Coincidencias", knownObserved.toString(), MaterialTheme.colorScheme.errorContainer)
+                MapStatPill("Eventos", logs.size.toString(), MaterialTheme.colorScheme.errorContainer)
             }
         }
         item {
