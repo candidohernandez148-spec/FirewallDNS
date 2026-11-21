@@ -127,27 +127,49 @@ class DnsFirewallService : VpnService() {
                     putString("detail", "El servicio FirewallDNS o sus resolvers protegidos no están activos.")
                 }
             }
+            val resolverSnapshot = service.activeUpstreamServers.toList()
+            val attemptDetails = mutableListOf<String>()
             return when (val result = upstream.exchangeTcp(
                 query,
                 DnsExchangeCancellation(),
             ) { attempt ->
                 // The forced diagnostic path bypasses normal DNS processing, so
-                // explicitly feed its failures into the same cause breakdown.
-                (attempt.result as? DnsUpstreamResult.Failure)?.let {
-                    FirewallDnsTrafficMetrics.upstreamAttemptFailure(it.reason)
+                // record the outcome and duration for each physical resolver.
+                val resolver = resolverSnapshot.getOrNull(attempt.resolverIndex)
+                    ?: "resolver#${attempt.resolverIndex + 1}"
+                val elapsedMs = TimeUnit.NANOSECONDS.toMillis(attempt.elapsedNanos)
+                val outcome = when (val attemptResult = attempt.result) {
+                    is DnsUpstreamResult.Success -> "OK ${attemptResult.response.transport}"
+                    is DnsUpstreamResult.Failure -> {
+                        FirewallDnsTrafficMetrics.upstreamAttemptFailure(attemptResult.reason)
+                        attemptResult.reason
+                    }
+                    DnsUpstreamResult.Cancelled -> "cancelada"
                 }
+                attemptDetails += "$resolver: $outcome (${elapsedMs} ms)"
             }) {
                 is DnsUpstreamResult.Success -> Bundle().apply {
                     putBoolean("approved", result.response.transport == com.firewalldns.engine.dns.DnsUpstreamTransport.TCP)
-                    putString("detail", "Transporte=${result.response.transport}; respuesta DNS validada.")
+                    putString(
+                        "detail",
+                        "Transporte=${result.response.transport}; respuesta DNS validada. " +
+                            "Intentos: ${attemptDetails.joinToString("; ")}",
+                    )
                 }
                 is DnsUpstreamResult.Failure -> Bundle().apply {
                     putBoolean("approved", false)
-                    putString("detail", "DNS/TCP upstream falló: ${result.reason}.")
+                    putString(
+                        "detail",
+                        "DNS/TCP upstream falló: ${result.reason}. " +
+                            "Intentos por resolver: ${attemptDetails.joinToString("; ")}",
+                    )
                 }
                 DnsUpstreamResult.Cancelled -> Bundle().apply {
                     putBoolean("approved", false)
-                    putString("detail", "La prueba DNS/TCP fue cancelada.")
+                    putString(
+                        "detail",
+                        "La prueba DNS/TCP fue cancelada. Intentos: ${attemptDetails.joinToString("; ")}",
+                    )
                 }
             }
         }
