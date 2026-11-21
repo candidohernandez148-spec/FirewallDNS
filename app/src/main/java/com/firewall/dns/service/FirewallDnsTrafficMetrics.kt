@@ -1,6 +1,7 @@
 package com.firewall.dns.service
 
 import com.firewalldns.engine.android.AndroidSocketProtectionMetrics
+import com.firewalldns.engine.android.FragmentReassemblerMetrics
 import com.firewalldns.engine.android.SmoltcpDnsTcpMetrics
 import java.util.concurrent.atomic.AtomicLong
 
@@ -39,6 +40,13 @@ object FirewallDnsTrafficMetrics {
         val upstreamTcpProtectAttempts: Long,
         val upstreamTcpProtectSuccesses: Long,
         val upstreamTcpProtectFailures: Long,
+        val fragmentPendingAssemblies: Long,
+        val fragmentBufferedBytes: Long,
+        val fragmentsAccepted: Long,
+        val fragmentPacketsReassembled: Long,
+        val fragmentDroppedInvalid: Long,
+        val fragmentDroppedLimit: Long,
+        val fragmentAssembliesExpired: Long,
         val noDnsResponse: Long,
         val dnsResponsesBuilt: Long,
         val packetsWritten: Long,
@@ -90,6 +98,13 @@ object FirewallDnsTrafficMetrics {
     private val smoltcpResponsesQueued = AtomicLong()
     private val smoltcpResponseFailures = AtomicLong()
     private val smoltcpNativeErrors = AtomicLong()
+    private val fragmentPendingAssemblies = AtomicLong()
+    private val fragmentBufferedBytes = AtomicLong()
+    private val fragmentsAccepted = AtomicLong()
+    private val fragmentPacketsReassembled = AtomicLong()
+    private val fragmentDroppedInvalid = AtomicLong()
+    private val fragmentDroppedLimit = AtomicLong()
+    private val fragmentAssembliesExpired = AtomicLong()
 
     internal fun packetRead() { packetsRead.incrementAndGet() }
     internal fun queueRejected() { queueRejected.incrementAndGet() }
@@ -129,6 +144,17 @@ object FirewallDnsTrafficMetrics {
         smoltcpNativeErrors.set(metrics.nativeErrors)
     }
 
+    /** Current-session fragment reassembly state and cumulative outcomes. */
+    internal fun fragmentSnapshot(metrics: FragmentReassemblerMetrics) {
+        fragmentPendingAssemblies.set(metrics.pendingAssemblies.toLong())
+        fragmentBufferedBytes.set(metrics.bufferedBytes.toLong())
+        fragmentsAccepted.set(metrics.fragmentsAccepted)
+        fragmentPacketsReassembled.set(metrics.packetsReassembled)
+        fragmentDroppedInvalid.set(metrics.fragmentsDroppedInvalid)
+        fragmentDroppedLimit.set(metrics.fragmentsDroppedLimit)
+        fragmentAssembliesExpired.set(metrics.assembliesExpired)
+    }
+
     /** Returns a non-blocking point-in-time aggregate snapshot for UI/diagnostics. */
     fun snapshot(): Snapshot {
         val socketProtection = AndroidSocketProtectionMetrics.snapshot()
@@ -160,6 +186,13 @@ object FirewallDnsTrafficMetrics {
             upstreamTcpProtectAttempts = socketProtection.streamAttempts,
             upstreamTcpProtectSuccesses = socketProtection.streamSuccesses,
             upstreamTcpProtectFailures = socketProtection.streamFailures,
+            fragmentPendingAssemblies = fragmentPendingAssemblies.get(),
+            fragmentBufferedBytes = fragmentBufferedBytes.get(),
+            fragmentsAccepted = fragmentsAccepted.get(),
+            fragmentPacketsReassembled = fragmentPacketsReassembled.get(),
+            fragmentDroppedInvalid = fragmentDroppedInvalid.get(),
+            fragmentDroppedLimit = fragmentDroppedLimit.get(),
+            fragmentAssembliesExpired = fragmentAssembliesExpired.get(),
             noDnsResponse = noDnsResponse.get(),
             dnsResponsesBuilt = dnsResponsesBuilt.get(),
             packetsWritten = packetsWritten.get(),
