@@ -408,7 +408,7 @@ class DnsFirewallService : VpnService() {
                         // Keep TCP SYN/ACK/data order: the one TUN reader feeds smoltcp
                         // directly. DNS policy and upstream work run on per-session workers.
                         val tcpCoordinator = session.tcpCoordinator
-                        if (tcpCoordinator != null && isDnsTcpPacket(normalized)) {
+                        if (tcpCoordinator != null && DnsTcpPacketClassifier.isClientDnsTcpPacket(normalized)) {
                             if (((normalized[0].toInt() ushr 4) and 0x0f) == 6) {
                                 FirewallDnsTrafficMetrics.ipv6Packet()
                             } else {
