@@ -104,7 +104,7 @@ fun ThreatMapScreen(
                 0f, 0f, 0f, Color(0xFF42D9FF)),
             MindMapNode("tun", "TÚNEL TUN", "Paquetes leídos por el servicio", tunMetrics.packetsRead.toString(),
                 -0.88f, -0.55f, -0.18f, Color(0xFF58D6B0)),
-            MindMapNode("dns", "CONSULTAS DNS", "UDP + TCP observados por el servicio",
+            MindMapNode("dns", "CONSULTAS DNS", "UDP + TCP; smoltcp: ${if (tunMetrics.smoltcpTransportAvailable == 1L) "disponible" else "no disponible"}",
                 (tunMetrics.dnsUdpPackets + tunMetrics.dnsTcp).toString(),
                 0.82f, -0.63f, 0.20f, Color(0xFF78A8FF)),
             MindMapNode("decisions", "DECISIONES", "Bloqueadas / observadas / permitidas",
@@ -138,7 +138,7 @@ fun ThreatMapScreen(
     val selected = mindMapNodes.firstOrNull { it.id == selectedNode } ?: mindMapNodes.first()
     val selectedDescription = when (selected.id) {
         "tun" -> "Contador del servicio TUN: ${tunMetrics.packetsRead} paquetes leídos. Es acumulado del proceso actual."
-        "dns" -> "Consultas contabilizadas: UDP ${tunMetrics.dnsUdpPackets}, TCP ${tunMetrics.dnsTcp}. No representa DoH/DoT."
+        "dns" -> "Consultas contabilizadas: UDP ${tunMetrics.dnsUdpPackets}, TCP ${tunMetrics.dnsTcp}. Transporte smoltcp productivo: ${if (tunMetrics.smoltcpTransportAvailable == 1L) "disponible" else "no disponible"}. No representa DoH/DoT."
         "decisions" -> "Contadores del servicio: ${tunMetrics.dnsBlocked} bloqueadas, ${tunMetrics.dnsObserved} observadas y ${tunMetrics.dnsAllowed} permitidas."
         "threats" -> "Catálogo local curado de ${catalog.size} referencias. Es una fuente de consulta de esta pantalla; no prueba que el motor compartido haya utilizado cada entrada."
         "apps" -> "Nombres de aplicaciones resueltos en el historial visible: $observedApps. Los eventos cuyo UID no pudo resolverse se excluyen; no es el total de apps instaladas."

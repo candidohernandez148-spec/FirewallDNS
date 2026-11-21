@@ -18,9 +18,9 @@ Aplicación Android de **firewall local y filtrado DNS sin permisos root**, cons
 ## ✨ Características principales
 
 * **Arquitectura VPN simplificada:**
-    * Se elimina la dependencia del motor VPN externo.
     * Se conserva un único servicio Android `VpnService` con interfaz TUN: `DnsFirewallService`.
-    * En esta etapa el TUN procesa consultas DNS; el procesamiento general de TCP/UDP queda pendiente de integrar y validar con `FirewallDNS-Engine` en Rust.
+    * El TUN procesa DNS por UDP y DNS por TCP/53 mediante smoltcp 0.14, con JNI, colas acotadas y un único hilo propietario del transporte.
+    * El tráfico TCP/UDP general que no sea DNS/53 sigue fuera del alcance del filtrado; no se afirma inspección de DoH, DoT ni DoQ.
     * No existe un segundo motor VPN ni un servicio de respaldo.
 * **Control de aplicaciones (Split Tunneling y bloqueo total):**
   * Aplica reglas DNS por aplicación; el bloqueo general de conexiones TCP/UDP por UID queda pendiente de integrar el motor nativo FirewallDNS.

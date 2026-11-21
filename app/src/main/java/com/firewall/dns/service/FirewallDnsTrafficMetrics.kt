@@ -1,5 +1,6 @@
 package com.firewall.dns.service
 
+import com.firewalldns.engine.android.DnsSocketProtectionProtocol
 import com.firewalldns.engine.android.SmoltcpDnsTcpMetrics
 import java.util.concurrent.atomic.AtomicLong
 
@@ -32,11 +33,18 @@ object FirewallDnsTrafficMetrics {
         val cacheMisses: Long,
         val upstreamSuccess: Long,
         val upstreamFailure: Long,
+        val upstreamProtectUdpAttempts: Long,
+        val upstreamProtectUdpSuccess: Long,
+        val upstreamProtectUdpFailure: Long,
+        val upstreamProtectTcpAttempts: Long,
+        val upstreamProtectTcpSuccess: Long,
+        val upstreamProtectTcpFailure: Long,
         val noDnsResponse: Long,
         val dnsResponsesBuilt: Long,
         val packetsWritten: Long,
         val writeErrors: Long,
         val workerErrors: Long,
+        val smoltcpTransportAvailable: Long,
         val smoltcpSessionsActive: Long,
         val smoltcpPacketsAccepted: Long,
         val smoltcpSessionsOpened: Long,
@@ -69,11 +77,18 @@ object FirewallDnsTrafficMetrics {
     private val cacheMisses = AtomicLong()
     private val upstreamSuccess = AtomicLong()
     private val upstreamFailure = AtomicLong()
+    private val upstreamProtectUdpAttempts = AtomicLong()
+    private val upstreamProtectUdpSuccess = AtomicLong()
+    private val upstreamProtectUdpFailure = AtomicLong()
+    private val upstreamProtectTcpAttempts = AtomicLong()
+    private val upstreamProtectTcpSuccess = AtomicLong()
+    private val upstreamProtectTcpFailure = AtomicLong()
     private val noDnsResponse = AtomicLong()
     private val dnsResponsesBuilt = AtomicLong()
     private val packetsWritten = AtomicLong()
     private val writeErrors = AtomicLong()
     private val workerErrors = AtomicLong()
+    private val smoltcpTransportAvailable = AtomicLong()
     private val smoltcpSessionsActive = AtomicLong()
     private val smoltcpPacketsAccepted = AtomicLong()
     private val smoltcpSessionsOpened = AtomicLong()
@@ -105,12 +120,25 @@ object FirewallDnsTrafficMetrics {
     internal fun cacheMiss() { cacheMisses.incrementAndGet() }
     internal fun upstreamSuccess() { upstreamSuccess.incrementAndGet() }
     internal fun upstreamFailure() { upstreamFailure.incrementAndGet() }
+    internal fun socketProtectionResult(protocol: DnsSocketProtectionProtocol, wasProtected: Boolean) {
+        val attempts = if (protocol == DnsSocketProtectionProtocol.UDP) upstreamProtectUdpAttempts else upstreamProtectTcpAttempts
+        val successes = if (protocol == DnsSocketProtectionProtocol.UDP) upstreamProtectUdpSuccess else upstreamProtectTcpSuccess
+        val failures = if (protocol == DnsSocketProtectionProtocol.UDP) upstreamProtectUdpFailure else upstreamProtectTcpFailure
+        attempts.incrementAndGet()
+        if (wasProtected) successes.incrementAndGet() else failures.incrementAndGet()
+    }
     internal fun noDnsResponse() { noDnsResponse.incrementAndGet() }
     internal fun responseBuilt() { dnsResponsesBuilt.incrementAndGet() }
     internal fun responseWritten() { packetsWritten.incrementAndGet() }
     internal fun writeError() { writeErrors.incrementAndGet() }
     internal fun workerError() { workerErrors.incrementAndGet() }
+    internal fun smoltcpStarted() { smoltcpTransportAvailable.set(1L) }
+    internal fun smoltcpStopped() {
+        smoltcpTransportAvailable.set(0L)
+        smoltcpSessionsActive.set(0L)
+    }
     internal fun smoltcpSnapshot(metrics: SmoltcpDnsTcpMetrics) {
+        smoltcpTransportAvailable.set(1L)
         smoltcpSessionsActive.set(metrics.activeSessions.toLong())
         smoltcpPacketsAccepted.set(metrics.packetsAccepted)
         smoltcpSessionsOpened.set(metrics.sessionsOpened)
@@ -145,11 +173,18 @@ object FirewallDnsTrafficMetrics {
         cacheMisses = cacheMisses.get(),
         upstreamSuccess = upstreamSuccess.get(),
         upstreamFailure = upstreamFailure.get(),
+        upstreamProtectUdpAttempts = upstreamProtectUdpAttempts.get(),
+        upstreamProtectUdpSuccess = upstreamProtectUdpSuccess.get(),
+        upstreamProtectUdpFailure = upstreamProtectUdpFailure.get(),
+        upstreamProtectTcpAttempts = upstreamProtectTcpAttempts.get(),
+        upstreamProtectTcpSuccess = upstreamProtectTcpSuccess.get(),
+        upstreamProtectTcpFailure = upstreamProtectTcpFailure.get(),
         noDnsResponse = noDnsResponse.get(),
         dnsResponsesBuilt = dnsResponsesBuilt.get(),
         packetsWritten = packetsWritten.get(),
         writeErrors = writeErrors.get(),
         workerErrors = workerErrors.get(),
+        smoltcpTransportAvailable = smoltcpTransportAvailable.get(),
         smoltcpSessionsActive = smoltcpSessionsActive.get(),
         smoltcpPacketsAccepted = smoltcpPacketsAccepted.get(),
         smoltcpSessionsOpened = smoltcpSessionsOpened.get(),

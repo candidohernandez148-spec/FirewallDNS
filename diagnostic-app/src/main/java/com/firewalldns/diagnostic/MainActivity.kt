@@ -159,8 +159,6 @@ class MainActivity : Activity() {
             collected += timed("JNI: límites, cola y propiedad del hilo") { testNativeTransportGuards() }
             collected += TestResult("Reensamblado de fragmentos IPv4/IPv6", TestStatus.NOT_VERIFIED,
                 "El APK no inyecta fragmentos en el TUN productivo; requiere una prueba instrumentada del servicio.")
-            collected += TestResult("VpnService.protect() del upstream", TestStatus.NOT_VERIFIED,
-                "La protección del socket upstream pertenece al servicio VPN principal y no se expone como contador.")
             collected += TestResult("Aprendizaje inteligente persistente", TestStatus.NOT_VERIFIED,
                 "Se requiere exponer el estado real de aprendizaje/Room y verificar una regla aprendida entre reinicios.")
             collected += TestResult("Actualización e integridad de listas", TestStatus.NOT_VERIFIED,
@@ -176,10 +174,16 @@ class MainActivity : Activity() {
             } else {
                 TestResult("Puente de métricas FirewallDNS", TestStatus.NOT_VERIFIED, "No se pudo leer el proveedor protegido. Reinstala ambos APK del mismo paquete de compilación.")
             }
+            collected += when {
+                !firewallDnsActive -> TestResult("Transporte smoltcp productivo", TestStatus.NOT_VERIFIED, "Activa FirewallDNS para verificar la instancia del transporte en el servicio real.")
+                beforeMetrics["smoltcpTransportAvailable"] == 1L -> TestResult("Transporte smoltcp productivo", TestStatus.APPROVED, "El servicio productivo informa que el transporte nativo está inicializado.")
+                else -> TestResult("Transporte smoltcp productivo", TestStatus.FAILED, "FirewallDNS informa VPN activa, pero el transporte smoltcp no está disponible.")
+            }
 
             if (firewallDnsActive && bridgeAvailable) {
-                collected += timed("DNS UDP IPv4 por VPN") { probeUdp("1.1.1.1", "IPv4 UDP") }
-                collected += timed("DNS TCP IPv4 por VPN (smoltcp)") { probeTcp("1.1.1.1", "IPv4 TCP") }
+                val ipv4ProbeDns = chooseIpv4ProbeDns()
+                collected += timed("DNS UDP IPv4 por VPN") { probeUdp(ipv4ProbeDns, "IPv4 UDP") }
+                collected += timed("DNS TCP IPv4 por VPN (smoltcp)") { probeTcp(ipv4ProbeDns, "IPv4 TCP") }
                 val hasIpv6 = hasGlobalIpv6()
                 if (hasIpv6) {
                     collected += timed("DNS UDP IPv6 por VPN") { probeUdp("2606:4700:4700::1111", "IPv6 UDP") }
@@ -200,12 +204,14 @@ class MainActivity : Activity() {
                 collected += metricDeltaResult("Contador TUN DNS UDP", "dnsUdpPackets")
                 collected += metricDeltaResult("Contador TUN DNS TCP", "dnsTcp")
                 collected += metricDeltaResult("Sesiones smoltcp abiertas", "smoltcpSessionsOpened")
+                collected += protectUdpResult()
+                collected += metricDeltaResult("Rechazos internos smoltcp", "smoltcpIngressRejected", expectIncrease = false)
                 collected += metricDeltaResult("Errores nativos smoltcp", "smoltcpNativeErrors", expectIncrease = false)
                 collected += metricDeltaResult("Paquetes rechazados por cola", "queueRejected", expectIncrease = false)
                 collected += metricDeltaResult("Errores de escritura TUN", "writeErrors", expectIncrease = false)
             } else {
                 listOf("Contador TUN DNS UDP", "Contador TUN DNS TCP", "Sesiones smoltcp abiertas",
-                    "Errores nativos smoltcp", "Paquetes rechazados por cola", "Errores de escritura TUN")
+                    "Protect UDP upstream", "Rechazos internos smoltcp", "Errores nativos smoltcp", "Paquetes rechazados por cola", "Errores de escritura TUN")
                     .forEach { collected += TestResult(it, TestStatus.NOT_VERIFIED, "No hubo una sesión VPN verificable durante la prueba.") }
             }
 
@@ -321,6 +327,7 @@ class MainActivity : Activity() {
                     9_999_999L,
                     byteArrayOf(0, 12) + ByteArray(12),
                 )
+                val rejectedPackets = it.rejectedPackets()
                 val crossThreadResult = AtomicInteger(Int.MIN_VALUE)
                 val worker = Thread {
                     crossThreadResult.set(it.poll(SystemClock.elapsedRealtime(), 0))
@@ -335,13 +342,14 @@ class MainActivity : Activity() {
                     emptyPacket == -1,
                     oversizedPacket == -1,
                     missingSession == -5,
+                    rejectedPackets == 2L,
                     threadFinished && crossThreadResult.get() == -3,
                 )
                 if (checks.all { passed -> passed }) {
                     TestResult(
                         "",
                         TestStatus.APPROVED,
-                        "JNI operativo: rechaza paquetes vacíos y mayores al MTU, rechaza respuestas para sesiones inexistentes y protege smoltcp contra acceso desde otro hilo.",
+                        "JNI operativo: cuenta ambos rechazos (paquete vacío y mayor al MTU), rechaza sesiones inexistentes y protege smoltcp contra acceso desde otro hilo.",
                     )
                 } else {
                     TestResult(
@@ -349,7 +357,8 @@ class MainActivity : Activity() {
                         TestStatus.FAILED,
                         "Falló una guarda JNI: poll=" + firstPoll + ", vacío=" + emptyPacket +
                             ", MTU=" + oversizedPacket + ", sesión=" + missingSession +
-                            ", hilo=" + crossThreadResult.get() + ", finalizó=" + threadFinished + ".",
+                            ", rechazos=" + rejectedPackets + ", hilo=" + crossThreadResult.get() +
+                            ", finalizó=" + threadFinished + ".",
                     )
                 }
             }
@@ -359,7 +368,7 @@ class MainActivity : Activity() {
     }
 
     private fun probeUdp(host: String, label: String): TestResult {
-        val query = buildDnsQuery("example.com")
+        val query = buildDnsQuery("probe-${SystemClock.elapsedRealtimeNanos()}.example.com")
         return try {
             DatagramSocket().use { socket ->
                 socket.soTimeout = 3500
@@ -379,7 +388,7 @@ class MainActivity : Activity() {
     }
 
     private fun probeTcp(host: String, label: String): TestResult {
-        val query = buildDnsQuery("example.com")
+        val query = buildDnsQuery("probe-${SystemClock.elapsedRealtimeNanos()}.example.com")
         return try {
             Socket().use { socket ->
                 socket.connect(InetSocketAddress(InetAddress.getByName(host), 53), 3500)
@@ -399,6 +408,27 @@ class MainActivity : Activity() {
         } catch (t: Throwable) {
             TestResult("", TestStatus.FAILED, "$label: ${t.javaClass.simpleName}: ${t.message ?: "sin respuesta"}")
         }
+    }
+
+    private fun protectUdpResult(): TestResult {
+        val beforeAttempts = beforeMetrics["upstreamProtectUdpAttempts"]
+            ?: return TestResult("Protect UDP upstream", TestStatus.NOT_VERIFIED, "Métrica de intentos no disponible.")
+        val afterAttempts = afterMetrics["upstreamProtectUdpAttempts"]
+            ?: return TestResult("Protect UDP upstream", TestStatus.NOT_VERIFIED, "Métrica de intentos no disponible.")
+        val attempts = afterAttempts - beforeAttempts
+        if (attempts <= 0L) {
+            return TestResult("Protect UDP upstream", TestStatus.NOT_VERIFIED, "No se observó un intento upstream UDP durante las consultas de prueba.")
+        }
+        val successes = (afterMetrics["upstreamProtectUdpSuccess"] ?: beforeMetrics["upstreamProtectUdpSuccess"] ?: 0L) -
+            (beforeMetrics["upstreamProtectUdpSuccess"] ?: 0L)
+        val failures = (afterMetrics["upstreamProtectUdpFailure"] ?: beforeMetrics["upstreamProtectUdpFailure"] ?: 0L) -
+            (beforeMetrics["upstreamProtectUdpFailure"] ?: 0L)
+        val passed = successes == attempts && failures == 0L
+        return TestResult(
+            "Protect UDP upstream",
+            if (passed) TestStatus.APPROVED else TestStatus.FAILED,
+            "Intentos=$attempts, protect true=$successes, protect false=$failures."
+        )
     }
 
     private fun metricDeltaResult(
@@ -437,6 +467,38 @@ class MainActivity : Activity() {
         val manager = getSystemService(ConnectivityManager::class.java)
         val network = manager.activeNetwork ?: return false
         return manager.getNetworkCapabilities(network)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
+    }
+
+    /**
+     * Avoids the selected physical upstream: its route is intentionally excluded
+     * from the VPN to prevent recursion, so probing it would bypass the TUN.
+     */
+    private fun chooseIpv4ProbeDns(): String {
+        val manager = getSystemService(ConnectivityManager::class.java)
+        val active = manager.activeNetwork
+        val activeCaps = active?.let { manager.getNetworkCapabilities(it) }
+        val physical = if (active != null && activeCaps != null &&
+            activeCaps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            !activeCaps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+        ) {
+            active
+        } else {
+            manager.allNetworks.firstOrNull { network ->
+                manager.getNetworkCapabilities(network)?.let { caps ->
+                    caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                        !caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+                } == true
+            }
+        }
+        val upstream = physical?.let { network ->
+            manager.getLinkProperties(network)?.dnsServers.orEmpty()
+                .filter { it !is Inet6Address && !it.isLoopbackAddress && !it.isAnyLocalAddress }
+                .mapNotNull { it.hostAddress?.substringBefore('%') }
+                .filterNot { it in setOf("10.111.222.3", "fd66:f83a:c650::3", "10.10.10.1", "fd00:10:10::1") }
+                .firstOrNull()
+        } ?: "1.1.1.1"
+        return listOf("1.1.1.1", "8.8.8.8", "1.0.0.1", "8.8.4.4")
+            .firstOrNull { it != upstream } ?: "8.8.8.8"
     }
 
     private fun hasGlobalIpv6(): Boolean {

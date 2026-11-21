@@ -16,11 +16,17 @@ import com.firewalldns.engine.threat.ThreatAnalyzer
  *
  * This does not create a TUN reader, packet stack, or replace the host VPN.
  */
-class AndroidEngineRuntime(vpnService: VpnService, enableThreatAnalysis: Boolean = true) {
+class AndroidEngineRuntime(
+    vpnService: VpnService,
+    enableThreatAnalysis: Boolean = true,
+    onSocketProtectionResult: (DnsSocketProtectionProtocol, Boolean) -> Unit = { _, _ -> },
+) {
     /** Single policy/threat/monitor authority exposed to the Android host. */
-    val engine: EngineRuntime = EngineRuntime(threatAnalyzer = if (enableThreatAnalysis) ThreatAnalyzer() else ThreatAnalyzer(emptyList(), emptyList()))
+    val engine: EngineRuntime = EngineRuntime(
+        threatAnalyzer = if (enableThreatAnalysis) ThreatAnalyzer() else ThreatAnalyzer(emptyList(), emptyList())
+    )
 
-    private val socketProtector = AndroidDnsSocketProtector(vpnService)
+    private val socketProtector = AndroidDnsSocketProtector(vpnService, onSocketProtectionResult)
 
     /**
      * Builds a bounded sequential failover client whose UDP and TCP sockets
