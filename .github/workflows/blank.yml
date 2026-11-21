@@ -76,9 +76,27 @@ jobs:
       - name: Ejecutar pruebas unitarias
         run: gradle testDebugUnitTest --no-daemon --stacktrace
 
-      - name: Compilar FirewallDNS Release y Diagnostic Debug
+      - name: Compilar ambos APK Release con la misma firma
         run: |
-          gradle :app:assembleRelease :diagnostic-app:assembleDebug --no-daemon --stacktrace
+          gradle :app:assembleRelease :diagnostic-app:assembleRelease --no-daemon --stacktrace
+
+      - name: Verificar certificado compartido entre APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
+          APKSIGNER="$BUILD_TOOLS/apksigner"
+          MAIN_APK="app/build/outputs/apk/release/app-release.apk"
+          DIAGNOSTIC_APK="diagnostic-app/build/outputs/apk/release/diagnostic-app-release.apk"
+          MAIN_CERT="$("$APKSIGNER" verify --print-certs "$MAIN_APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n1)"
+          DIAGNOSTIC_CERT="$("$APKSIGNER" verify --print-certs "$DIAGNOSTIC_APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n1)"
+          test -n "$MAIN_CERT"
+          test -n "$DIAGNOSTIC_CERT"
+          if [[ "$MAIN_CERT" != "$DIAGNOSTIC_CERT" ]]; then
+            echo "::error::FirewallDNS y Diagnostic no están firmados con el mismo certificado."
+            exit 1
+          fi
+          echo "Certificado compartido verificado: $MAIN_CERT"
 
       - name: Subir APK FirewallDNS
         uses: actions/upload-artifact@v7
@@ -91,5 +109,5 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: FirewallDNS-Diagnostic-APK
-          path: diagnostic-app/build/outputs/apk/debug/diagnostic-app-debug.apk
+          path: diagnostic-app/build/outputs/apk/release/diagnostic-app-release.apk
           if-no-files-found: error
