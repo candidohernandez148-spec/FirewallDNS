@@ -24,6 +24,7 @@ import com.firewall.dns.domain.engine.AppFirewallManager
 import com.firewall.dns.domain.engine.DnsPacketEngine
 import com.firewall.dns.domain.engine.TunTransportPacketParser
 import com.firewalldns.engine.android.AndroidEngineRuntime
+import com.firewalldns.engine.android.FragmentReassemblerConfig
 import com.firewalldns.engine.android.IpFragmentReassembler
 import com.firewalldns.engine.android.NativeTcpDnsTransport
 import com.firewalldns.engine.android.SmoltcpDnsTcpCoordinator
@@ -63,7 +64,9 @@ class DnsFirewallService : VpnService() {
         val active = AtomicBoolean(true)
         val inFlightWorkers = AtomicInteger(0)
         val tcpOwnerWake = ArrayBlockingQueue<Unit>(1)
-        val fragmentReassembler = IpFragmentReassembler()
+        val fragmentReassembler = IpFragmentReassembler(
+            config = FragmentReassemblerConfig(maxReassembledPacketBytes = 1500),
+        )
         @Volatile var tcpCoordinator: SmoltcpDnsTcpCoordinator? = null
         @Volatile var tcpOwner: Thread? = null
         @Volatile var reader: Thread? = null
@@ -219,6 +222,7 @@ class DnsFirewallService : VpnService() {
         val upstream = FirewallRepository.getUpstreamDns()
         val builder = Builder()
             .setSession("FirewallDNS")
+            .setMtu(1500)
             .addAddress("10.10.10.2", 32)
             .addDnsServer("10.10.10.1")
             .addRoute("10.10.10.1", 32)
