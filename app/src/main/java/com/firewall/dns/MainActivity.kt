@@ -30,7 +30,6 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -297,7 +296,7 @@ fun FirewallApp(
         "Amenazas" to Icons.Default.Warning,
         "Protección" to Icons.Default.Lock,
         "Sistema" to Icons.Default.Settings,
-        "Diagnóstico" to Icons.Default.BugReport
+        "Diagnóstico" to Icons.Default.Search
     )
 
     Scaffold(
