@@ -174,16 +174,43 @@ object NetworkDns {
         null
     }
 
-    fun activeServers(context: Context, allowIpv6: Boolean = true): List<String> = try {
+    data class ActiveDnsSnapshot(
+        val network: android.net.Network?,
+        val resolvers: List<String>,
+        val transport: String,
+        val validated: Boolean,
+    )
+
+    /** Resolver addresses and Network identity are read from one network generation. */
+    @Suppress("DEPRECATION")
+    fun activeSnapshot(context: Context, allowIpv6: Boolean = true): ActiveDnsSnapshot = try {
         val cm = context.getSystemService(ConnectivityManager::class.java)
-        fromLink(activeNetwork(context)?.let { cm.getLinkProperties(it) }, allowIpv6)
+        val network = activeNetwork(context)
+        val capabilities = network?.let { cm.getNetworkCapabilities(it) }
+        val resolvers = fromLink(network?.let { cm.getLinkProperties(it) }, allowIpv6)
             .split(',')
             .map(String::trim)
             .filter(String::isNotEmpty)
             .distinct()
+        val transport = when {
+            capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true -> "Wi-Fi"
+            capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true -> "Datos móviles"
+            capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true -> "Ethernet"
+            network == null -> "Sin red física"
+            else -> "Otra red"
+        }
+        ActiveDnsSnapshot(
+            network = network,
+            resolvers = resolvers,
+            transport = transport,
+            validated = capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true,
+        )
     } catch (_: Throwable) {
-        emptyList()
+        ActiveDnsSnapshot(null, emptyList(), "Sin red física", false)
     }
+
+    fun activeServers(context: Context, allowIpv6: Boolean = true): List<String> =
+        activeSnapshot(context, allowIpv6).resolvers
 
     fun active(context: Context, allowIpv6: Boolean = true): String =
         activeServers(context, allowIpv6).joinToString(",")
