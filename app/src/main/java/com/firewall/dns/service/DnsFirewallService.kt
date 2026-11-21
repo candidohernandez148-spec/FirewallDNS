@@ -109,6 +109,7 @@ class DnsFirewallService : VpnService() {
      * together prevents diagnostics from labelling attempts with a newer network.
      */
     @Volatile private var upstreamSnapshot: UpstreamSnapshot? = null
+    @Volatile private var selectedPhysicalNetwork: android.net.Network? = null
     @Volatile private var physicalNetworkCallback: ConnectivityManager.NetworkCallback? = null
     private val upstreamRefreshLock = Any()
 
@@ -716,6 +717,7 @@ class DnsFirewallService : VpnService() {
                 onSocketProtectionResult = { protocol, wasProtected ->
                     FirewallDnsTrafficMetrics.socketProtectionResult(protocol, wasProtected)
                 },
+                physicalNetworkProvider = { NetworkDns.activeNetwork(this@DnsFirewallService) },
             ).also {
                 it.engine.replaceRules(FirewallRepository.enginePolicyRules())
             }
@@ -771,10 +773,20 @@ class DnsFirewallService : VpnService() {
 
     private fun refreshSharedUpstreamLocked() {
         val runtime = sharedEngine ?: return
+        val physicalNetwork = NetworkDns.activeNetwork(this)
+        // DNS resolvers and upstream sockets must use the same Android Network.
+        // Android asks VpnService to publish explicitly bound underlying networks.
+        runCatching {
+            setUnderlyingNetworks(physicalNetwork?.let { arrayOf(it) })
+        }
+        val networkChanged = physicalNetwork != selectedPhysicalNetwork
+        selectedPhysicalNetwork = physicalNetwork
+
         val discovered = NetworkDns.activeServers(this).ifEmpty {
             listOf(NetworkDns.EMERGENCY_DNS)
         }
         val current = upstreamSnapshot
+        if (current != null && discovered == current.resolvers && !networkChanged) return
         if (current != null && discovered == current.resolvers) return
         val replacement = runCatching {
             runtime.createDnsFailover(
@@ -845,6 +857,7 @@ class DnsFirewallService : VpnService() {
         FirewallRepository.setRunning(false)
         sharedEngine = null
         upstreamSnapshot = null
+        selectedPhysicalNetwork = null
         FirewallDnsTrafficMetrics.upstreamResolversChanged(emptyList())
 
         val session = activeTunSession
