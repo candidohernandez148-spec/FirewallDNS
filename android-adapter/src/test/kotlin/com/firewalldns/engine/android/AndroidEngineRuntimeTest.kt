@@ -1,11 +1,17 @@
 package com.firewalldns.engine.android
 
 import android.net.VpnService
+import com.firewalldns.engine.dns.DnsExchangeCancellation
 import com.firewalldns.engine.dns.DnsUpstreamConfig
+import com.firewalldns.engine.dns.DnsUpstreamTransport
 import com.firewalldns.engine.dns.DnsUpstreamResult
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
+import java.net.ServerSocket
+import java.net.Socket
+import java.io.DataInputStream
+import java.io.DataOutputStream
 import kotlin.concurrent.thread
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -50,6 +56,44 @@ class AndroidEngineRuntimeTest {
 
             assertTrue("Expected a validated upstream response, got $result", result is DnsUpstreamResult.Success)
             Mockito.verify(vpnService).protect(Mockito.any(DatagramSocket::class.java))
+        }
+    }
+
+    @Test
+    fun forcedTcpProbeUsesProtectedTcpSocketAndDoesNotFallBackToUdp() {
+        val vpnService = Mockito.mock(VpnService::class.java)
+        Mockito.`when`(vpnService.protect(Mockito.any(Socket::class.java))).thenReturn(true)
+
+        ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { server ->
+            server.soTimeout = 3_000
+            val responder = thread(name = "android-engine-runtime-test-dns-tcp") {
+                server.accept().use { accepted ->
+                    accepted.soTimeout = 3_000
+                    val input = DataInputStream(accepted.getInputStream())
+                    val length = input.readUnsignedShort()
+                    val query = ByteArray(length)
+                    input.readFully(query)
+                    val response = query.copyOf().apply {
+                        this[2] = 0x81.toByte()
+                        this[3] = 0x80.toByte()
+                    }
+                    DataOutputStream(accepted.getOutputStream()).apply {
+                        writeShort(response.size)
+                        write(response)
+                        flush()
+                    }
+                }
+            }
+
+            val client = AndroidEngineRuntime(vpnService).createDnsFailover(
+                listOf(DnsUpstreamConfig("127.0.0.1", server.localPort, timeoutMillis = 2_000))
+            )
+            val result = client.exchangeTcp(query("forced-tcp.example"), DnsExchangeCancellation())
+            responder.join(3_000)
+
+            assertTrue("Expected validated TCP response, got $result",
+                result is DnsUpstreamResult.Success && result.response.transport == DnsUpstreamTransport.TCP)
+            Mockito.verify(vpnService).protect(Mockito.any(Socket::class.java))
         }
     }
 
