@@ -40,7 +40,8 @@ android {
     // Fail closed only when a Release task is requested. Gradle configures all
     // variants even for testDebugUnitTest, which must remain usable without secrets.
     val releaseTaskRequested = gradle.startParameter.taskNames.any { taskName ->
-        taskName.substringAfterLast(":").contains("release", ignoreCase = true)
+        val requested = taskName.substringAfterLast(":").lowercase()
+        requested.contains("release") || requested in setOf("assemble", "build", "bundle")
     }
     if (releaseTaskRequested && !sharedSigningReady) {
         throw GradleException(
