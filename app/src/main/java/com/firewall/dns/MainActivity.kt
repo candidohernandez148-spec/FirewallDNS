@@ -46,6 +46,7 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import com.firewall.dns.data.repository.FirewallRepository
 import com.firewall.dns.service.DnsFirewallService
+import com.firewall.dns.service.FirewallDnsTrafficMetrics
 import com.firewall.dns.ui.screens.AppsSettingsScreen
 import com.firewall.dns.ui.screens.LogsScreen
 import com.firewall.dns.ui.screens.RulesScreen
@@ -433,6 +434,7 @@ fun FirewallApp(
                     vpnRunning = stats.isRunning,
                     engine = stats.engine,
                     observedEvents = activityLogs.size,
+                    metrics = tunMetrics,
                     onToggleVpn = onToggleVpn,
                     onOpenVpnSettings = onOpenVpnSettings
                 )
