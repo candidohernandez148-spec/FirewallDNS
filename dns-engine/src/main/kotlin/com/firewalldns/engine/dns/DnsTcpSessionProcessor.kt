@@ -12,6 +12,8 @@ class DnsTcpSessionProcessor(
     decoderBufferCapacity: Int = DEFAULT_DECODER_BUFFER_BYTES,
     val maxFramesPerBatch: Int = DEFAULT_MAX_FRAMES_PER_BATCH,
     val maxPendingOutboundBytes: Int = DEFAULT_MAX_PENDING_OUTBOUND_BYTES,
+    private val incompleteFrameTimeoutNanos: Long = DEFAULT_INCOMPLETE_FRAME_TIMEOUT_NANOS,
+    private val clockNanos: () -> Long = System::nanoTime,
 ) {
     constructor(
         policyAdapter: DnsPolicyAdapter,
@@ -19,17 +21,22 @@ class DnsTcpSessionProcessor(
         decoderBufferCapacity: Int = DEFAULT_DECODER_BUFFER_BYTES,
         maxFramesPerBatch: Int = DEFAULT_MAX_FRAMES_PER_BATCH,
         maxPendingOutboundBytes: Int = DEFAULT_MAX_PENDING_OUTBOUND_BYTES,
+        incompleteFrameTimeoutNanos: Long = DEFAULT_INCOMPLETE_FRAME_TIMEOUT_NANOS,
+        clockNanos: () -> Long = System::nanoTime,
     ) : this(
         evaluateDns = { query, appPackage -> policyAdapter.evaluate(query, appPackage) },
         exchangeUpstream = exchangeUpstream,
         decoderBufferCapacity = decoderBufferCapacity,
         maxFramesPerBatch = maxFramesPerBatch,
         maxPendingOutboundBytes = maxPendingOutboundBytes,
+        incompleteFrameTimeoutNanos = incompleteFrameTimeoutNanos,
+        clockNanos = clockNanos,
     )
 
     init {
         require(maxFramesPerBatch > 0) { "maxFramesPerBatch must be positive" }
         require(maxPendingOutboundBytes >= 64) { "maxPendingOutboundBytes must be at least 64" }
+        require(incompleteFrameTimeoutNanos > 0) { "incompleteFrameTimeoutNanos must be positive" }
     }
 
     enum class SessionState {
@@ -64,6 +71,7 @@ class DnsTcpSessionProcessor(
     private val outboundQueue = ArrayDeque<ByteArray>()
     private var outboundHeadOffset: Int = 0
     private var outboundTotalBytes: Int = 0
+    @Volatile private var incompleteFrameStartedAtNanos: Long? = null
 
     @Volatile
     var state: SessionState = SessionState.ACTIVE
@@ -80,6 +88,12 @@ class DnsTcpSessionProcessor(
     private var servfailCount: Long = 0
     private var rejectedCount: Long = 0
     private var outboundOverflowCount: Long = 0
+
+    /** True when a DNS/TCP length prefix or message body has remained incomplete too long. */
+    fun isIncompleteFrameExpired(nowNanos: Long = clockNanos()): Boolean {
+        val started = incompleteFrameStartedAtNanos ?: return false
+        return nowNanos >= started && nowNanos - started >= incompleteFrameTimeoutNanos
+    }
 
     fun availableRxWindow(): Int =
         if (state != SessionState.ACTIVE) 0 else decoder.remainingCapacity()
@@ -100,8 +114,10 @@ class DnsTcpSessionProcessor(
             return ProcessResult.TerminalError(terminalReason ?: "dns_tcp_session_error")
         }
 
+        if (isIncompleteFrameExpired()) return failSession("dns_tcp_frame_assembly_timeout")
+
         when (val feed = decoder.feed(chunk, offset, length)) {
-            is DnsTcpStreamDecoder.FeedResult.Accepted -> Unit
+            is DnsTcpStreamDecoder.FeedResult.Accepted -> updateIncompleteFrameTimer()
             DnsTcpStreamDecoder.FeedResult.BufferFull -> return ProcessResult.Backpressure
             is DnsTcpStreamDecoder.FeedResult.Failed -> return failSession(feed.reason)
         }
@@ -113,6 +129,7 @@ class DnsTcpSessionProcessor(
         if (state == SessionState.TERMINAL_ERROR) {
             return ProcessResult.TerminalError(terminalReason ?: "dns_tcp_session_error")
         }
+        if (isIncompleteFrameExpired()) return failSession("dns_tcp_frame_assembly_timeout")
 
         var handled = 0
         while (handled < maxFramesPerBatch && state == SessionState.ACTIVE) {
@@ -121,12 +138,14 @@ class DnsTcpSessionProcessor(
             }
             when (val drained = decoder.drainFrame()) {
                 DnsTcpStreamDecoder.DrainResult.NeedMoreData -> {
+                    updateIncompleteFrameTimer()
                     return ProcessResult.Processed(handled, hasMoreWork = false)
                 }
                 is DnsTcpStreamDecoder.DrainResult.Failed -> {
                     return failSession(drained.reason)
                 }
                 is DnsTcpStreamDecoder.DrainResult.Frame -> {
+                    updateIncompleteFrameTimer()
                     framesDecoded++
                     handled++
                     val evaluation = evaluateDns(drained.message, appPackage)
@@ -166,6 +185,7 @@ class DnsTcpSessionProcessor(
                 }
             }
         }
+        updateIncompleteFrameTimer()
         return ProcessResult.Processed(handled, hasMoreWork = decoder.hasCompleteFrame())
     }
 
@@ -200,6 +220,7 @@ class DnsTcpSessionProcessor(
         state = SessionState.CLOSED
         cancellation.cancel()
         decoder.reset()
+        incompleteFrameStartedAtNanos = null
         outboundQueue.clear()
         outboundHeadOffset = 0
         outboundTotalBytes = 0
@@ -219,11 +240,20 @@ class DnsTcpSessionProcessor(
         availableRxWindow = availableRxWindow(),
     )
 
+    private fun updateIncompleteFrameTimer() {
+        if (decoder.bufferedBytes == 0 || decoder.hasCompleteFrame()) {
+            incompleteFrameStartedAtNanos = null
+        } else if (incompleteFrameStartedAtNanos == null) {
+            incompleteFrameStartedAtNanos = clockNanos()
+        }
+    }
+
     private fun failSession(reason: String): ProcessResult.TerminalError {
         state = SessionState.TERMINAL_ERROR
         terminalReason = reason
         cancellation.cancel()
         decoder.reset()
+        incompleteFrameStartedAtNanos = null
         outboundQueue.clear()
         outboundHeadOffset = 0
         outboundTotalBytes = 0
@@ -247,5 +277,6 @@ class DnsTcpSessionProcessor(
         const val DEFAULT_DECODER_BUFFER_BYTES = 16_384
         const val DEFAULT_MAX_FRAMES_PER_BATCH = 8
         const val DEFAULT_MAX_PENDING_OUTBOUND_BYTES = 131_072
+        const val DEFAULT_INCOMPLETE_FRAME_TIMEOUT_NANOS = 3_000_000_000L
     }
 }

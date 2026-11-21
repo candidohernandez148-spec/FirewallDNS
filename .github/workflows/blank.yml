@@ -2,6 +2,8 @@ name: Compilar APK
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [ main ]
   push:
     branches: [ main ]
 
@@ -42,36 +44,51 @@ jobs:
         with:
           gradle-version: "8.14"
 
-      - name: Restaurar clave de firma
-        id: signing-cache
-        uses: actions/cache@v6
+      # Reuse the exact signing JKS that produced previous published APKs.
+      # Restore-only: never create or overwrite a cache entry with a new random key.
+      - name: Restaurar identidad de firma anterior
+        uses: actions/cache/restore@v4
         with:
           path: signing
           key: firewalldns-signing-v1
 
-      - name: Preparar firma de release
+      - name: Preparar firma de release compartida
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD_SECRET: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD_SECRET: ${{ secrets.KEY_PASSWORD }}
           KEY_ALIAS_SECRET: ${{ secrets.KEY_ALIAS }}
         run: |
+          set -euo pipefail
           mkdir -p signing
+
           if [[ -n "$KEYSTORE_BASE64" ]]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > signing/release.jks
-            echo "$KEYSTORE_PASSWORD_SECRET" > signing/password
-            echo "$KEY_ALIAS_SECRET" > signing/alias
-          elif [[ ! -s signing/release.jks ]]; then
-            head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24 > signing/password
-            echo firewalldns > signing/alias
-            keytool -genkeypair -keystore signing/release.jks -alias firewalldns \
-              -keyalg RSA -keysize 4096 -validity 36500 \
-              -storepass "$(cat signing/password)" -keypass "$(cat signing/password)" \
-              -dname "CN=Candido y Elizabeth, O=FirewallDNS"
+            test -n "$KEYSTORE_PASSWORD_SECRET" || { echo "::error::KEYSTORE_PASSWORD es obligatorio cuando se proporciona KEYSTORE_BASE64"; exit 1; }
+            test -n "$KEY_ALIAS_SECRET" || { echo "::error::KEY_ALIAS es obligatorio cuando se proporciona KEYSTORE_BASE64"; exit 1; }
+            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > signing/release.jks
+            STORE_PASSWORD="$KEYSTORE_PASSWORD_SECRET"
+            KEY_ALIAS_VALUE="$KEY_ALIAS_SECRET"
+          else
+            # Backward-compatible recovery of the exact keystore used by earlier
+            # release APKs. Never generate a replacement signing identity here.
+            test -s signing/release.jks || { echo "::error::No hay JKS en la caché anterior ni se configuró KEYSTORE_BASE64"; exit 1; }
+            STORE_PASSWORD="${KEYSTORE_PASSWORD_SECRET:-}"
+            KEY_ALIAS_VALUE="${KEY_ALIAS_SECRET:-}"
+            if [[ -z "$STORE_PASSWORD" && -s signing/password ]]; then STORE_PASSWORD="$(cat signing/password)"; fi
+            if [[ -z "$KEY_ALIAS_VALUE" && -s signing/alias ]]; then KEY_ALIAS_VALUE="$(cat signing/alias)"; fi
           fi
+
+          test -s signing/release.jks
+          test -n "$STORE_PASSWORD" || { echo "::error::No se pudo recuperar KEYSTORE_PASSWORD"; exit 1; }
+          test -n "$KEY_ALIAS_VALUE" || { echo "::error::No se pudo recuperar KEY_ALIAS"; exit 1; }
+          KEY_PASSWORD_VALUE="${KEY_PASSWORD_SECRET:-$STORE_PASSWORD}"
+
           echo "KEYSTORE_PATH=$PWD/signing/release.jks" >> "$GITHUB_ENV"
-          echo "KEYSTORE_PASSWORD=$(cat signing/password)" >> "$GITHUB_ENV"
-          echo "KEY_ALIAS=$(cat signing/alias)" >> "$GITHUB_ENV"
-          echo "::add-mask::$(cat signing/password)"
+          echo "KEYSTORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "KEY_PASSWORD=$KEY_PASSWORD_VALUE" >> "$GITHUB_ENV"
+          echo "KEY_ALIAS=$KEY_ALIAS_VALUE" >> "$GITHUB_ENV"
+          echo "::add-mask::$STORE_PASSWORD"
+          echo "::add-mask::$KEY_PASSWORD_VALUE"
 
       - name: Ejecutar pruebas unitarias
         run: gradle testDebugUnitTest --no-daemon --stacktrace

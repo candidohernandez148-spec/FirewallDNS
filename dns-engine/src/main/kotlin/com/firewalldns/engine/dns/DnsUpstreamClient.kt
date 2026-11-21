@@ -106,6 +106,19 @@ class DnsUpstreamClient(
         return result
     }
 
+    /**
+     * Diagnostic-only explicit DNS/TCP exchange. Bypasses UDP and the response
+     * cache so the Android socket protector and TCP/53 path are actually exercised.
+     */
+    fun exchangeTcpOnly(query: ByteArray, cancellation: DnsExchangeCancellation): DnsUpstreamResult {
+        if (cancellation.isCancelled) return DnsUpstreamResult.Cancelled
+        val question = when (val parsed = DnsMessageParser.parse(query)) {
+            is DnsParseResult.Valid -> parsed.question
+            is DnsParseResult.Invalid -> return DnsUpstreamResult.Failure(parsed.reason)
+        }
+        return exchangeTcp(query, question, cancellation)
+    }
+
     private fun exchangeUdp(query: ByteArray, question: DnsQuestion, cancellation: DnsExchangeCancellation): UdpAttempt = try {
         DatagramSocket().use { socket ->
             if (!cancellation.register(socket)) return UdpAttempt.Cancelled

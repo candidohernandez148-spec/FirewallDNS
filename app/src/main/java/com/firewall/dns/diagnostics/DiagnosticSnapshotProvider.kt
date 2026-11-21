@@ -5,6 +5,7 @@ import android.content.ContentValues
 import android.database.Cursor
 import android.database.MatrixCursor
 import android.net.Uri
+import android.os.Bundle
 import com.firewall.dns.data.repository.FirewallRepository
 import com.firewall.dns.service.DnsFirewallService
 import com.firewall.dns.service.FirewallDnsTrafficMetrics
@@ -91,6 +92,18 @@ class DiagnosticSnapshotProvider : ContentProvider() {
         return MatrixCursor(arrayOf("metric", "value")).apply {
             values.forEach { (key, value) -> addRow(arrayOf(key, value.toString())) }
         }
+    }
+
+    override fun call(method: String, arg: String?, extras: Bundle?): Bundle? {
+        if (method != "force_tcp_probe") return super.call(method, arg, extras)
+        val ctx = context ?: throw IllegalStateException("Provider context unavailable")
+        val permission = "com.firewall.dns.permission.READ_DIAGNOSTICS"
+        if (ctx.checkCallingPermission(permission) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            throw SecurityException("Signature permission required for diagnostic TCP probe")
+        }
+        val query = extras?.getByteArray("dns_query")
+            ?: throw IllegalArgumentException("dns_query is required")
+        return DnsFirewallService.runDiagnosticTcpProbe(query)
     }
 
     override fun getType(uri: Uri): String = "vnd.android.cursor.dir/vnd.firewalldns.metric"

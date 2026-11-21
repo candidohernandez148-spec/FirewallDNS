@@ -10,6 +10,7 @@ import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
 import android.net.VpnService
 import android.os.Build
+import android.os.Bundle
 import android.os.ParcelFileDescriptor
 import android.os.Process
 import android.system.OsConstants
@@ -105,6 +106,43 @@ class DnsFirewallService : VpnService() {
     private val upstreamRefreshLock = Any()
 
     companion object {
+        @Volatile private var diagnosticInstance: DnsFirewallService? = null
+
+        /**
+         * Invoked only through the signature-protected diagnostic provider.
+         * Executes on the provider Binder thread, never on the TUN packet loop.
+         */
+        fun runDiagnosticTcpProbe(query: ByteArray): Bundle {
+            if (query.size !in 12..65_535) {
+                return Bundle().apply {
+                    putBoolean("approved", false)
+                    putString("detail", "La consulta DNS de diagnóstico tiene una longitud inválida.")
+                }
+            }
+            val service = diagnosticInstance
+            val upstream = service?.sharedUpstream
+            if (service == null || !service.isRunning || upstream == null) {
+                return Bundle().apply {
+                    putBoolean("approved", false)
+                    putString("detail", "El servicio FirewallDNS o sus resolvers protegidos no están activos.")
+                }
+            }
+            return when (val result = upstream.exchangeTcp(query, DnsExchangeCancellation())) {
+                is DnsUpstreamResult.Success -> Bundle().apply {
+                    putBoolean("approved", result.response.transport == com.firewalldns.engine.dns.DnsUpstreamTransport.TCP)
+                    putString("detail", "Transporte=${result.response.transport}; respuesta DNS validada.")
+                }
+                is DnsUpstreamResult.Failure -> Bundle().apply {
+                    putBoolean("approved", false)
+                    putString("detail", "DNS/TCP upstream falló: ${result.reason}.")
+                }
+                DnsUpstreamResult.Cancelled -> Bundle().apply {
+                    putBoolean("approved", false)
+                    putString("detail", "La prueba DNS/TCP fue cancelada.")
+                }
+            }
+        }
+
         const val ACTION_START = "com.firewall.dns.action.START_TUN"
         const val ACTION_STOP = "com.firewall.dns.action.STOP_TUN"
 
@@ -142,6 +180,7 @@ class DnsFirewallService : VpnService() {
 
     override fun onCreate() {
         super.onCreate()
+        diagnosticInstance = this
         FirewallRepository.init(applicationContext)
         connectivityManager = getSystemService(ConnectivityManager::class.java)
         registerPhysicalNetworkCallback()
@@ -819,6 +858,7 @@ class DnsFirewallService : VpnService() {
     }
 
     override fun onDestroy() {
+        if (diagnosticInstance === this) diagnosticInstance = null
         physicalNetworkCallback?.let { callback ->
             runCatching { connectivityManager.unregisterNetworkCallback(callback) }
         }

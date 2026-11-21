@@ -68,6 +68,33 @@ class DnsUpstreamFailoverClient(
         return lastFailure ?: DnsUpstreamResult.Failure("dns_upstream_no_resolver_attempted")
     }
 
+    /**
+     * Forces TCP to the configured protected resolvers for diagnostics only.
+     * This deliberately does not fall back to UDP or consult the response cache.
+     */
+    fun exchangeTcp(
+        query: ByteArray,
+        cancellation: DnsExchangeCancellation,
+        onAttempt: ((DnsUpstreamAttempt) -> Unit)? = null,
+    ): DnsUpstreamResult {
+        var lastFailure: DnsUpstreamResult.Failure? = null
+        for (index in 0 until maxAttempts) {
+            if (cancellation.isCancelled) return DnsUpstreamResult.Cancelled
+            val started = System.nanoTime()
+            val attemptResult = upstreams[index].exchangeTcpOnly(query, cancellation)
+            val elapsed = System.nanoTime() - started
+            try { onAttempt?.invoke(DnsUpstreamAttempt(index, elapsed, attemptResult)) } catch (_: Throwable) {
+                // Diagnostic observers must never change the transport result.
+            }
+            when (attemptResult) {
+                is DnsUpstreamResult.Success -> return attemptResult
+                DnsUpstreamResult.Cancelled -> return attemptResult
+                is DnsUpstreamResult.Failure -> lastFailure = attemptResult
+            }
+        }
+        return lastFailure ?: DnsUpstreamResult.Failure("dns_upstream_tcp_no_resolver_attempted")
+    }
+
     private fun isRetryableUpstreamFailure(reason: String): Boolean =
         reason in RETRYABLE_FAILURES ||
             reason.startsWith("dns_upstream_response_") ||

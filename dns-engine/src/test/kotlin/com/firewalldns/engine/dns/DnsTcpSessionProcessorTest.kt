@@ -12,6 +12,25 @@ import java.util.concurrent.atomic.AtomicInteger
 class DnsTcpSessionProcessorTest {
 
     @Test
+    fun expiresIncompleteDnsTcpLengthPrefixAfterThreeSeconds() {
+        val clock = java.util.concurrent.atomic.AtomicLong(100L)
+        val processor = DnsTcpSessionProcessor(
+            evaluateDns = { _, _ -> DnsEvaluation.Rejected("unused") },
+            exchangeUpstream = { _, _ -> DnsUpstreamResult.Failure("unused") },
+            incompleteFrameTimeoutNanos = 3_000_000_000L,
+            clockNanos = { clock.get() },
+        )
+
+        val partial = processor.onIncomingBytes(byteArrayOf(0x00))
+        assertTrue(partial is DnsTcpSessionProcessor.ProcessResult.Processed)
+        clock.set(3_000_000_100L)
+        assertTrue(processor.isIncompleteFrameExpired())
+        val expired = processor.onIncomingBytes(byteArrayOf(0x0c))
+        assertTrue(expired is DnsTcpSessionProcessor.ProcessResult.TerminalError)
+        assertEquals("dns_tcp_frame_assembly_timeout", processor.terminalReason)
+    }
+
+    @Test
     fun blocksExplicitRuleWithoutUpstreamAndForwardsAllowedWithServfailFallback() {
         val policyEngine = PolicyEngine(
             listOf(

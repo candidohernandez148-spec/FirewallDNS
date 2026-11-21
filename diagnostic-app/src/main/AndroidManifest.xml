@@ -4,6 +4,12 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="com.firewall.dns.permission.READ_DIAGNOSTICS" />
 
+    <!-- Android 11+ package visibility: this makes the protected authority discoverable.
+         It does not grant the signature permission; matching APK certificates are still required. -->
+    <queries>
+        <provider android:authorities="com.firewall.dns.diagnostics" />
+    </queries>
+
     <application
         android:allowBackup="false"
         android:label="FirewallDNS Diagnostic"
