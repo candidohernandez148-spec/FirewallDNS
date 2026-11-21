@@ -30,6 +30,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicInteger
 import com.firewall.dns.service.DnsFirewallService
+import com.firewall.dns.service.NetworkDns
 import com.firewall.dns.service.FirewallDnsTrafficMetrics
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -48,6 +49,7 @@ fun IntegratedDiagnosticsScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val physicalNetwork = NetworkDns.activeSnapshot(context)
     var nativeTestRunning by remember { mutableStateOf(false) }
     var nativeTestResult by remember { mutableStateOf("Prueba nativa pendiente") }
     var tcpProbeRunning by remember { mutableStateOf(false) }
@@ -59,6 +61,12 @@ fun IntegratedDiagnosticsScreen(
         put("observedEvents", observedEvents)
         put("nativeJniTest", nativeTestResult)
         put("forcedTcpProbe", tcpProbeResult)
+        put("physicalNetwork", JSONObject().apply {
+            put("transport", physicalNetwork.transport)
+            put("validated", physicalNetwork.validated)
+            put("dnsResolvers", physicalNetwork.resolvers.joinToString(","))
+            put("networkAvailable", physicalNetwork.network != null)
+        })
         put("metrics", JSONObject().apply {
             put("packetsRead", metrics.packetsRead)
             put("queueRejected", metrics.queueRejected)
@@ -140,6 +148,15 @@ fun IntegratedDiagnosticsScreen(
                 Button(onClick = onOpenVpnSettings, modifier = Modifier.fillMaxWidth()) {
                     Text("Ajustes VPN de Android")
                 }
+            }
+        }
+        Card {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Red física seleccionada", style = MaterialTheme.typography.titleMedium)
+                Text("Transporte: ${physicalNetwork.transport}")
+                Text("Red validada: ${if (physicalNetwork.validated) "sí" else "no"}")
+                Text("DNS obtenidos de esa misma red: ${physicalNetwork.resolvers.joinToString().ifBlank { "sin resolvers detectados" }}")
+                Text("Los sockets upstream se enlazan a esta red antes de excluirlos del TUN.")
             }
         }
         Card {
