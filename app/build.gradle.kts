@@ -15,6 +15,7 @@ android {
         versionCode = 1
         versionName = "1.0"
         buildConfigField("boolean", "USE_SHARED_ENGINE", "true")
+        ndk { abiFilters += listOf("arm64-v8a") }
     }
 
     val releaseKeystore = System.getenv("KEYSTORE_PATH")?.let { file(it) }?.takeIf { it.exists() }
