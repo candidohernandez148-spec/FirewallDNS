@@ -97,6 +97,23 @@ class AndroidEngineRuntimeTest {
         }
     }
 
+    @Test
+    fun tcpConnectIoFailureReportsTheFailingStage() {
+        val vpnService = Mockito.mock(VpnService::class.java)
+        Mockito.`when`(vpnService.protect(Mockito.any(Socket::class.java))).thenReturn(true)
+
+        val closedPort = ServerSocket(0).use { it.localPort }
+        val client = AndroidEngineRuntime(vpnService).createDnsFailover(
+            listOf(DnsUpstreamConfig("127.0.0.1", closedPort, timeoutMillis = 1_000))
+        )
+        val result = client.exchangeTcp(query("tcp-connect-failure.example"), DnsExchangeCancellation())
+
+        assertTrue("Expected a TCP upstream failure, got $result",
+            result is DnsUpstreamResult.Failure &&
+                result.reason == "dns_upstream_tcp_io_error" &&
+                result.detail?.startsWith("socket_connect:") == true)
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun rejectsEmptyUpstreamConfiguration() {
         AndroidEngineRuntime(Mockito.mock(VpnService::class.java)).createDnsFailover(emptyList())
