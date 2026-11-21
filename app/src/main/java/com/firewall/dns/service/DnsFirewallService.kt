@@ -255,6 +255,7 @@ class DnsFirewallService : VpnService() {
             FileOutputStream(established.fileDescriptor)
         )
         activeTunSession = session
+        FirewallDnsTrafficMetrics.fragmentSnapshot(session.fragmentReassembler.metrics())
 
         val engineRuntime = sharedEngine
         val upstreamClient = sharedUpstream
@@ -396,7 +397,15 @@ class DnsFirewallService : VpnService() {
                         FirewallDnsTrafficMetrics.packetRead()
                         val copy = buffer.copyOf(length)
                         val fragmentResult = session.fragmentReassembler.process(copy)
-                        session.fragmentReassembler.evictExpired()
+                        val expiredAssemblies = session.fragmentReassembler.evictExpired()
+                        val fragmentMetricsChanged = when (fragmentResult) {
+                            IpFragmentReassembler.Result.Pending -> true
+                            is IpFragmentReassembler.Result.Dropped -> true
+                            is IpFragmentReassembler.Result.Ready -> fragmentResult.wasFragmented
+                        }
+                        if (fragmentMetricsChanged || expiredAssemblies > 0) {
+                            FirewallDnsTrafficMetrics.fragmentSnapshot(session.fragmentReassembler.metrics())
+                        }
                         val normalized = when (val result = fragmentResult) {
                             IpFragmentReassembler.Result.Pending -> continue
                             is IpFragmentReassembler.Result.Dropped -> {
@@ -701,6 +710,7 @@ class DnsFirewallService : VpnService() {
             }
             session.tcpCoordinator?.close()
             session.fragmentReassembler.clear()
+            FirewallDnsTrafficMetrics.fragmentSnapshot(session.fragmentReassembler.metrics())
             session.tcpCoordinator?.metrics()?.let(FirewallDnsTrafficMetrics::smoltcpSnapshot)
             session.tcpCoordinator = null
             session.tcpOwner = null
