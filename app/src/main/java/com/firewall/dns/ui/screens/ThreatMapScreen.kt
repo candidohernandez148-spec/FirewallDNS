@@ -344,7 +344,7 @@ private fun ThreeDimensionalMindMap(selectedNode: String, onSelectNode: (String)
                     }
 
                     // Core label remains visually dominant and readable.
-                    basePaint.color = MaterialTheme.colorScheme.onSurface.toArgb()
+                    basePaint.color = onSurface.toArgb()
                     basePaint.textAlign = Paint.Align.CENTER
                     basePaint.textSize = 9f * resourcesDensity()
                     basePaint.typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
