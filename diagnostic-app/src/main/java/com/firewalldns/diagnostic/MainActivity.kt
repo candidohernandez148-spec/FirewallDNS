@@ -245,7 +245,7 @@ class MainActivity : Activity() {
     private fun testNativeTransport(): TestResult {
         val v4Dns = byteArrayOf(10, 77, 0, 1)
         val v4Client = byteArrayOf(10, 77, 0, 2)
-        val v6Dns = ByteArray(16).apply { this[0] = 0x20; this[1] = 0x01; this[2] = 0x0d; this[3] = 0xb8; this[15] = 1 }
+        val v6Dns = ByteArray(16).apply { this[0] = 0x20.toByte(); this[1] = 0x01.toByte(); this[2] = 0x0d.toByte(); this[3] = 0xb8.toByte(); this[15] = 1.toByte() }
         val v6Client = v6Dns.copyOf().apply { this[15] = 2 }
         return try {
             val transport = NativeTcpDnsTransport.create(1500, v4Dns, v4Client, v6Dns, v6Client, 16)
