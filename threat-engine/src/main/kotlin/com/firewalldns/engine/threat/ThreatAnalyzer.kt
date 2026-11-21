@@ -179,8 +179,6 @@ class ThreatAnalyzer(
             ThreatIndicator("analytics-mixpanel", "mixpanel.com", category = ThreatCategory.ANALYTICS, confidence = 82, action = PolicyAction.OBSERVE, reason = "known_analytics_provider"),
             ThreatIndicator("analytics-amplitude", "amplitude.com", category = ThreatCategory.ANALYTICS, confidence = 82, action = PolicyAction.OBSERVE, reason = "known_analytics_provider"),
             ThreatIndicator("track-facebook-connect", "facebook.net", category = ThreatCategory.TRACKING, confidence = 82, action = PolicyAction.OBSERVE, reason = "social_sdk_tracking_endpoint"),
-            ThreatIndicator("track-google-analytics", "google-analytics.com", category = ThreatCategory.TRACKING, confidence = 88, action = PolicyAction.OBSERVE, reason = "known_analytics_domain"),
-            ThreatIndicator("track-tag-manager", "googletagmanager.com", category = ThreatCategory.TRACKING, confidence = 82, action = PolicyAction.OBSERVE, reason = "known_tag_management_domain"),
         )
 
         val DEFAULT_SAFE_DOMAINS = listOf(
