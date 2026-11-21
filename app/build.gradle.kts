@@ -18,7 +18,7 @@ android {
         ndk { abiFilters += listOf("arm64-v8a") }
     }
 
-    // Both APKs must use this exact keystore for signature-level provider access.
+    // Keep the established release signing identity so updates install over prior FirewallDNS builds.
     val releaseKeystorePath = providers.environmentVariable("KEYSTORE_PATH").orNull
     val releaseKeystore = releaseKeystorePath?.let { rootProject.file(it) }?.takeIf { it.isFile }
     val releaseStorePassword = providers.environmentVariable("KEYSTORE_PASSWORD").orNull
