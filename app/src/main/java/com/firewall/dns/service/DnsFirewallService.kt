@@ -100,8 +100,15 @@ class DnsFirewallService : VpnService() {
 
     private lateinit var connectivityManager: ConnectivityManager
     @Volatile private var sharedEngine: AndroidEngineRuntime? = null
-    @Volatile private var sharedUpstream: DnsUpstreamFailoverClient? = null
-    @Volatile private var activeUpstreamServers: List<String> = emptyList()
+    private data class UpstreamSnapshot(
+        val client: DnsUpstreamFailoverClient,
+        val resolvers: List<String>,
+    )
+    /**
+     * Client and resolver labels are one immutable publication. Keeping them
+     * together prevents diagnostics from labelling attempts with a newer network.
+     */
+    @Volatile private var upstreamSnapshot: UpstreamSnapshot? = null
     @Volatile private var physicalNetworkCallback: ConnectivityManager.NetworkCallback? = null
     private val upstreamRefreshLock = Any()
 
@@ -121,14 +128,15 @@ class DnsFirewallService : VpnService() {
                 }
             }
             val service = diagnosticInstance
-            val upstream = service?.sharedUpstream
-            if (service == null || !service.isRunning || upstream == null) {
+            val snapshot = service?.upstreamSnapshot
+            val upstream = snapshot?.client
+            if (service == null || !service.isRunning || snapshot == null || upstream == null) {
                 return Bundle().apply {
                     putBoolean("approved", false)
                     putString("detail", "El servicio FirewallDNS o sus resolvers protegidos no están activos.")
                 }
             }
-            val resolverSnapshot = service.activeUpstreamServers.toList()
+            val resolverSnapshot = snapshot.resolvers
             val attemptDetails = mutableListOf<String>()
             return when (val result = upstream.exchangeTcp(
                 query,
@@ -345,7 +353,7 @@ class DnsFirewallService : VpnService() {
         activeTunSession = session
 
         val engineRuntime = sharedEngine
-        val upstreamClient = sharedUpstream
+        val upstreamClient = upstreamSnapshot?.client
         if (engineRuntime != null && upstreamClient != null) {
             val nativeTransport = runCatching {
                 NativeTcpDnsTransport.create(
@@ -423,7 +431,7 @@ class DnsFirewallService : VpnService() {
                             resolvePackageName(uid)?.also { appUidByPackage[it] = uid }
                         },
                         exchangeUpstream = { query, cancellation ->
-                            val result = (sharedUpstream ?: upstreamClient).exchange(query, cancellation) { attempt ->
+                            val result = (upstreamSnapshot?.client ?: upstreamClient).exchange(query, cancellation) { attempt ->
                                 (attempt.result as? DnsUpstreamResult.Failure)?.let {
                                     FirewallDnsTrafficMetrics.upstreamAttemptFailure(it.reason)
                                 }
@@ -597,7 +605,7 @@ class DnsFirewallService : VpnService() {
         if (shouldBlock) {
             dnsResponse = DnsPacketEngine.buildNxDomainResponse(dnsPayload, query.questionEndOffset)
         } else {
-            val cacheKey = "${query.domain.lowercase()}:${query.qType}:${activeUpstreamServers.joinToString(",")}"
+            val cacheKey = "${query.domain.lowercase()}:${query.qType}:${upstreamSnapshot?.resolvers.orEmpty().joinToString(",")}"
             val now = System.currentTimeMillis()
             val cached = dnsCache[cacheKey]?.takeIf { it.expiresAt > now }
             val cachedResponse = cached?.response?.copyOf()?.apply {
@@ -609,7 +617,7 @@ class DnsFirewallService : VpnService() {
                 dnsResponse = cachedResponse
             } else {
                 FirewallDnsTrafficMetrics.cacheMiss()
-                val upstreamResult = sharedUpstream?.exchange(
+                val upstreamResult = upstreamSnapshot?.client?.exchange(
                     dnsPayload,
                     DnsExchangeCancellation(),
                 ) { attempt ->
@@ -692,8 +700,7 @@ class DnsFirewallService : VpnService() {
     private fun installSharedEngine() {
         if (!BuildConfig.USE_SHARED_ENGINE) {
             sharedEngine = null
-            sharedUpstream = null
-            activeUpstreamServers = emptyList()
+            upstreamSnapshot = null
             FirewallDnsTrafficMetrics.upstreamResolversChanged(emptyList())
             return
         }
@@ -710,8 +717,7 @@ class DnsFirewallService : VpnService() {
         }.getOrNull()
         sharedEngine = runtime
         synchronized(upstreamRefreshLock) {
-            activeUpstreamServers = emptyList()
-            sharedUpstream = null
+            upstreamSnapshot = null
             refreshSharedUpstreamLocked()
         }
     }
@@ -763,7 +769,8 @@ class DnsFirewallService : VpnService() {
         val discovered = NetworkDns.activeServers(this).ifEmpty {
             listOf(NetworkDns.EMERGENCY_DNS)
         }
-        if (discovered == activeUpstreamServers && sharedUpstream != null) return
+        val current = upstreamSnapshot
+        if (current != null && discovered == current.resolvers) return
         val replacement = runCatching {
             runtime.createDnsFailover(
                 discovered.map { address ->
@@ -772,10 +779,9 @@ class DnsFirewallService : VpnService() {
             )
         }.getOrNull() ?: return
 
-        // Publish the fully constructed client atomically; in-flight exchanges can
-        // finish on their previous immutable client while new requests use this one.
-        sharedUpstream = replacement
-        activeUpstreamServers = discovered
+        // Publish client and resolver labels together. In-flight exchanges retain
+        // their old immutable snapshot; diagnostics can never mix two network generations.
+        upstreamSnapshot = UpstreamSnapshot(replacement, discovered.toList())
         FirewallDnsTrafficMetrics.upstreamResolversChanged(discovered)
         dnsCache.clear()
     }
@@ -833,8 +839,7 @@ class DnsFirewallService : VpnService() {
         isRunning = false
         FirewallRepository.setRunning(false)
         sharedEngine = null
-        sharedUpstream = null
-        activeUpstreamServers = emptyList()
+        upstreamSnapshot = null
         FirewallDnsTrafficMetrics.upstreamResolversChanged(emptyList())
 
         val session = activeTunSession
