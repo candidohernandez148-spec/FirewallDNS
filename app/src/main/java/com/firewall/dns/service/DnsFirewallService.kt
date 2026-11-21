@@ -94,6 +94,7 @@ class DnsFirewallService : VpnService() {
     @Volatile private var sharedUpstream: DnsUpstreamFailoverClient? = null
 
     companion object {
+        private val IPV6_EXTENSION_HEADERS = setOf(0, 43, 44, 50, 51, 60, 135, 139, 140)
         const val ACTION_START = "com.firewall.dns.action.START_TUN"
         const val ACTION_STOP = "com.firewall.dns.action.STOP_TUN"
 
