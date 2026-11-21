@@ -131,7 +131,7 @@ object NetworkDns {
     }
 
     @Suppress("DEPRECATION")
-    fun active(context: Context, allowIpv6: Boolean = true): String = try {
+    fun activeServers(context: Context, allowIpv6: Boolean = true): List<String> = try {
         val cm = context.getSystemService(ConnectivityManager::class.java)
         val active = cm.activeNetwork
         val activeCaps = active?.let { cm.getNetworkCapabilities(it) }
@@ -141,20 +141,47 @@ object NetworkDns {
         ) {
             active
         } else {
-            cm.allNetworks.firstOrNull { net ->
-                cm.getNetworkCapabilities(net)?.let { c ->
-                    c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-                        !c.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
-                } == true
-            }
+            // While VpnService is the default network, Android exposes the physical
+            // networks through allNetworks. Prefer validated networks, then a
+            // deterministic transport order instead of relying on allNetworks order.
+            cm.allNetworks
+                .filter { network ->
+                    cm.getNetworkCapabilities(network)?.let { caps ->
+                        caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                            !caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+                    } == true
+                }
+                .sortedWith(
+                    compareByDescending<android.net.Network> { network ->
+                        cm.getNetworkCapabilities(network)?.hasCapability(
+                            NetworkCapabilities.NET_CAPABILITY_VALIDATED
+                        ) == true
+                    }.thenBy { network ->
+                        val caps = cm.getNetworkCapabilities(network)
+                        when {
+                            caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true -> 0
+                            caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true -> 1
+                            caps?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true -> 2
+                            else -> 3
+                        }
+                    }
+                )
+                .firstOrNull()
         }
         fromLink(physicalNet?.let { cm.getLinkProperties(it) }, allowIpv6)
+            .split(',')
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .distinct()
     } catch (_: Throwable) {
-        ""
+        emptyList()
     }
 
+    fun active(context: Context, allowIpv6: Boolean = true): String =
+        activeServers(context, allowIpv6).joinToString(",")
+
     fun firstActiveDns(context: Context): String =
-        active(context, allowIpv6 = false).substringBefore(',').ifEmpty { EMERGENCY_DNS }
+        activeServers(context, allowIpv6 = false).firstOrNull() ?: EMERGENCY_DNS
 
     /** Tipo de conexión física con Internet; se ignora la interfaz TUN de la propia VPN. */
     @Suppress("DEPRECATION")
