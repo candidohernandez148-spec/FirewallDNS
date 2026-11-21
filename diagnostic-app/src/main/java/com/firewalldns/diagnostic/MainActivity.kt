@@ -194,7 +194,7 @@ class MainActivity : Activity() {
             }
 
             afterMetrics = readProductionMetrics()
-            if (vpnActive && bridgeAvailable) {
+            if (firewallDnsActive && bridgeAvailable) {
                 collected += metricDeltaResult("Contador TUN DNS UDP", "dnsUdpPackets")
                 collected += metricDeltaResult("Contador TUN DNS TCP", "dnsTcp")
                 collected += metricDeltaResult("Sesiones smoltcp abiertas", "smoltcpSessionsOpened")
