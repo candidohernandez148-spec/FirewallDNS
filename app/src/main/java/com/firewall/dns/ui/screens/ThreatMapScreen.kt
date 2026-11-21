@@ -58,11 +58,11 @@ private data class MindMapNode(
     val id: String,
     val label: String,
     val hint: String,
+    val value: String,
     val x: Float,
     val y: Float,
     val z: Float,
-    val tint: Color,
-    val value: String
+    val tint: Color
 )
 
 /** Animated perspective mind map. Visual motion never changes engine decisions or counters. */
@@ -84,8 +84,6 @@ fun ThreatMapScreen(
     val knownObserved = logs.map { it.domain.trim().lowercase().trimEnd('.') }
         .distinct().count { ThreatKnowledgeGraph.inspect(it) != null }
     val observedApps = logs.map { it.appName }.filter { it.isNotBlank() }.distinct().size
-    val observedCount = logs.count { it.reason.startsWith("OBSERVE:", ignoreCase = true) }
-    val blockedInHistory = logs.count { it.isBlocked }
     val mindMapNodes = remember(logs, customBlock, customAllow, tunMetrics, vpnRunning,
         smartModeEnabled, observationModeEnabled, catalog) {
         listOf(
@@ -124,7 +122,7 @@ fun ThreatMapScreen(
         query.isBlank() || evidence.provider.contains(query, true) ||
             evidence.platform.orEmpty().contains(query, true)
     }
-    val selected = mindMapNodes.firstOrNull { it.id == selectedNode } ?: nodes.first()
+    val selected = mindMapNodes.firstOrNull { it.id == selectedNode } ?: mindMapNodes.first()
     val selectedDescription = when (selected.id) {
         "tun" -> "Contador del servicio TUN: ${tunMetrics.packetsRead} paquetes leídos. Es acumulado del proceso actual."
         "dns" -> "Consultas contabilizadas: UDP ${tunMetrics.dnsUdpPackets}, TCP ${tunMetrics.dnsTcp}. No representa DoH/DoT."
@@ -298,7 +296,7 @@ private fun ThreeDimensionalMindMap(
                 Modifier.fillMaxWidth().height(252.dp)
                     .pointerInput(Unit) {
                         detectTapGestures { tap ->
-                            val hit = mindMapNodes.map { node ->
+                            val hit = nodes.map { node ->
                                 val point = projectNode(node, size.width.toFloat(), size.height.toFloat(), latestRotation)
                                 val dx = point.x - tap.x
                                 val dy = point.y - tap.y
@@ -336,7 +334,7 @@ private fun ThreeDimensionalMindMap(
                     }
 
                     // Draw branches first, then moving signal particles along each branch.
-                    val center = projected.getValue(mindMapNodes.first())
+                    val center = projected.getValue(nodes.first())
                     nodes.drop(1).forEachIndexed { _, node ->
                         val point = projected.getValue(node)
                         basePaint.style = Paint.Style.STROKE
