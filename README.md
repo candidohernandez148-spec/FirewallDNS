@@ -56,14 +56,8 @@ app/src/main/java/com/firewall/dns/
 │   └── theme/         # Paleta clara/oscura, tipografía y formas (Theme)
 └── MainActivity.kt    # Punto de entrada, permisos de red/notificaciones y visor de fallos
 
-## Diagnóstico integral del motor
+## Diagnóstico integrado del motor
 
-El módulo `:diagnostic-app` genera un segundo APK llamado **FirewallDNS Diagnostic**. Instala los dos APK incluidos en el mismo artefacto de GitHub Actions:
+El diagnóstico se ejecuta desde la pantalla **Diagnóstico** de FirewallDNS; no requiere instalar una aplicación adicional ni iniciar una segunda VPN. La pantalla consulta métricas del servicio TUN que está funcionando, permite comprobar Rust/JNI y ofrece una prueba DNS/TCP upstream real mediante los mismos sockets protegidos y resolvers configurados. La prueba TCP solo se considera aprobada cuando recibe y valida una respuesta DNS sobre TCP/53; el resultado de `VpnService.protect()` por sí solo no demuestra conectividad.
 
-1. Instala o actualiza **Firewall DNS**.
-2. Instala **FirewallDNS Diagnostic** del mismo artefacto de compilación.
-3. Abre Firewall DNS y activa la protección.
-4. Abre FirewallDNS Diagnostic y pulsa **EJECUTAR DIAGNÓSTICO COMPLETO**.
-5. Exporta el ZIP generado y comparte el informe para revisar los resultados.
-
-La aplicación de diagnóstico no crea otra VPN. Lee únicamente contadores agregados mediante un proveedor protegido por permiso de firma. Los resultados distinguen **APROBADO**, **FALLIDO** y **NO VERIFICADO**. Consulta [docs/DIAGNOSTIC_APP.md](docs/DIAGNOSTIC_APP.md) para conocer el alcance y las limitaciones de cada prueba.
+Desde esa pantalla puedes compartir el informe JSON. Los contadores son acumulativos del proceso/servicio y deben interpretarse junto con el estado de la VPN y el momento de la prueba. Consulta [docs/DIAGNOSTIC_APP.md](docs/DIAGNOSTIC_APP.md) para conocer el alcance y las limitaciones. El antiguo módulo companion queda fuera del flujo y no es necesario instalarlo.
