@@ -222,6 +222,47 @@ class DnsUpstreamClientTest {
         }
     }
 
+    @Test fun bindsTcpSocketBeforeProtectionAndProtectsBeforeConnect() {
+        java.net.ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { server ->
+            server.soTimeout = 2_000
+            val query = query("tcp-protect.example")
+            val accepted = java.util.concurrent.CountDownLatch(1)
+            val responder = thread {
+                server.accept().use { peer ->
+                    peer.soTimeout = 2_000
+                    val input = java.io.DataInputStream(peer.getInputStream())
+                    val length = input.readUnsignedShort()
+                    val received = ByteArray(length)
+                    input.readFully(received)
+                    val response = responseFor(received)
+                    peer.getOutputStream().apply {
+                        write(DnsTcpFrameCodec.encode(response))
+                        flush()
+                    }
+                    accepted.countDown()
+                }
+            }
+            val protector = object : DnsSocketProtector {
+                override fun protect(socket: DatagramSocket) = true
+                override fun protect(socket: java.net.Socket): Boolean {
+                    assertEquals(true, socket.isBound, "Socket must have a native local endpoint before protect")
+                    assertEquals(false, socket.isConnected, "Socket must not connect before protect")
+                    return true
+                }
+            }
+
+            val result = DnsUpstreamClient(
+                DnsUpstreamConfig("127.0.0.1", server.localPort, timeoutMillis = 2_000),
+                protector,
+            ).exchangeTcpOnly(query, DnsExchangeCancellation())
+
+            assertIs<DnsUpstreamResult.Success>(result)
+            assertEquals(true, accepted.await(2, TimeUnit.SECONDS))
+            responder.join(2_000)
+            assertEquals(false, responder.isAlive)
+        }
+    }
+
     @Test fun rejectsMalformedQueryBeforeOpeningSocket() {
         val result = DnsUpstreamClient(DnsUpstreamConfig("127.0.0.1"), TestDnsSocketProtector).exchange(byteArrayOf(1, 2, 3))
         assertEquals("dns_header_truncated", assertIs<DnsUpstreamResult.Failure>(result).reason)

@@ -157,6 +157,12 @@ class DnsUpstreamClient(
         Socket().use { socket ->
             if (!cancellation.register(socket)) return DnsUpstreamResult.Cancelled
             try {
+            // Android's Socket may defer creation of its native descriptor until
+            // bind/connect. VpnService.protect(Socket) needs a live descriptor,
+            // while protection must still happen before connect to avoid the TUN.
+            // Bind an ephemeral local port first; this creates the descriptor
+            // without selecting or connecting a network route.
+            socket.bind(InetSocketAddress(0))
             val wasProtected = cancellation.protectSocket(socket) {
                 socketProtector.protect(socket)
             } ?: return DnsUpstreamResult.Cancelled
