@@ -101,12 +101,32 @@ jobs:
           APKSIGNER="$BUILD_TOOLS/apksigner"
           MAIN_APK="app/build/outputs/apk/release/app-release.apk"
           DIAGNOSTIC_APK="diagnostic-app/build/outputs/apk/release/diagnostic-app-release.apk"
-          MAIN_CERT="$("$APKSIGNER" verify --print-certs "$MAIN_APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n1)"
-          DIAGNOSTIC_CERT="$("$APKSIGNER" verify --print-certs "$DIAGNOSTIC_APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n1)"
-          test -n "$MAIN_CERT"
-          test -n "$DIAGNOSTIC_CERT"
+          for apk in "$MAIN_APK" "$DIAGNOSTIC_APK"; do
+            if [[ ! -s "$apk" ]]; then
+              echo "::error::No se encontró el APK esperado: $apk"
+              exit 1
+            fi
+            "$APKSIGNER" verify "$apk"
+          done
+
+          MAIN_OUTPUT="$("$APKSIGNER" verify --print-certs "$MAIN_APK" 2>&1)"
+          DIAGNOSTIC_OUTPUT="$("$APKSIGNER" verify --print-certs "$DIAGNOSTIC_APK" 2>&1)"
+          echo "Certificado APK FirewallDNS:"
+          printf '%s\\n' "$MAIN_OUTPUT"
+          echo "Certificado APK Diagnostic:"
+          printf '%s\\n' "$DIAGNOSTIC_OUTPUT"
+
+          MAIN_CERT="$(printf '%s\\n' "$MAIN_OUTPUT" | awk -F': ' 'tolower($0) ~ /certificate sha-256 digest/ {print $NF; exit}')"
+          DIAGNOSTIC_CERT="$(printf '%s\\n' "$DIAGNOSTIC_OUTPUT" | awk -F': ' 'tolower($0) ~ /certificate sha-256 digest/ {print $NF; exit}')"
+
+          if [[ -z "$MAIN_CERT" || -z "$DIAGNOSTIC_CERT" ]]; then
+            echo "::error::No se pudo extraer la huella SHA-256 de uno o ambos APK."
+            exit 1
+          fi
           if [[ "$MAIN_CERT" != "$DIAGNOSTIC_CERT" ]]; then
-            echo "::error::FirewallDNS y Diagnostic no están firmados con el mismo certificado."
+            echo "::error::Las firmas son diferentes."
+            echo "FirewallDNS: $MAIN_CERT"
+            echo "Diagnostic: $DIAGNOSTIC_CERT"
             exit 1
           fi
           echo "Certificado compartido verificado: $MAIN_CERT"
