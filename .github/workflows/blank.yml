@@ -80,6 +80,19 @@ jobs:
         run: |
           gradle :app:assembleRelease :diagnostic-app:assembleRelease --no-daemon --stacktrace
 
+      - name: Verificar motor Rust/JNI dentro de ambos APK Release
+        shell: bash
+        run: |
+          set -euo pipefail
+          for apk in app/build/outputs/apk/release/app-release.apk diagnostic-app/build/outputs/apk/release/diagnostic-app-release.apk; do
+            test -s "$apk"
+            if ! unzip -l "$apk" | grep -q 'lib/arm64-v8a/libfirewalldns_native.so'; then
+              echo "::error::El APK Release no contiene el motor nativo ARM64: $apk"
+              exit 1
+            fi
+            echo "Motor Rust/JNI ARM64 incluido: $apk"
+          done
+
       - name: Verificar certificado compartido entre APK
         shell: bash
         run: |
