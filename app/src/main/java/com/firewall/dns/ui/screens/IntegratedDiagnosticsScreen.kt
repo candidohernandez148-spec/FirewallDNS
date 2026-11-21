@@ -72,10 +72,17 @@ fun IntegratedDiagnosticsScreen(
             put("cacheMisses", metrics.cacheMisses)
             put("upstreamSuccess", metrics.upstreamSuccess)
             put("upstreamFailure", metrics.upstreamFailure)
+            put("upstreamProtectUdpAttempts", metrics.upstreamProtectUdpAttempts)
+            put("upstreamProtectUdpSuccess", metrics.upstreamProtectUdpSuccess)
+            put("upstreamProtectUdpFailure", metrics.upstreamProtectUdpFailure)
+            put("upstreamProtectTcpAttempts", metrics.upstreamProtectTcpAttempts)
+            put("upstreamProtectTcpSuccess", metrics.upstreamProtectTcpSuccess)
+            put("upstreamProtectTcpFailure", metrics.upstreamProtectTcpFailure)
             put("noDnsResponse", metrics.noDnsResponse)
             put("packetsWritten", metrics.packetsWritten)
             put("writeErrors", metrics.writeErrors)
             put("workerErrors", metrics.workerErrors)
+            put("smoltcpTransportAvailable", metrics.smoltcpTransportAvailable)
             put("smoltcpSessionsActive", metrics.smoltcpSessionsActive)
             put("smoltcpPacketsAccepted", metrics.smoltcpPacketsAccepted)
             put("smoltcpSessionsOpened", metrics.smoltcpSessionsOpened)
@@ -87,7 +94,6 @@ fun IntegratedDiagnosticsScreen(
             put("smoltcpNativeErrors", metrics.smoltcpNativeErrors)
         })
         put("notVerified", listOf(
-            "VpnService.protect upstream socket outcome (no dedicated counter)",
             "fragment reassembly success/failure (no dedicated counter)",
             "DoH/DoT/DoQ inspection",
             "long-duration CPU and battery behavior on device"
@@ -160,9 +166,10 @@ fun IntegratedDiagnosticsScreen(
         Card {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Transporte TCP DNS · smoltcp", style = MaterialTheme.typography.titleMedium)
+                Metric("Transporte smoltcp disponible (1=sí)", metrics.smoltcpTransportAvailable)
                 Metric("Sesiones activas", metrics.smoltcpSessionsActive)
                 Metric("Sesiones abiertas / cerradas", metrics.smoltcpSessionsOpened, metrics.smoltcpSessionsClosed)
-                Metric("Paquetes aceptados", metrics.smoltcpPacketsAccepted)
+                Metric("Paquetes aceptados en cola JNI", metrics.smoltcpPacketsAccepted)
                 Metric("Rechazos de entrada", metrics.smoltcpIngressRejected)
                 Metric("Errores nativos", metrics.smoltcpNativeErrors)
                 Metric("Fallos al encolar respuestas", metrics.smoltcpResponseFailures)
@@ -176,14 +183,18 @@ fun IntegratedDiagnosticsScreen(
                 Metric("Errores de escritura", metrics.writeErrors)
                 Metric("Errores de workers", metrics.workerErrors)
                 Metric("Upstream correcto / fallido", metrics.upstreamSuccess, metrics.upstreamFailure)
+                Text(if (metrics.upstreamProtectUdpAttempts == 0L) "protect UDP: sin intentos medidos" else
+                    "protect UDP: ${metrics.upstreamProtectUdpSuccess}/${metrics.upstreamProtectUdpAttempts} correctos · ${metrics.upstreamProtectUdpFailure} fallos")
+                Text(if (metrics.upstreamProtectTcpAttempts == 0L) "protect TCP: sin intentos medidos" else
+                    "protect TCP: ${metrics.upstreamProtectTcpSuccess}/${metrics.upstreamProtectTcpAttempts} correctos · ${metrics.upstreamProtectTcpFailure} fallos")
                 Metric("Sin respuesta DNS", metrics.noDnsResponse)
             }
         }
         Card {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Cobertura y límites", style = MaterialTheme.typography.titleMedium)
-                Text("MEDIDO: contadores del recorrido TUN real mientras FirewallDNS está activo.")
-                Text("NO VERIFICADO: resultado individual de VpnService.protect(), éxito del reensamblado de fragmentos y estabilidad prolongada de CPU/batería.")
+                Text("MEDIDO: contadores del recorrido TUN real mientras FirewallDNS está activo. “Aceptados en cola JNI” no significa que el paquete ya haya sido procesado por smoltcp.")
+                Text("MEDIDO: intentos y resultado booleano de VpnService.protect() para sockets upstream UDP/TCP. NO VERIFICADO: éxito del reensamblado de fragmentos y estabilidad prolongada de CPU/batería.")
                 Text("Fuera del alcance de inspección DNS/53: DoH, DoT y DoQ. No se presentan como tráfico inspeccionado.")
                 Button(onClick = {
                     val send = Intent(Intent.ACTION_SEND).apply {
@@ -229,6 +240,7 @@ private fun runNativeBoundaryTest(): String {
                 Long.MAX_VALUE,
                 byteArrayOf(0, 12, 0x12, 0x34, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0),
             )
+            val rejectedPackets = native.rejectedPackets()
             val noUnexpectedOutput = native.takePacket() == null && native.takeEvent() == null
             val wrongOwnerResult = AtomicInteger(Int.MIN_VALUE)
             val otherThread = Thread {
@@ -240,6 +252,7 @@ private fun runNativeBoundaryTest(): String {
                 "paquete vacío=$emptyPacket" to (emptyPacket == -1),
                 "paquete sobredimensionado=$oversizedPacket" to (oversizedPacket == -1),
                 "sesión inexistente=$missingSession" to (missingSession == -5),
+                "rechazos=$rejectedPackets" to (rejectedPackets == 2L),
                 "protección del hilo=${wrongOwnerResult.get()}" to (wrongOwnerResult.get() == -3),
                 "colas vacías=$noUnexpectedOutput" to noUnexpectedOutput,
             )
@@ -248,7 +261,7 @@ private fun runNativeBoundaryTest(): String {
                 return@use "FALLO: la prueba de propietario de hilo no terminó."
             }
             val failures = checks.filterNot { it.second }.map { it.first }
-            if (failures.isEmpty()) "APROBADO: Rust/JNI smoltcp IPv4+IPv6; límites, sesión inexistente, colas y propietario del hilo verificados."
+            if (failures.isEmpty()) "APROBADO: Rust/JNI smoltcp IPv4+IPv6; límites, contador de rechazos, sesión inexistente, colas y propietario del hilo verificados."
             else "FALLO: ${failures.joinToString()}"
         }
     } catch (t: Throwable) {

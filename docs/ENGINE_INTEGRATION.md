@@ -15,7 +15,7 @@ El código se sincronizó desde `candidohernandez148-spec/FirewallDNS-Engine` (r
 
 ## Ruta de producción conectada
 
-`DnsFirewallService` continúa siendo el único `VpnService` y dueño del TUN. El servicio crea `AndroidEngineRuntime`, exporta el snapshot de reglas de `FirewallRepository` al motor, resuelve el paquete asociado al UID cuando Android lo permite y usa `EngineRuntime.evaluateDns()` para las decisiones DNS. Las consultas permitidas usan el cliente upstream del motor, que protege los sockets UDP/TCP antes de conectarlos.
+`DnsFirewallService` continúa siendo el único `VpnService` y dueño del TUN. El servicio crea `AndroidEngineRuntime`, exporta el snapshot de reglas de `FirewallRepository` al motor, resuelve el paquete asociado al UID cuando Android lo permite y usa `EngineRuntime.evaluateDns()` para las decisiones DNS. Las consultas permitidas usan el cliente upstream del motor, que protege los sockets UDP/TCP antes de conectarlos. `AndroidDnsSocketProtector` publica un callback agregado con el protocolo y el resultado booleano; `FirewallDnsTrafficMetrics` contabiliza intentos, éxitos y fallos sin guardar datos del socket.
 
 La operación upstream es síncrona; por ello se invoca desde los workers existentes y no desde el hilo principal. Esta rama no convierte el motor en una pila IP/TCP completa y no activa todavía `TunDnsPacketProcessor` como lector de paquetes de producción.
 
@@ -82,14 +82,16 @@ habilita TCP/UDP general ni cambia el alcance DNS-only.
 
 `TunTransportPacketParser` valida paquetes IP completos antes de que el servicio lea puertos o genere una respuesta:
 - IPv4: IHL, longitud total exacta, checksum de cabecera y rechazo de reservado/MF/offset; DF se permite.
-- IPv6: cabecera base y longitud exacta; extensiones, fragmentos y jumbograms siguen fuera de alcance.
+- IPv6: cabecera base y longitud exacta; se reensamblan fragmentos compatibles con el reassembler; extensiones no soportadas y jumbograms siguen fuera de alcance.
 - UDP: cabecera y longitud coincidentes; checksum cero se permite solo en IPv4 y los checksums presentes se verifican.
 - TCP: mínimo de 20 bytes, Data Offset válido y checksum de pseudo-cabecera obligatorio verificado sobre el segmento completo.
 
-El servicio productivo usa ese resultado para procesar DNS UDP/53 y, mientras no exista TCP de cliente gestionado por smoltcp, responder con RST correcto a TCP/53 válido. El generador evita responder a RST, aplica las reglas de secuencia/ACK con y sin ACK entrante, incluye datos + SYN + FIN en el espacio de secuencia y reconstruye checksums IPv4/TCP o TCP/IPv6.
+El servicio productivo reensambla fragmentos antes de clasificar. DNS UDP/53 se procesa por el worker existente; DNS TCP/53 válido se entrega al transporte smoltcp 0.14 mediante JNI y `SmoltcpDnsTcpCoordinator`, con un hilo propietario único para `Interface`/`SocketSet`. TCP/53 no se trata con RST cuando el transporte nativo está disponible. El resto del TCP/UDP general permanece fuera del alcance DNS-only.
 
-## DNS sobre TCP: qué está reutilizado y qué falta
+## DNS sobre TCP del cliente: integrado, pendiente de validación física
 
-`DnsTcpFrameCodec` ya codifica/decodifica el prefijo de longitud de 2 bytes Big Endian y devuelve cuántos bytes consumir, por lo que admite lecturas parciales y varios mensajes concatenados si el llamador conserva el resto del flujo. `DnsUpstreamClient` ya reintenta por TCP cuando la respuesta UDP upstream trae TC=1; protege el socket TCP antes de conectar y lee exactamente el frame anunciado.
+`DnsTcpFrameCodec` y `DnsTcpSessionProcessor` manejan el framing incremental, las decisiones `BLOCK / OBSERVE / ALLOW` y el upstream. `DnsUpstreamClient` protege sockets UDP/TCP con `VpnService.protect()` antes de conectarlos y reintenta por TCP cuando la respuesta UDP upstream trae TC=1.
 
-Esto **no equivale** a DNS sobre TCP desde las aplicaciones del dispositivo. La VPN productiva todavía responde RST al TCP/53 del cliente. Para habilitarlo se requiere completar y probar la frontera JNI + `TunPacketDevice` + bucle `smoltcp` + socket TCP por flujo + parser incremental por conexión + política DNS compartida + respuesta por el mismo flujo. No se habilita full-tunnel ni se añade una segunda VPN con esta entrega.
+En `main` de FirewallDNS (`f1c124a`), el `DnsFirewallService` ya conecta su lector TUN al `NativeTcpDnsTransport` JNI y al `SmoltcpDnsTcpCoordinator` para TCP/53 IPv4/IPv6. El lector conserva el orden de paquetes; un único hilo propietario ejecuta `poll`, consume eventos y escribe respuestas al mismo TUN. No se crea otro `VpnService`.
+
+La integración de código y CI no equivalen a una prueba física completa. Falta verificar en Samsung A34 5G handshake, retransmisión, FIN/RST, concurrencia, límites de cola, expiración, cambios Wi-Fi/móvil, `protect()` upstream, pérdidas y latencia. No se habilita TCP/UDP general ni se afirma inspección de DoH/DoT/DoQ.

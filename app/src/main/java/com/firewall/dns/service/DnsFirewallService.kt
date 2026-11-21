@@ -27,6 +27,7 @@ import com.firewalldns.engine.android.AndroidEngineRuntime
 import com.firewalldns.engine.android.FragmentReassemblerConfig
 import com.firewalldns.engine.android.IpFragmentReassembler
 import com.firewalldns.engine.android.NativeTcpDnsTransport
+import com.firewalldns.engine.android.DnsSocketProtectionProtocol
 import com.firewalldns.engine.android.SmoltcpDnsTcpCoordinator
 import com.firewalldns.engine.android.DnsTcpPacketClassifier
 import com.firewalldns.engine.core.PolicyAction
@@ -379,6 +380,7 @@ class DnsFirewallService : VpnService() {
                                 }
                         }
                     }, "FirewallDNS-smoltcp-owner").apply { start() }
+                    FirewallDnsTrafficMetrics.smoltcpStarted()
                 } else {
                     nativeTransport.close()
                 }
@@ -464,8 +466,9 @@ class DnsFirewallService : VpnService() {
 
         if (packet.protocol == 6) {
             FirewallDnsTrafficMetrics.tcpDns()
-            // DNS-over-TCP desde el cliente aún no está habilitado: responder
-            // RST únicamente a segmentos TCP/53 estructuralmente válidos.
+            // Fallback seguro cuando el paquete no pudo entrar en la ruta smoltcp
+            // (transporte nativo no disponible o formato no soportado): responder RST
+            // solo a segmentos TCP/53 estructuralmente válidos.
             val rst = DnsPacketEngine.buildTcpRstResponse(req, packet)
             if (rst != null) {
                 FirewallDnsTrafficMetrics.tcpRstSent()
@@ -603,7 +606,13 @@ class DnsFirewallService : VpnService() {
             return
         }
         val runtime = runCatching {
-            AndroidEngineRuntime(this, FirewallRepository.isSmartModeEnabled()).also {
+            AndroidEngineRuntime(
+                this,
+                FirewallRepository.isSmartModeEnabled(),
+                onSocketProtectionResult = { protocol, protected ->
+                    FirewallDnsTrafficMetrics.socketProtectionResult(protocol, protected)
+                },
+            ).also {
                 it.engine.replaceRules(FirewallRepository.enginePolicyRules())
             }
         }.getOrNull()
@@ -638,7 +647,9 @@ class DnsFirewallService : VpnService() {
         return try {
             socket = DatagramSocket()
             socket.soTimeout = 3500
-            if (!protect(socket)) return null
+            val protected = protect(socket)
+            FirewallDnsTrafficMetrics.socketProtectionResult(DnsSocketProtectionProtocol.UDP, protected)
+            if (!protected) return null
             val addr = InetAddress.getByName(FirewallRepository.getUpstreamDns())
             // A connected UDP socket accepts datagrams only from this upstream endpoint.
             socket.connect(addr, 53)
@@ -657,6 +668,7 @@ class DnsFirewallService : VpnService() {
     }
 
     private fun closeInterfaceSync() {
+        FirewallDnsTrafficMetrics.smoltcpStopped()
         isRunning = false
         FirewallRepository.setRunning(false)
         sharedEngine = null
@@ -701,6 +713,7 @@ class DnsFirewallService : VpnService() {
             session.tcpCoordinator?.close()
             session.fragmentReassembler.clear()
             session.tcpCoordinator?.metrics()?.let(FirewallDnsTrafficMetrics::smoltcpSnapshot)
+            FirewallDnsTrafficMetrics.smoltcpStopped()
             session.tcpCoordinator = null
             session.tcpOwner = null
             try { session.input.close() } catch (_: IOException) {}
