@@ -389,7 +389,9 @@ class DnsFirewallService : VpnService() {
                     if (length > 0 && session.active.get()) {
                         FirewallDnsTrafficMetrics.packetRead()
                         val copy = buffer.copyOf(length)
-                        val normalized = when (val result = session.fragmentReassembler.process(copy)) {
+                        val fragmentResult = session.fragmentReassembler.process(copy)
+                        session.fragmentReassembler.evictExpired()
+                        val normalized = when (val result = fragmentResult) {
                             IpFragmentReassembler.Result.Pending -> continue
                             is IpFragmentReassembler.Result.Dropped -> {
                                 FirewallDnsTrafficMetrics.parserRejected()
@@ -397,7 +399,6 @@ class DnsFirewallService : VpnService() {
                             }
                             is IpFragmentReassembler.Result.Ready -> result.packet.copyOf(result.length)
                         }
-                        session.fragmentReassembler.evictExpired()
 
                         // Keep TCP SYN/ACK/data order: the one TUN reader feeds smoltcp
                         // directly. DNS policy and upstream work run on per-session workers.
