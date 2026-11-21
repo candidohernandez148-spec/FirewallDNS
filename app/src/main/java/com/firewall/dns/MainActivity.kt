@@ -265,6 +265,7 @@ fun FirewallApp(
     val blocklistUrls by viewModel.blocklistUrls.collectAsState()
     val blocklistsDownloaded by viewModel.blocklistsDownloaded.collectAsState()
     val smartModeEnabled by viewModel.smartModeEnabled.collectAsState()
+    val observationModeEnabled by viewModel.observationModeEnabled.collectAsState()
     val isDownloading by viewModel.isDownloading.collectAsState()
     val downloadProgress by viewModel.downloadProgress.collectAsState()
     val apps by viewModel.filteredApps.collectAsState()
@@ -412,9 +413,11 @@ fun FirewallApp(
                     customAllow = customAllow,
                     blocklistUrls = blocklistUrls,
                     smartModeEnabled = smartModeEnabled,
+                    observationModeEnabled = observationModeEnabled,
                     isDownloading = isDownloading,
                     downloadProgress = downloadProgress,
                     onToggleSmartMode = viewModel::toggleSmartMode,
+                    onToggleObservationMode = viewModel::setObservationModeEnabled,
                     onAddBlocklistUrl = viewModel::addBlocklistUrl,
                     onRemoveBlocklistUrl = viewModel::removeBlocklistUrl,
                     onDownloadBlocklist = viewModel::downloadBlocklist,
