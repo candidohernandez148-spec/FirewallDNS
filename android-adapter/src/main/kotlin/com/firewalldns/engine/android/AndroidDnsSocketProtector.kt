@@ -54,7 +54,7 @@ class AndroidDnsSocketProtector(
 ) : DnsSocketProtector {
 
     override fun protect(socket: DatagramSocket): Boolean {
-        val protected = runCatching { vpnService.protect(socket) }.getOrDefault(false)
+        val protected = try { vpnService.protect(socket) } catch (_: RuntimeException) { false }
         AndroidSocketProtectionMetrics.recordDatagram(protected)
         return protected
     }
