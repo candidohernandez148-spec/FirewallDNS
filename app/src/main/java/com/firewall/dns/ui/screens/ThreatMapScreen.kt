@@ -11,7 +11,6 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -47,13 +46,12 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.toArgb
 import com.firewall.dns.domain.engine.ThreatKnowledgeGraph
 import com.firewall.dns.domain.model.DnsLogEntry
 import kotlin.math.cos
 import kotlin.math.sin
-import kotlin.math.sqrt
 
 private data class MindMapNode(
     val id: String,
@@ -251,6 +249,8 @@ private fun ThreeDimensionalMindMap(selectedNode: String, onSelectNode: (String)
     )
     val background = MaterialTheme.colorScheme.surface
     val lineColor = MaterialTheme.colorScheme.outlineVariant
+    val onSurface = MaterialTheme.colorScheme.onSurface
+    val density = LocalDensity.current.density
     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(containerColor = background)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -335,10 +335,10 @@ private fun ThreeDimensionalMindMap(selectedNode: String, onSelectNode: (String)
                         basePaint.color = android.graphics.Color.WHITE
                         canvas.drawCircle(point.x, point.y, nodeRadius * .34f, basePaint)
 
-                        basePaint.color = if (isSelected) node.tint.toArgb() else MaterialTheme.colorScheme.onSurface.toArgb()
+                        basePaint.color = if (isSelected) node.tint.toArgb() else onSurface.toArgb()
                         basePaint.textAlign = Paint.Align.CENTER
                         basePaint.typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
-                        basePaint.textSize = 10.5f * resourcesDensity()
+                        basePaint.textSize = 10.5f * density
                         canvas.drawText(node.label, point.x, point.y + nodeRadius + 15f * resourcesDensity(), basePaint)
                     }
 
@@ -385,7 +385,6 @@ private fun MapStatPill(label: String, value: String, color: Color) {
     }
 }
 
-private fun resourcesDensity(): Float = 1f
 
 @Composable
 private fun NodePill(label: String) {
