@@ -146,6 +146,8 @@ object FirewallDnsTrafficMetrics {
                 reason.contains("incomplete", ignoreCase = true) ->
                 upstreamFailureIo.incrementAndGet()
             reason.startsWith("dns_upstream_response_") ||
+                reason.startsWith("dns_upstream_question_") ||
+                reason.startsWith("dns_upstream_record_") ||
                 reason.contains("mismatch", ignoreCase = true) ||
                 reason.contains("malformed", ignoreCase = true) ||
                 reason.contains("truncated", ignoreCase = true) ->
