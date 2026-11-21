@@ -19,6 +19,24 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Configurar Rust para Android ARM64
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Instalar Android NDK para JNI
+        run: |
+          sdkmanager --install "ndk;27.2.12479018"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - name: Instalar cargo-ndk
+        run: cargo install cargo-ndk --locked
+
       - name: Configurar Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
@@ -56,14 +74,22 @@ jobs:
           echo "::add-mask::$(cat signing/password)"
 
       - name: Ejecutar pruebas unitarias
-        run: gradle testDebugUnitTest --no-daemon
+        run: gradle testDebugUnitTest --no-daemon --stacktrace
 
-      - name: Compilar Release APK
-        run: gradle assembleRelease --no-daemon
+      - name: Compilar FirewallDNS Release y Diagnostic Debug
+        run: |
+          gradle :app:assembleRelease :diagnostic-app:assembleDebug --no-daemon --stacktrace
 
-      - name: Subir APK Release
+      - name: Subir APK FirewallDNS
         uses: actions/upload-artifact@v7
         with:
           name: FirewallDNS-APK
           path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+
+      - name: Subir APK de diagnóstico
+        uses: actions/upload-artifact@v7
+        with:
+          name: FirewallDNS-Diagnostic-APK
+          path: diagnostic-app/build/outputs/apk/debug/diagnostic-app-debug.apk
           if-no-files-found: error
