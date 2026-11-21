@@ -491,7 +491,11 @@ class MainActivity : Activity() {
             }
         }
         val upstream = physical?.let { network ->
-            manager.getLinkProperties(network)?.dnsServers?.firstOrNull()?.hostAddress?.substringBefore('%')
+            manager.getLinkProperties(network)?.dnsServers.orEmpty()
+                .filter { it !is Inet6Address && !it.isLoopbackAddress && !it.isAnyLocalAddress }
+                .mapNotNull { it.hostAddress?.substringBefore('%') }
+                .filterNot { it in setOf("10.111.222.3", "fd66:f83a:c650::3", "10.10.10.1", "fd00:10:10::1") }
+                .firstOrNull()
         } ?: "1.1.1.1"
         return listOf("1.1.1.1", "8.8.8.8", "1.0.0.1", "8.8.4.4")
             .firstOrNull { it != upstream } ?: "8.8.8.8"
