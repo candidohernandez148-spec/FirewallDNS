@@ -17,10 +17,18 @@ class ThreatAnalyzerTest {
         assertEquals(ThreatCategory.ADVERTISING, result.signals.single().category)
     }
 
-    @Test fun knownTrackerIsObservedRatherThanBlocked() {
-        val result = analyzer.analyze("pixel.facebook.com")
-        assertEquals(PolicyAction.OBSERVE, result.action)
-        assertEquals(ThreatCategory.TRACKING, result.signals.single().category)
+    @Test fun highConfidenceSocialAdEndpointsAreBlockedByProductionAnalyzer() {
+        listOf("ads.facebook.com", "pixel.facebook.com", "pixel.instagram.com", "cdn.pangle.io")
+            .forEach { domain ->
+                assertEquals(domain, PolicyAction.BLOCK, analyzer.analyze(domain).action)
+            }
+    }
+
+    @Test fun mediumConfidenceTrackingAndAnalyticsRemainObserveOnly() {
+        listOf("connect.facebook.net", "appsflyer.com", "adjust.com", "mixpanel.com")
+            .forEach { domain ->
+                assertEquals(domain, PolicyAction.OBSERVE, analyzer.analyze(domain).action)
+            }
     }
 
     @Test fun heuristicAdAndTrackingLabelsOnlyProduceObserve() {
