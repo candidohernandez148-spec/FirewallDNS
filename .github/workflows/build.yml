@@ -9,6 +9,7 @@ on:
       - "dns-engine/**"
       - "engine-runtime/**"
       - "app/**"
+      - "diagnostic-app/**"
       - "build.gradle.kts"
       - "settings.gradle.kts"
       - ".github/workflows/build.yml"
@@ -54,10 +55,12 @@ jobs:
       - name: Ejecutar pruebas unitarias
         run: gradle testDebugUnitTest test --no-daemon --stacktrace
 
-      - name: Compilar APK debug con JNI smoltcp ARM64
-        run: gradle assembleDebug --no-daemon --stacktrace
+      - name: Compilar APK FirewallDNS y APK de diagnóstico
+        run: gradle :app:assembleDebug :diagnostic-app:assembleDebug --no-daemon --stacktrace
 
       - uses: actions/upload-artifact@v4
         with:
           name: FirewallDNS-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            diagnostic-app/build/outputs/apk/debug/*.apk
