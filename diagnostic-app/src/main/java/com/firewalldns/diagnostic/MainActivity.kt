@@ -118,12 +118,54 @@ class MainActivity : Activity() {
             collected += runPolicyTest("Política BLOCK", PolicyAction.BLOCK)
             collected += runPolicyTest("Política OBSERVE", PolicyAction.OBSERVE)
             collected += runPolicyTest("Política ALLOW", PolicyAction.ALLOW)
+            collected += timed("Inteligencia integrada: dominio publicitario conocido") {
+                val result = EngineRuntime().evaluateDns(buildDnsQuery("doubleclick.net"))
+                if (result is DnsEvaluation.Blocked && result.decision.action == PolicyAction.BLOCK)
+                    TestResult("", TestStatus.APPROVED, "El indicador integrado de doubleclick.net produjo BLOCK.")
+                else TestResult("", TestStatus.FAILED, "No se bloqueó el dominio publicitario de prueba.")
+            }
+            collected += timed("Excepción ALLOW sobre indicador integrado") {
+                val runtime = EngineRuntime(initialRules = listOf(
+                    PolicyRule("diagnostic-allow-override", "doubleclick.net",
+                        action = PolicyAction.ALLOW, source = RuleSource.USER,
+                        priority = 1000, reason = "diagnostic_allow_override")
+                ))
+                val result = runtime.evaluateDns(buildDnsQuery("doubleclick.net"))
+                if (result is DnsEvaluation.Forward && result.decision.action == PolicyAction.ALLOW)
+                    TestResult("", TestStatus.APPROVED, "La regla de usuario ALLOW prevaleció sobre el indicador integrado.")
+                else TestResult("", TestStatus.FAILED, "La excepción ALLOW no prevaleció.")
+            }
+            collected += timed("Reglas por aplicación (laboratorio)") {
+                val runtime = EngineRuntime(initialRules = listOf(
+                    PolicyRule("diagnostic-app-rule", "app-probe.invalid",
+                        appPackage = "com.example.diagnostic.probe",
+                        action = PolicyAction.BLOCK, source = RuleSource.USER,
+                        priority = 100, reason = "diagnostic_app_policy")
+                ))
+                val blocked = runtime.evaluateDns(buildDnsQuery("app-probe.invalid"), "com.example.diagnostic.probe")
+                val allowed = runtime.evaluateDns(buildDnsQuery("app-probe.invalid"), "com.example.other")
+                if (blocked is DnsEvaluation.Blocked && allowed is DnsEvaluation.Forward)
+                    TestResult("", TestStatus.APPROVED, "La regla distingue el paquete indicado en el motor.")
+                else TestResult("", TestStatus.FAILED, "La evaluación por paquete no produjo el resultado esperado.")
+            }
             collected += timed("DNS malformado") {
                 val result = EngineRuntime().evaluateDns(byteArrayOf(0x01, 0x02))
                 if (result is DnsEvaluation.Rejected) TestResult("", TestStatus.APPROVED, "El motor rechazó un paquete DNS truncado.")
                 else TestResult("", TestStatus.FAILED, "El paquete DNS truncado no fue rechazado.")
             }
             collected += timed("smoltcp nativo IPv4/IPv6") { testNativeTransport() }
+            collected += TestResult("Reensamblado de fragmentos IPv4/IPv6", TestStatus.NOT_VERIFIED,
+                "El APK no inyecta fragmentos en el TUN productivo; requiere una prueba instrumentada del servicio.")
+            collected += TestResult("VpnService.protect() del upstream", TestStatus.NOT_VERIFIED,
+                "La protección del socket upstream pertenece al servicio VPN principal y no se expone como contador.")
+            collected += TestResult("Aprendizaje inteligente persistente", TestStatus.NOT_VERIFIED,
+                "Se requiere exponer el estado real de aprendizaje/Room y verificar una regla aprendida entre reinicios.")
+            collected += TestResult("Actualización e integridad de listas", TestStatus.NOT_VERIFIED,
+                "Se requiere consultar el estado del repositorio de listas, sus hashes y fecha de actualización.")
+            collected += TestResult("Cobertura DoH/DoT/DoQ", TestStatus.NOT_VERIFIED,
+                "DNS/53 no permite afirmar inspección de DoH, DoT o DoQ; estas rutas quedan fuera de esta prueba.")
+            collected += TestResult("Estabilidad prolongada, CPU y batería", TestStatus.NOT_VERIFIED,
+                "Requiere una sesión de carga prolongada y medición energética en el dispositivo.")
 
             val bridgeAvailable = beforeMetrics.isNotEmpty()
             collected += if (bridgeAvailable) {
@@ -223,7 +265,8 @@ class MainActivity : Activity() {
             DatagramSocket().use { socket ->
                 socket.soTimeout = 3500
                 val address = InetAddress.getByName(host)
-                socket.send(DatagramPacket(query, query.size, address, 53))
+                socket.connect(address, 53)
+                socket.send(DatagramPacket(query, query.size))
                 val buffer = ByteArray(2048)
                 val response = DatagramPacket(buffer, buffer.size)
                 socket.receive(response)
