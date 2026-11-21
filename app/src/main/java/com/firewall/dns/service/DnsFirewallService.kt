@@ -647,7 +647,12 @@ class DnsFirewallService : VpnService() {
         return try {
             socket = DatagramSocket()
             socket.soTimeout = 3500
-            val wasProtected = protect(socket)
+            val wasProtected = try {
+                protect(socket)
+            } catch (error: Throwable) {
+                FirewallDnsTrafficMetrics.socketProtectionResult(DnsSocketProtectionProtocol.UDP, false)
+                throw error
+            }
             FirewallDnsTrafficMetrics.socketProtectionResult(DnsSocketProtectionProtocol.UDP, wasProtected)
             if (!wasProtected) return null
             val addr = InetAddress.getByName(FirewallRepository.getUpstreamDns())
