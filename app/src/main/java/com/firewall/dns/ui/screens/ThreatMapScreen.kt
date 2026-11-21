@@ -1,6 +1,5 @@
 package com.firewall.dns.ui.screens
 
-import android.graphics.Canvas as NativeCanvas
 import android.graphics.Paint
 import android.graphics.RectF
 import androidx.compose.animation.core.LinearEasing
@@ -36,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -241,6 +241,7 @@ private fun ThreeDimensionalMindMap(selectedNode: String, onSelectNode: (String)
         animationSpec = infiniteRepeatable(tween(18000, easing = LinearEasing), RepeatMode.Restart),
         label = "mind-map-rotation"
     )
+    val latestRotation by rememberUpdatedState(rotation)
     val pulse by transition.animateFloat(
         initialValue = 0.72f,
         targetValue = 1f,
@@ -262,10 +263,10 @@ private fun ThreeDimensionalMindMap(selectedNode: String, onSelectNode: (String)
             }
             Canvas(
                 Modifier.fillMaxWidth().height(252.dp)
-                    .pointerInput(rotation) {
+                    .pointerInput(Unit) {
                         detectTapGestures { tap ->
                             val hit = mindMapNodes.map { node ->
-                                val point = projectNode(node, size.width.toFloat(), size.height.toFloat(), rotation)
+                                val point = projectNode(node, size.width.toFloat(), size.height.toFloat(), latestRotation)
                                 val dx = point.x - tap.x
                                 val dy = point.y - tap.y
                                 node to (dx * dx + dy * dy)
