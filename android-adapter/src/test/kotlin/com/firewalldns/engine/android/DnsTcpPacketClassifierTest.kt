@@ -23,7 +23,7 @@ class DnsTcpPacketClassifierTest {
         putU16(packet, 2, packet.size)
         packet[9] = 6
         putU16(packet, 26, 53)
-        packet[32] = 0x50
+        packet[36] = 0x50
         assertTrue(DnsTcpPacketClassifier.isClientDnsTcpPacket(packet))
     }
 
