@@ -36,7 +36,6 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
-import java.util.concurrent.atomic.AtomicInteger
 
 private enum class TestStatus { APPROVED, FAILED, NOT_VERIFIED }
 private data class TestResult(
