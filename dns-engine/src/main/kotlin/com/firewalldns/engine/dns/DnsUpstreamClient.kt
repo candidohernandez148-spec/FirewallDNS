@@ -13,6 +13,12 @@ import java.net.SocketTimeoutException
 
 /** Socket protection hook implemented by the Android VpnService adapter. */
 interface DnsSocketProtector {
+    /** Bind to the selected physical Android Network before protect/connect when available. */
+    fun bind(socket: DatagramSocket): Boolean = true
+
+    /** Bind to the selected physical Android Network before protect/connect when available. */
+    fun bind(socket: Socket): Boolean = true
+
     /** Must call VpnService.protect(socket) on Android before connect(). */
     fun protect(socket: DatagramSocket): Boolean
 
@@ -124,6 +130,9 @@ class DnsUpstreamClient(
             if (!cancellation.register(socket)) return UdpAttempt.Cancelled
             try {
             socket.soTimeout = config.timeoutMillis
+            if (!socketProtector.bind(socket)) {
+                return UdpAttempt.Failure("dns_upstream_udp_network_binding_failed")
+            }
             val wasProtected = cancellation.protectSocket(socket) {
                 socketProtector.protect(socket)
             } ?: return UdpAttempt.Cancelled
@@ -168,6 +177,10 @@ class DnsUpstreamClient(
                     // protect before connect so upstream traffic cannot loop into TUN.
                     stage = "socket_bind"
                     socket.bind(InetSocketAddress(0))
+                    stage = "socket_network_bind"
+                    if (!socketProtector.bind(socket)) {
+                        return DnsUpstreamResult.Failure("dns_upstream_tcp_network_binding_failed")
+                    }
                     stage = "socket_protect"
                     val wasProtected = cancellation.protectSocket(socket) {
                         socketProtector.protect(socket)

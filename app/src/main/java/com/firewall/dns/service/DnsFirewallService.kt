@@ -109,6 +109,7 @@ class DnsFirewallService : VpnService() {
      * together prevents diagnostics from labelling attempts with a newer network.
      */
     @Volatile private var upstreamSnapshot: UpstreamSnapshot? = null
+    @Volatile private var selectedPhysicalNetwork: android.net.Network? = null
     @Volatile private var physicalNetworkCallback: ConnectivityManager.NetworkCallback? = null
     private val upstreamRefreshLock = Any()
 
@@ -716,6 +717,7 @@ class DnsFirewallService : VpnService() {
                 onSocketProtectionResult = { protocol, wasProtected ->
                     FirewallDnsTrafficMetrics.socketProtectionResult(protocol, wasProtected)
                 },
+                physicalNetworkProvider = { selectedPhysicalNetwork },
             ).also {
                 it.engine.replaceRules(FirewallRepository.enginePolicyRules())
             }
@@ -771,7 +773,17 @@ class DnsFirewallService : VpnService() {
 
     private fun refreshSharedUpstreamLocked() {
         val runtime = sharedEngine ?: return
-        val discovered = NetworkDns.activeServers(this).ifEmpty {
+        // Read resolver addresses and their Android Network from one snapshot:
+        // a network handover must never pair DNS from Wi-Fi with sockets on cellular.
+        val networkSnapshot = NetworkDns.activeSnapshot(this)
+        val physicalNetwork = networkSnapshot.network
+        selectedPhysicalNetwork = physicalNetwork
+        // Android asks VpnService to publish explicitly bound underlying networks.
+        runCatching {
+            setUnderlyingNetworks(physicalNetwork?.let { arrayOf(it) })
+        }
+
+        val discovered = networkSnapshot.resolvers.ifEmpty {
             listOf(NetworkDns.EMERGENCY_DNS)
         }
         val current = upstreamSnapshot
@@ -845,6 +857,7 @@ class DnsFirewallService : VpnService() {
         FirewallRepository.setRunning(false)
         sharedEngine = null
         upstreamSnapshot = null
+        selectedPhysicalNetwork = null
         FirewallDnsTrafficMetrics.upstreamResolversChanged(emptyList())
 
         val session = activeTunSession

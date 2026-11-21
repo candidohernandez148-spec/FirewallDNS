@@ -30,6 +30,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicInteger
 import com.firewall.dns.service.DnsFirewallService
+import com.firewall.dns.service.NetworkDns
 import com.firewall.dns.service.FirewallDnsTrafficMetrics
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -48,6 +49,7 @@ fun IntegratedDiagnosticsScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val physicalNetwork = NetworkDns.activeSnapshot(context)
     var nativeTestRunning by remember { mutableStateOf(false) }
     var nativeTestResult by remember { mutableStateOf("Prueba nativa pendiente") }
     var tcpProbeRunning by remember { mutableStateOf(false) }
@@ -59,6 +61,12 @@ fun IntegratedDiagnosticsScreen(
         put("observedEvents", observedEvents)
         put("nativeJniTest", nativeTestResult)
         put("forcedTcpProbe", tcpProbeResult)
+        put("physicalNetwork", JSONObject().apply {
+            put("transport", physicalNetwork.transport)
+            put("validated", physicalNetwork.validated)
+            put("dnsResolvers", physicalNetwork.resolvers.joinToString(","))
+            put("networkAvailable", physicalNetwork.network != null)
+        })
         put("metrics", JSONObject().apply {
             put("packetsRead", metrics.packetsRead)
             put("queueRejected", metrics.queueRejected)
@@ -144,6 +152,15 @@ fun IntegratedDiagnosticsScreen(
         }
         Card {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Red física seleccionada", style = MaterialTheme.typography.titleMedium)
+                Text("Transporte: ${physicalNetwork.transport}")
+                Text("Red validada: ${if (physicalNetwork.validated) "sí" else "no"}")
+                Text("DNS obtenidos de esa misma red: ${physicalNetwork.resolvers.joinToString().ifBlank { "sin resolvers detectados" }}")
+                Text("Los sockets upstream se enlazan a esta red antes de excluirlos del TUN.")
+            }
+        }
+        Card {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Tráfico observado en TUN", style = MaterialTheme.typography.titleMedium)
                 Metric("Paquetes leídos", metrics.packetsRead)
                 Metric("IPv4 / IPv6", metrics.ipv4Packets, metrics.ipv6Packets)
@@ -187,7 +204,7 @@ fun IntegratedDiagnosticsScreen(
         Card {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Prueba DNS/TCP upstream real", style = MaterialTheme.typography.titleMedium)
-                Text("Envía una consulta DNS de prueba (example.com, tipo A) por TCP/53 a los resolvers configurados, usando los mismos sockets protegidos del servicio VPN. No crea otra VPN ni modifica las reglas.")
+                Text("Envía una consulta DNS de prueba (example.com, tipo A) por TCP/53 a los resolvers configurados, usando los mismos sockets protegidos del servicio VPN. No crea otra VPN ni modifica las reglas. Esta prueba mide la salida upstream; no inyecta una conexión TCP/53 entrante por el TUN ni valida por sí sola smoltcp. Por eso sus contadores pueden permanecer en cero.")
                 Button(
                     enabled = vpnRunning && !tcpProbeRunning,
                     onClick = {

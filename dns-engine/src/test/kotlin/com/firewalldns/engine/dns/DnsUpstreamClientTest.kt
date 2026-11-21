@@ -243,11 +243,23 @@ class DnsUpstreamClientTest {
                     accepted.countDown()
                 }
             }
+            val sequence = mutableListOf<String>()
             val protector = object : DnsSocketProtector {
+                override fun bind(socket: DatagramSocket): Boolean {
+                    sequence += "udp-bind"
+                    return true
+                }
+                override fun bind(socket: java.net.Socket): Boolean {
+                    assertEquals(true, socket.isBound, "Socket must have a local endpoint before network bind")
+                    assertEquals(false, socket.isConnected, "Socket must not connect before network bind")
+                    sequence += "network-bind"
+                    return true
+                }
                 override fun protect(socket: DatagramSocket) = true
                 override fun protect(socket: java.net.Socket): Boolean {
                     assertEquals(true, socket.isBound, "Socket must have a native local endpoint before protect")
                     assertEquals(false, socket.isConnected, "Socket must not connect before protect")
+                    sequence += "protect"
                     return true
                 }
             }
@@ -258,6 +270,7 @@ class DnsUpstreamClientTest {
             ).exchangeTcpOnly(query, DnsExchangeCancellation())
 
             assertIs<DnsUpstreamResult.Success>(result)
+            assertEquals(listOf("network-bind", "protect"), sequence)
             assertEquals(true, accepted.await(2, TimeUnit.SECONDS))
             responder.join(2_000)
             assertEquals(false, responder.isAlive)

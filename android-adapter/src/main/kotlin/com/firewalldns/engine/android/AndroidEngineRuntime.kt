@@ -1,5 +1,6 @@
 package com.firewalldns.engine.android
 
+import android.net.Network
 import android.net.VpnService
 import com.firewalldns.engine.dns.DnsUpstreamClient
 import com.firewalldns.engine.dns.DnsUpstreamConfig
@@ -20,13 +21,14 @@ class AndroidEngineRuntime(
     vpnService: VpnService,
     enableThreatAnalysis: Boolean = true,
     onSocketProtectionResult: (DnsSocketProtectionProtocol, Boolean) -> Unit = { _, _ -> },
+    physicalNetworkProvider: () -> Network? = { null },
 ) {
     /** Single policy/threat/monitor authority exposed to the Android host. */
     val engine: EngineRuntime = EngineRuntime(
         threatAnalyzer = if (enableThreatAnalysis) ThreatAnalyzer() else ThreatAnalyzer(emptyList(), emptyList())
     )
 
-    private val socketProtector = AndroidDnsSocketProtector(vpnService, onSocketProtectionResult)
+    private val socketProtector = AndroidDnsSocketProtector(vpnService, onSocketProtectionResult, physicalNetworkProvider)
 
     /**
      * Builds a bounded sequential failover client whose UDP and TCP sockets
