@@ -32,6 +32,7 @@ import com.firewalldns.engine.android.SmoltcpDnsTcpCoordinator
 import com.firewalldns.engine.android.DnsTcpPacketClassifier
 import com.firewalldns.engine.core.PolicyAction
 import com.firewalldns.engine.dns.DnsEvaluation
+import com.firewalldns.engine.dns.DnsExchangeCancellation
 import com.firewalldns.engine.dns.DnsUpstreamConfig
 import com.firewalldns.engine.dns.DnsUpstreamFailoverClient
 import com.firewalldns.engine.dns.DnsUpstreamResult
@@ -355,11 +356,15 @@ class DnsFirewallService : VpnService() {
                             resolvePackageName(uid)?.also { appUidByPackage[it] = uid }
                         },
                         exchangeUpstream = { query, cancellation ->
-                            val result = (sharedUpstream ?: upstreamClient).exchange(query, cancellation)
+                            val result = (sharedUpstream ?: upstreamClient).exchange(query, cancellation) { attempt ->
+                                (attempt.result as? DnsUpstreamResult.Failure)?.let {
+                                    FirewallDnsTrafficMetrics.upstreamAttemptFailure(it.reason)
+                                }
+                            }
                             when (result) {
                                 is DnsUpstreamResult.Success -> FirewallDnsTrafficMetrics.upstreamSuccess()
-                                is DnsUpstreamResult.Failure, DnsUpstreamResult.Cancelled ->
-                                    FirewallDnsTrafficMetrics.upstreamFailure()
+                                is DnsUpstreamResult.Failure -> FirewallDnsTrafficMetrics.upstreamFailure()
+                                DnsUpstreamResult.Cancelled -> FirewallDnsTrafficMetrics.upstreamCancelled()
                             }
                             result
                         },
@@ -540,18 +545,34 @@ class DnsFirewallService : VpnService() {
                 dnsResponse = cachedResponse
             } else {
                 FirewallDnsTrafficMetrics.cacheMiss()
-                dnsResponse = sharedUpstream?.let { upstream ->
-                    when (val result = upstream.exchange(dnsPayload)) {
-                        is DnsUpstreamResult.Success -> result.response.message
-                        is DnsUpstreamResult.Failure, DnsUpstreamResult.Cancelled -> null
+                var upstreamWasCancelled = false
+                val upstreamResult = sharedUpstream?.exchange(
+                    dnsPayload,
+                    DnsExchangeCancellation(),
+                ) { attempt ->
+                    (attempt.result as? DnsUpstreamResult.Failure)?.let {
+                        FirewallDnsTrafficMetrics.upstreamAttemptFailure(it.reason)
                     }
-                } ?: forwardDnsQuery(dnsPayload)
+                }
+                dnsResponse = when (upstreamResult) {
+                    is DnsUpstreamResult.Success -> upstreamResult.response.message
+                    is DnsUpstreamResult.Failure -> null
+                    DnsUpstreamResult.Cancelled -> {
+                        upstreamWasCancelled = true
+                        null
+                    }
+                    null -> forwardDnsQuery(dnsPayload)
+                }
                 if (dnsResponse != null) {
                     FirewallDnsTrafficMetrics.upstreamSuccess()
                     if (dnsCache.size > 600) dnsCache.clear()
                     dnsCache[cacheKey] = CachedDns(dnsResponse, now + CACHE_TTL_MS)
                 } else {
-                    FirewallDnsTrafficMetrics.upstreamFailure()
+                    if (upstreamWasCancelled) {
+                        FirewallDnsTrafficMetrics.upstreamCancelled()
+                    } else {
+                        FirewallDnsTrafficMetrics.upstreamFailure()
+                    }
                 }
             }
         }
