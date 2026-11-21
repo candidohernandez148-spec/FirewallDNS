@@ -18,13 +18,15 @@ If the variables or keystore are missing, release configuration intentionally fa
 
 ## GitHub Actions secrets
 
-Configure repository Actions secrets:
+The release workflow first restores the legacy Actions cache `firewalldns-signing-v1`, which contains the exact JKS/password/alias used by previous published APKs. It uses restore-only mode and never generates a replacement key. This preserves upgrade compatibility when that cache is available.
+
+For a new or explicitly managed signing identity, configure repository Actions secrets:
 - `KEYSTORE_BASE64`: base64 encoding of the same JKS.
 - `KEYSTORE_PASSWORD`: JKS store password.
 - `KEY_ALIAS`: alias.
 - `KEY_PASSWORD`: private-key password (optional if equal to store password).
 
-The release workflow fails closed if the keystore is absent. It verifies the APK signatures with `apksigner` and compares the SHA-256 certificate digests before uploading artifacts.
+If neither the legacy cache nor a complete supplied JKS is available, Release fails closed. It never falls back to a debug or randomly generated certificate. CI verifies the APK signatures with `apksigner` and compares the SHA-256 certificate digests before uploading artifacts.
 
 ## Provider access
 
