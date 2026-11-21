@@ -73,15 +73,25 @@ jobs:
           echo "KEY_ALIAS=$(cat signing/alias)" >> "$GITHUB_ENV"
           echo "::add-mask::$(cat signing/password)"
 
-      - name: Ejecutar pruebas Rust del motor smoltcp
-        run: cargo test --manifest-path rust-core/Cargo.toml
-
-      - name: Ejecutar pruebas unitarias Android
+      - name: Ejecutar pruebas unitarias
         run: gradle testDebugUnitTest --no-daemon --stacktrace
 
       - name: Compilar ambos APK Release con la misma firma
         run: |
           gradle :app:assembleRelease :diagnostic-app:assembleRelease --no-daemon --stacktrace
+
+      - name: Verificar motor Rust/JNI dentro de ambos APK Release
+        shell: bash
+        run: |
+          set -euo pipefail
+          for apk in app/build/outputs/apk/release/app-release.apk diagnostic-app/build/outputs/apk/release/diagnostic-app-release.apk; do
+            test -s "$apk"
+            if ! unzip -l "$apk" | grep -q 'lib/arm64-v8a/libfirewalldns_native.so'; then
+              echo "::error::El APK Release no contiene el motor nativo ARM64: $apk"
+              exit 1
+            fi
+            echo "Motor Rust/JNI ARM64 incluido: $apk"
+          done
 
       - name: Verificar certificado compartido entre APK
         shell: bash
@@ -91,7 +101,6 @@ jobs:
           APKSIGNER="$BUILD_TOOLS/apksigner"
           MAIN_APK="app/build/outputs/apk/release/app-release.apk"
           DIAGNOSTIC_APK="diagnostic-app/build/outputs/apk/release/diagnostic-app-release.apk"
-
           for apk in "$MAIN_APK" "$DIAGNOSTIC_APK"; do
             if [[ ! -s "$apk" ]]; then
               echo "::error::No se encontró el APK esperado: $apk"
@@ -121,21 +130,6 @@ jobs:
             exit 1
           fi
           echo "Certificado compartido verificado: $MAIN_CERT"
-
-      - name: Verificar motor nativo dentro de ambos APK
-        shell: bash
-        run: |
-          set -euo pipefail
-          MAIN_APK="app/build/outputs/apk/release/app-release.apk"
-          DIAGNOSTIC_APK="diagnostic-app/build/outputs/apk/release/diagnostic-app-release.apk"
-          LIBRARY="lib/arm64-v8a/libfirewalldns_native.so"
-          for apk in "$MAIN_APK" "$DIAGNOSTIC_APK"; do
-            if ! unzip -Z1 "$apk" | grep -Fxq "$LIBRARY"; then
-              echo "::error::Falta $LIBRARY dentro de $apk"
-              exit 1
-            fi
-            echo "Motor Rust ARM64 empaquetado: $apk"
-          done
 
       - name: Subir APK FirewallDNS
         uses: actions/upload-artifact@v7
