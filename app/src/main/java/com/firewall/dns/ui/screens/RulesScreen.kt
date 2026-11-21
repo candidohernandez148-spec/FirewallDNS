@@ -140,7 +140,8 @@ fun RulesScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Listas de bloqueo", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                            Text("${stats.loadedRulesCount} reglas cargadas", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("${stats.loadedRulesCount} reglas externas activas", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Listas descargadas y reglas manuales; no incluye los dominios integrados.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                     OutlinedTextField(
