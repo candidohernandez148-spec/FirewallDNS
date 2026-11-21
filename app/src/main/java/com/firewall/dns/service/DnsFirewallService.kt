@@ -529,6 +529,7 @@ class DnsFirewallService : VpnService() {
             else -> ruleReason
         }
 
+        var upstreamWasCancelled = false
         val dnsResponse: ByteArray?
         if (shouldBlock) {
             dnsResponse = DnsPacketEngine.buildNxDomainResponse(dnsPayload, query.questionEndOffset)
@@ -545,7 +546,6 @@ class DnsFirewallService : VpnService() {
                 dnsResponse = cachedResponse
             } else {
                 FirewallDnsTrafficMetrics.cacheMiss()
-                var upstreamWasCancelled = false
                 val upstreamResult = sharedUpstream?.exchange(
                     dnsPayload,
                     DnsExchangeCancellation(),
