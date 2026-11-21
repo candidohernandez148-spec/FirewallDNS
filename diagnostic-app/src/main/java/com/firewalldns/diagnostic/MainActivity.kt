@@ -33,6 +33,7 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -155,6 +156,7 @@ class MainActivity : Activity() {
                 else TestResult("", TestStatus.FAILED, "El paquete DNS truncado no fue rechazado.")
             }
             collected += timed("smoltcp nativo IPv4/IPv6") { testNativeTransport() }
+            collected += timed("JNI: límites, cola y propiedad del hilo") { testNativeTransportGuards() }
             collected += TestResult("Reensamblado de fragmentos IPv4/IPv6", TestStatus.NOT_VERIFIED,
                 "El APK no inyecta fragmentos en el TUN productivo; requiere una prueba instrumentada del servicio.")
             collected += TestResult("VpnService.protect() del upstream", TestStatus.NOT_VERIFIED,
@@ -257,6 +259,66 @@ class MainActivity : Activity() {
             }
         } catch (t: Throwable) {
             TestResult("", TestStatus.FAILED, "Error JNI: ${t.javaClass.simpleName}: ${t.message ?: "sin detalle"}")
+        }
+    }
+
+    /** Exercises the packaged JNI boundary, not merely native library loading. */
+    private fun testNativeTransportGuards(): TestResult {
+        val v4Dns = byteArrayOf(10, 77, 0, 1)
+        val v4Client = byteArrayOf(10, 77, 0, 2)
+        val v6Dns = ByteArray(16).apply {
+            this[0] = 0x20.toByte()
+            this[1] = 0x01.toByte()
+            this[2] = 0x0d.toByte()
+            this[3] = 0xb8.toByte()
+            this[15] = 1
+        }
+        val v6Client = v6Dns.copyOf().apply { this[15] = 2 }
+        return try {
+            val transport = NativeTcpDnsTransport.create(1500, v4Dns, v4Client, v6Dns, v6Client, 16)
+                ?: return TestResult("", TestStatus.FAILED, "JNI no pudo crear el transporte.")
+            transport.use {
+                val firstPoll = it.poll(SystemClock.elapsedRealtime(), 0)
+                val emptyPacket = it.enqueuePacket(byteArrayOf())
+                val oversizedPacket = it.enqueuePacket(ByteArray(1501))
+                val missingSession = it.queueResponse(
+                    9_999_999L,
+                    byteArrayOf(0, 12) + ByteArray(12),
+                )
+                val crossThreadResult = AtomicInteger(Int.MIN_VALUE)
+                val worker = Thread {
+                    crossThreadResult.set(it.poll(SystemClock.elapsedRealtime(), 0))
+                }
+                worker.start()
+                worker.join(2_000)
+                val threadFinished = !worker.isAlive
+                if (!threadFinished) worker.interrupt()
+
+                val checks = listOf(
+                    firstPoll >= 0,
+                    emptyPacket == -1,
+                    oversizedPacket == -1,
+                    missingSession == -5,
+                    threadFinished && crossThreadResult.get() == -3,
+                )
+                if (checks.all { passed -> passed }) {
+                    TestResult(
+                        "",
+                        TestStatus.APPROVED,
+                        "JNI operativo: rechaza paquetes vacíos y mayores al MTU, rechaza respuestas para sesiones inexistentes y protege smoltcp contra acceso desde otro hilo.",
+                    )
+                } else {
+                    TestResult(
+                        "",
+                        TestStatus.FAILED,
+                        "Falló una guarda JNI: poll=" + firstPoll + ", vacío=" + emptyPacket +
+                            ", MTU=" + oversizedPacket + ", sesión=" + missingSession +
+                            ", hilo=" + crossThreadResult.get() + ", finalizó=" + threadFinished + ".",
+                    )
+                }
+            }
+        } catch (t: Throwable) {
+            TestResult("", TestStatus.FAILED, "Error en pruebas JNI: " + t.javaClass.simpleName + ": " + (t.message ?: "sin detalle"))
         }
     }
 
