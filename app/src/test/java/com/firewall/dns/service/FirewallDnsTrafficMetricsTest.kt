@@ -48,4 +48,25 @@ class FirewallDnsTrafficMetricsTest {
         assertEquals(1L, after.upstreamProtectTcpSuccess - before.upstreamProtectTcpSuccess)
         assertEquals(0L, after.upstreamProtectTcpFailure - before.upstreamProtectTcpFailure)
     }
+    @Test
+    fun upstreamAttemptFailuresAreClassifiedWithoutCountingCancellationAsFailure() {
+        val before = FirewallDnsTrafficMetrics.snapshot()
+        FirewallDnsTrafficMetrics.upstreamAttemptFailure("dns_upstream_udp_timeout")
+        FirewallDnsTrafficMetrics.upstreamAttemptFailure("dns_upstream_tcp_socket_protection_failed")
+        FirewallDnsTrafficMetrics.upstreamAttemptFailure("dns_upstream_tcp_io_error")
+        FirewallDnsTrafficMetrics.upstreamAttemptFailure("dns_upstream_response_question_mismatch")
+        FirewallDnsTrafficMetrics.upstreamAttemptFailure("unexpected_failure")
+        FirewallDnsTrafficMetrics.upstreamCancelled()
+
+        val after = FirewallDnsTrafficMetrics.snapshot()
+        assertEquals(5L, after.upstreamAttemptFailures - before.upstreamAttemptFailures)
+        assertEquals(1L, after.upstreamFailureTimeouts - before.upstreamFailureTimeouts)
+        assertEquals(1L, after.upstreamFailureProtection - before.upstreamFailureProtection)
+        assertEquals(1L, after.upstreamFailureIo - before.upstreamFailureIo)
+        assertEquals(1L, after.upstreamFailureValidation - before.upstreamFailureValidation)
+        assertEquals(1L, after.upstreamFailureOther - before.upstreamFailureOther)
+        assertEquals(1L, after.upstreamCancelled - before.upstreamCancelled)
+        assertEquals(0L, after.upstreamFailure - before.upstreamFailure)
+    }
+
 }
