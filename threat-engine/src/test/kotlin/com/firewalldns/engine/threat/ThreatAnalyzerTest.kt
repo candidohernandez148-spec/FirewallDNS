@@ -20,14 +20,14 @@ class ThreatAnalyzerTest {
     @Test fun highConfidenceSocialAdEndpointsAreBlockedByProductionAnalyzer() {
         listOf("ads.facebook.com", "pixel.facebook.com", "pixel.instagram.com", "cdn.pangle.io")
             .forEach { domain ->
-                assertEquals(domain, PolicyAction.BLOCK, analyzer.analyze(domain).action)
+                assertEquals(PolicyAction.BLOCK, analyzer.analyze(domain).action, domain)
             }
     }
 
     @Test fun mediumConfidenceTrackingAndAnalyticsRemainObserveOnly() {
         listOf("connect.facebook.net", "appsflyer.com", "adjust.com", "mixpanel.com")
             .forEach { domain ->
-                assertEquals(domain, PolicyAction.OBSERVE, analyzer.analyze(domain).action)
+                assertEquals(PolicyAction.OBSERVE, analyzer.analyze(domain).action, domain)
             }
     }
 
