@@ -28,6 +28,7 @@ import com.firewalldns.engine.android.FragmentReassemblerConfig
 import com.firewalldns.engine.android.IpFragmentReassembler
 import com.firewalldns.engine.android.NativeTcpDnsTransport
 import com.firewalldns.engine.android.SmoltcpDnsTcpCoordinator
+import com.firewalldns.engine.android.DnsTcpPacketClassifier
 import com.firewalldns.engine.core.PolicyAction
 import com.firewalldns.engine.dns.DnsEvaluation
 import com.firewalldns.engine.dns.DnsUpstreamConfig
@@ -407,7 +408,7 @@ class DnsFirewallService : VpnService() {
                         // Keep TCP SYN/ACK/data order: the one TUN reader feeds smoltcp
                         // directly. DNS policy and upstream work run on per-session workers.
                         val tcpCoordinator = session.tcpCoordinator
-                        if (tcpCoordinator != null && isDnsTcpPacket(normalized)) {
+                        if (tcpCoordinator != null && DnsTcpPacketClassifier.isClientDnsTcpPacket(normalized)) {
                             if (((normalized[0].toInt() ushr 4) and 0x0f) == 6) {
                                 FirewallDnsTrafficMetrics.ipv6Packet()
                             } else {
@@ -578,37 +579,6 @@ class DnsFirewallService : VpnService() {
                 packetWriteErrors.incrementAndGet()
                 FirewallDnsTrafficMetrics.writeError()
             }
-        }
-    }
-
-    private fun isDnsTcpPacket(packet: ByteArray): Boolean {
-        if (packet.size < 20) return false
-        return when ((packet[0].toInt() ushr 4) and 0x0f) {
-            4 -> {
-                val headerLength = (packet[0].toInt() and 0x0f) * 4
-                if (headerLength < 20 || headerLength + 4 > packet.size) return false
-                if ((packet[9].toInt() and 0xff) != 6) return false
-                val fragment = ((packet[6].toInt() and 0xff) shl 8) or
-                    (packet[7].toInt() and 0xff)
-                // Reassembly happens before classification; reject any fragment
-                // flags that remain instead of sending a partial IP packet to smoltcp.
-                if ((fragment and 0x3fff) != 0) return false
-                val destinationPort = ((packet[headerLength + 2].toInt() and 0xff) shl 8) or
-                    (packet[headerLength + 3].toInt() and 0xff)
-                destinationPort == 53
-            }
-            6 -> {
-                // smoltcp receives plain IPv6/TCP packets only. Extension headers
-                // remain on the validated legacy fallback until separately covered.
-                if (packet.size < 60 || (packet[6].toInt() and 0xff) != 6) return false
-                val payloadLength = ((packet[4].toInt() and 0xff) shl 8) or
-                    (packet[5].toInt() and 0xff)
-                if (payloadLength < 20 || 40 + payloadLength > packet.size) return false
-                val destinationPort = ((packet[42].toInt() and 0xff) shl 8) or
-                    (packet[43].toInt() and 0xff)
-                destinationPort == 53
-            }
-            else -> false
         }
     }
 
