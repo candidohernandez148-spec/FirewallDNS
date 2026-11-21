@@ -15,6 +15,34 @@ android {
         versionName = "1.0"
     }
 
+    // Diagnostic must share the exact signing certificate with FirewallDNS:
+    // the production snapshot provider is protected by a signature permission.
+    val releaseKeystore = System.getenv("KEYSTORE_PATH")?.let { file(it) }?.takeIf { it.exists() }
+
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = releaseKeystore
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            signingConfig = if (releaseKeystore != null) {
+                signingConfigs.getByName("release")
+            } else {
+                // Local builds remain installable, but CI verifies both APKs use
+                // the shared release keystore before publishing diagnostic artifacts.
+                signingConfigs.getByName("debug")
+            }
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
