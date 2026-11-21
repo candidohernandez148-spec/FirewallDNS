@@ -556,7 +556,7 @@ class DnsFirewallService : VpnService() {
                 }
                 dnsResponse = when (upstreamResult) {
                     is DnsUpstreamResult.Success -> upstreamResult.response.message
-                    is DnsUpstreamResult.Failure -> null
+                    is DnsUpstreamResult.Failure -> forwardDnsQuery(dnsPayload)
                     DnsUpstreamResult.Cancelled -> {
                         upstreamWasCancelled = true
                         null
