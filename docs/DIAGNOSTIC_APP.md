@@ -27,6 +27,12 @@ Un resultado positivo de `VpnService.protect()` solo acredita que Android acept�
 - La prueba nativa de límites no sustituye una prueba de tráfico TCP real a través del TUN.
 - La estabilidad prolongada, consumo de batería y CPU deben validarse en el dispositivo durante sesiones extendidas.
 
+## Alcance real de captura DNS
+
+El TUN configura las direcciones DNS virtuales de FirewallDNS y rutas explícitas para los resolvers públicos IPv4/IPv6 conocidos en el servicio. No instala una ruta predeterminada para todo el tráfico IP. Por tanto, una aplicación que ignore el DNS del sistema y envíe consultas a una IP DNS arbitraria que no esté entre las rutas configuradas puede quedar fuera de la captura actual. No debe afirmarse protección contra fugas DNS universal hasta cubrir y probar ese escenario.
+
+El tráfico general TCP/UDP tampoco se reenvía a través de este motor; la inspección de esta etapa se limita a DNS/53. DoH, DoT y DoQ permanecen fuera de cobertura.
+
 ## Privacidad
 
 El informe compartido contiene estado y métricas agregadas. No debe incluir payloads DNS, historial de navegación, direcciones IP consultadas ni identificadores de aplicaciones.
