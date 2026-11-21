@@ -611,6 +611,7 @@ class DnsFirewallService : VpnService() {
             sharedEngine = null
             sharedUpstream = null
             activeUpstreamServers = emptyList()
+            FirewallDnsTrafficMetrics.upstreamResolversChanged(emptyList())
             return
         }
         val runtime = runCatching {
@@ -692,6 +693,7 @@ class DnsFirewallService : VpnService() {
         // finish on their previous immutable client while new requests use this one.
         sharedUpstream = replacement
         activeUpstreamServers = discovered
+        FirewallDnsTrafficMetrics.upstreamResolversChanged(discovered)
         dnsCache.clear()
     }
 
