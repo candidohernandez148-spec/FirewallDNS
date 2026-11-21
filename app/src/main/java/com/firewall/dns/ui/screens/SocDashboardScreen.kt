@@ -182,11 +182,11 @@ fun SocDashboardScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TunMetric("Paquetes", tunMetrics.packetsRead, Modifier.weight(1f))
                         TunMetric("DNS UDP", tunMetrics.dnsUdpPackets, Modifier.weight(1f))
-                        TunMetric("RST TCP", tunMetrics.tcpRstSent, Modifier.weight(1f))
-                        TunMetric("Cola", tunMetrics.queueRejected, Modifier.weight(1f))
+                        TunMetric("DNS TCP", tunMetrics.dnsTcp, Modifier.weight(1f))
+                        TunMetric("Sesiones TCP", tunMetrics.smoltcpSessionsActive, Modifier.weight(1f))
                     }
                     Text(
-                        "Respuestas: ${tunMetrics.packetsWritten} · Upstream OK: ${tunMetrics.upstreamSuccess} · Fallos: ${tunMetrics.parserRejected + tunMetrics.malformedDns + tunMetrics.dnsRejected + tunMetrics.upstreamFailure + tunMetrics.workerErrors + tunMetrics.writeErrors}",
+                        "smoltcp: ${tunMetrics.smoltcpSessionsOpened} abiertas · ${tunMetrics.smoltcpDataEvents} datos · ${tunMetrics.smoltcpResponsesQueued} respuestas · RST fallback: ${tunMetrics.tcpRstSent} · fallos: ${tunMetrics.smoltcpResponseFailures + tunMetrics.smoltcpNativeErrors}",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
