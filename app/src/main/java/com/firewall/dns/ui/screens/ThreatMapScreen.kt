@@ -50,6 +50,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.toArgb
 import com.firewall.dns.domain.engine.ThreatKnowledgeGraph
 import com.firewall.dns.domain.model.DnsLogEntry
+import com.firewall.dns.service.FirewallDnsTrafficMetrics
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -60,17 +61,8 @@ private data class MindMapNode(
     val x: Float,
     val y: Float,
     val z: Float,
-    val tint: Color
-)
-
-private val mindMapNodes = listOf(
-    MindMapNode("core", "FIREWALL DNS", "Motor central", 0f, 0f, 0f, Color(0xFF42D9FF)),
-    MindMapNode("threats", "AMENAZAS", "Riesgo y reputación", -0.88f, -0.55f, -0.18f, Color(0xFFFF667D)),
-    MindMapNode("ads", "PUBLICIDAD", "Dominios publicitarios", 0.82f, -0.63f, 0.20f, Color(0xFFFFB454)),
-    MindMapNode("tracking", "RASTREO", "Seguimiento", -0.96f, 0.48f, 0.24f, Color(0xFFB69CFF)),
-    MindMapNode("apps", "APLICACIONES", "Actividad por app", 0.96f, 0.46f, -0.22f, Color(0xFF58D6B0)),
-    MindMapNode("rules", "REGLAS", "Bloquear y permitir", -0.18f, 0.94f, -0.42f, Color(0xFF78A8FF)),
-    MindMapNode("protection", "PROTECCIÓN", "Política activa", 0.20f, -0.98f, 0.42f, Color(0xFF68D9A5))
+    val tint: Color,
+    val value: String
 )
 
 /** Animated perspective mind map. Visual motion never changes engine decisions or counters. */
@@ -79,12 +71,48 @@ fun ThreatMapScreen(
     logs: List<DnsLogEntry>,
     customBlock: List<String>,
     customAllow: List<String>,
+    tunMetrics: FirewallDnsTrafficMetrics.Snapshot,
+    vpnRunning: Boolean,
+    smartModeEnabled: Boolean,
+    observationModeEnabled: Boolean,
     onSetRule: (String, Boolean) -> Unit,
 ) {
     var query by remember { mutableStateOf("") }
     var showObserved by remember { mutableStateOf(false) }
     var selectedNode by remember { mutableStateOf("core") }
     val catalog = remember { ThreatKnowledgeGraph.catalogSnapshot() }
+    val knownObserved = logs.map { it.domain.trim().lowercase().trimEnd('.') }
+        .distinct().count { ThreatKnowledgeGraph.inspect(it) != null }
+    val observedApps = logs.map { it.appName }.filter { it.isNotBlank() }.distinct().size
+    val observedCount = logs.count { it.reason.startsWith("OBSERVE:", ignoreCase = true) }
+    val blockedInHistory = logs.count { it.isBlocked }
+    val mindMapNodes = remember(logs, customBlock, customAllow, tunMetrics, vpnRunning,
+        smartModeEnabled, observationModeEnabled, catalog) {
+        listOf(
+            MindMapNode("core", "FIREWALL DNS", "Servicio VPN: estado real", if (vpnRunning) "ACTIVO" else "DETENIDO",
+                0f, 0f, 0f, Color(0xFF42D9FF)),
+            MindMapNode("tun", "TÚNEL TUN", "Paquetes leídos por el servicio", tunMetrics.packetsRead.toString(),
+                -0.88f, -0.55f, -0.18f, Color(0xFF58D6B0)),
+            MindMapNode("dns", "CONSULTAS DNS", "UDP + TCP observados por el servicio",
+                (tunMetrics.dnsUdpPackets + tunMetrics.dnsTcp).toString(),
+                0.82f, -0.63f, 0.20f, Color(0xFF78A8FF)),
+            MindMapNode("decisions", "DECISIONES", "Bloqueadas / observadas / permitidas",
+                "${tunMetrics.dnsBlocked} / ${tunMetrics.dnsObserved} / ${tunMetrics.dnsAllowed}",
+                -0.96f, 0.48f, 0.24f, Color(0xFFFF667D)),
+            MindMapNode("threats", "CATÁLOGO", "Proveedores curados / dominios coincidentes",
+                "${catalog.size} / $knownObserved",
+                0.96f, 0.46f, -0.22f, Color(0xFFFFB454)),
+            MindMapNode("rules", "REGLAS", "Reglas personalizadas de usuario",
+                "${customBlock.size} bloqueo · ${customAllow.size} permiso",
+                -0.18f, 0.94f, -0.42f, Color(0xFFB69CFF)),
+            MindMapNode("upstream", "DNS ASCENDENTE", "Respuestas / fallos upstream",
+                "${tunMetrics.upstreamSuccess} / ${tunMetrics.upstreamFailure}",
+                0.20f, -0.98f, 0.42f, Color(0xFF68D9A5)),
+            MindMapNode("apps", "APLICACIONES", "Apps identificadas en el historial",
+                observedApps.toString(),
+                0.08f, 0.68f, -0.35f, Color(0xFF58D6B0))
+        )
+    }
     val observedDomains = logs.asSequence()
         .map { it.domain.trim().lowercase().trimEnd('.') }
         .filter { it.isNotBlank() }
@@ -96,15 +124,16 @@ fun ThreatMapScreen(
         query.isBlank() || evidence.provider.contains(query, true) ||
             evidence.platform.orEmpty().contains(query, true)
     }
-    val selected = mindMapNodes.firstOrNull { it.id == selectedNode } ?: mindMapNodes.first()
+    val selected = mindMapNodes.firstOrNull { it.id == selectedNode } ?: nodes.first()
     val selectedDescription = when (selected.id) {
-        "threats" -> "Catálogo de inteligencia: ${catalog.size} relaciones conocidas."
-        "ads" -> "Publicidad: ${catalog.count { it.category == ThreatKnowledgeGraph.Category.ADVERTISING }} señales catalogadas."
-        "tracking" -> "Rastreo: ${catalog.count { it.category == ThreatKnowledgeGraph.Category.TRACKING }} señales catalogadas."
-        "apps" -> "Historial local: ${logs.size} eventos DNS registrados."
-        "rules" -> "Reglas personalizadas: ${customBlock.size} bloqueos y ${customAllow.size} permisos."
-        "protection" -> "Las decisiones reales dependen de la política activa del motor."
-        else -> "Núcleo visual del motor DNS y sus fuentes de información."
+        "tun" -> "Contador del servicio TUN: ${tunMetrics.packetsRead} paquetes leídos. Es acumulado del proceso actual."
+        "dns" -> "Consultas contabilizadas: UDP ${tunMetrics.dnsUdpPackets}, TCP ${tunMetrics.dnsTcp}. No representa DoH/DoT."
+        "decisions" -> "Contadores del servicio: ${tunMetrics.dnsBlocked} bloqueadas, ${tunMetrics.dnsObserved} observadas y ${tunMetrics.dnsAllowed} permitidas."
+        "threats" -> "Catálogo local curado: ${catalog.size} proveedores. Coincidencias en el historial visible: $knownObserved dominios."
+        "apps" -> "Aplicaciones distintas identificadas en el historial visible: $observedApps. No es un contador total de apps instaladas."
+        "rules" -> "Reglas personalizadas: ${customBlock.size} bloqueos y ${customAllow.size} permisos. Listas descargadas no se incluyen en esta cifra."
+        "upstream" -> "Respuestas upstream exitosas: ${tunMetrics.upstreamSuccess}; fallidas: ${tunMetrics.upstreamFailure}."
+        else -> "VPN: ${if (vpnRunning) "activa" else "detenida"}. Modo inteligente: ${if (smartModeEnabled) "activo" else "inactivo"}. Observación: ${if (observationModeEnabled) "activa" else "inactiva"}."
     }
 
     LazyColumn(
@@ -117,12 +146,13 @@ fun ThreatMapScreen(
         item {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Mapa mental de seguridad", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text("Vista tridimensional de las áreas conectadas al motor FirewallDNS.",
+                Text("Arquitectura del servicio y telemetría real; no representa conexiones geográficas.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         item {
             ThreeDimensionalMindMap(
+                nodes = mindMapNodes,
                 selectedNode = selectedNode,
                 onSelectNode = { selectedNode = it }
             )
@@ -133,17 +163,16 @@ fun ThreatMapScreen(
                     Text(selected.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
                         color = selected.tint)
                     Text(selectedDescription, style = MaterialTheme.typography.bodySmall)
-                    Text("Toca los nodos para explorar cada rama. El movimiento es visual; las cifras proceden del catálogo y del historial real.",
+                    Text("Las ramas muestran componentes del proceso. Los valores vienen de contadores del servicio, reglas e historial; no se generan eventos ficticios.",
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                MapStatPill("Catálogo", catalog.size.toString(), MaterialTheme.colorScheme.secondaryContainer)
-                MapStatPill("Observados", logs.map { it.domain.lowercase() }.distinct().size.toString(),
-                    MaterialTheme.colorScheme.primaryContainer)
-                MapStatPill("Bloqueos", customBlock.size.toString(), MaterialTheme.colorScheme.errorContainer)
+                MapStatPill("VPN", if (vpnRunning) "ACTIVA" else "DETENIDA", MaterialTheme.colorScheme.secondaryContainer)
+                MapStatPill("TUN", tunMetrics.packetsRead.toString(), MaterialTheme.colorScheme.primaryContainer)
+                MapStatPill("Coincidencias", knownObserved.toString(), MaterialTheme.colorScheme.errorContainer)
             }
         }
         item {
@@ -233,7 +262,11 @@ fun ThreatMapScreen(
 }
 
 @Composable
-private fun ThreeDimensionalMindMap(selectedNode: String, onSelectNode: (String) -> Unit) {
+private fun ThreeDimensionalMindMap(
+    nodes: List<MindMapNode>,
+    selectedNode: String,
+    onSelectNode: (String) -> Unit
+) {
     val transition = rememberInfiniteTransition(label = "mind-map-3d")
     val rotation by transition.animateFloat(
         initialValue = 0f,
@@ -284,7 +317,7 @@ private fun ThreeDimensionalMindMap(selectedNode: String, onSelectNode: (String)
                     val centerY = h * .51f
                     val radius = minOf(w * .43f, h * .43f)
                     val basePaint = Paint(Paint.ANTI_ALIAS_FLAG)
-                    val projected = mindMapNodes.associateWith {
+                    val projected = nodes.associateWith {
                         projectNode(it, w, h, rotation)
                     }
 
@@ -304,22 +337,16 @@ private fun ThreeDimensionalMindMap(selectedNode: String, onSelectNode: (String)
 
                     // Draw branches first, then moving signal particles along each branch.
                     val center = projected.getValue(mindMapNodes.first())
-                    mindMapNodes.drop(1).forEachIndexed { index, node ->
+                    nodes.drop(1).forEachIndexed { _, node ->
                         val point = projected.getValue(node)
                         basePaint.style = Paint.Style.STROKE
                         basePaint.strokeWidth = 2.1f
                         basePaint.color = node.tint.copy(alpha = .56f).toArgb()
                         canvas.drawLine(center.x, center.y, point.x, point.y, basePaint)
-                        val progress = ((rotation / (Math.PI * 2.0).toFloat() + index * .17f) % 1f)
-                        val particleX = center.x + (point.x - center.x) * progress
-                        val particleY = center.y + (point.y - center.y) * progress
-                        basePaint.style = Paint.Style.FILL
-                        basePaint.color = node.tint.copy(alpha = .95f).toArgb()
-                        canvas.drawCircle(particleX, particleY, 3.2f, basePaint)
                     }
 
                     // Back-to-front sorting makes nearer nodes larger and visually layered.
-                    mindMapNodes.sortedBy { projected.getValue(it).y }.forEach { node ->
+                    nodes.sortedBy { projected.getValue(it).y }.forEach { node ->
                         val point = projected.getValue(node)
                         val depth = (point.zDepth + 1f) / 2f
                         val nodeRadius = (if (node.id == "core") 17f else 11f) * (.78f + depth * .38f)
@@ -341,17 +368,14 @@ private fun ThreeDimensionalMindMap(selectedNode: String, onSelectNode: (String)
                         basePaint.typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
                         basePaint.textSize = 10.5f * density
                         canvas.drawText(node.label, point.x, point.y + nodeRadius + 15f * density, basePaint)
+                        basePaint.textSize = 8f * density
+                        basePaint.typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL)
+                        basePaint.color = onSurface.copy(alpha = .82f).toArgb()
+                        canvas.drawText(node.value.take(25), point.x, point.y + nodeRadius + 26f * density, basePaint)
                     }
-
-                    // Core label remains visually dominant and readable.
-                    basePaint.color = onSurface.toArgb()
-                    basePaint.textAlign = Paint.Align.CENTER
-                    basePaint.textSize = 9f * density
-                    basePaint.typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
-                    canvas.drawText("NÚCLEO", centerX, centerY + 3f * density, basePaint)
                 }
             }
-            Text("Selecciona un nodo para consultar su función. Las órbitas y partículas son animación de interfaz, no tráfico simulado.",
+            Text("La animación solo aporta perspectiva. Las líneas representan la arquitectura del proceso; no son paquetes ni conexiones activas.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
