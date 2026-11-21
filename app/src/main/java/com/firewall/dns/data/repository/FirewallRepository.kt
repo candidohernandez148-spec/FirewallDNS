@@ -196,8 +196,8 @@ object FirewallRepository {
             val generationAtStart = blocklistGeneration.get()
             ioScope.launch {
                 try {
-                    if (_blocklistUrls.value.isEmpty()) {
-                        // Evita reactivar una lista descargada antigua cuando ya no hay fuentes configuradas.
+                    if (normalizedBlocklistUrls.isEmpty()) {
+                        // Evita reactivar una lista descargada antigua cuando no había fuentes al iniciar.
                         blocklistDataSource.clearSavedBlocklists()
                         _blocklistsDownloaded.value = false
                     }
