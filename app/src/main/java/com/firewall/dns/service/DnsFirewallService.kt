@@ -285,29 +285,9 @@ class DnsFirewallService : VpnService() {
                             val base = (sharedEngine ?: engineRuntime).engine.evaluateDns(query, appPackage)
                             val uid = appPackage?.let(appUidByPackage::get) ?: Process.INVALID_UID
                             val appBlocked = uid >= 0 && AppFirewallManager.isUidBlocked(uid)
-                            val observationMode = FirewallRepository.isObservationModeEnabled()
                             val effective = when {
                                 base is DnsEvaluation.Rejected -> base
-                                observationMode && (base is DnsEvaluation.Blocked || appBlocked) -> {
-                                    val question = if (base is DnsEvaluation.Blocked) {
-                                        base.question
-                                    } else {
-                                        (base as DnsEvaluation.Forward).question
-                                    }
-                                    val decision = if (base is DnsEvaluation.Blocked) {
-                                        base.decision
-                                    } else {
-                                        (base as DnsEvaluation.Forward).decision
-                                    }
-                                    DnsEvaluation.Forward(
-                                        question,
-                                        decision.copy(
-                                            action = PolicyAction.OBSERVE,
-                                            reason = "OBSERVE: " + if (appBlocked) "app_uid_blocked" else decision.reason,
-                                        ),
-                                    )
-                                }
-                                !observationMode && appBlocked && base is DnsEvaluation.Forward -> {
+                                appBlocked && base is DnsEvaluation.Forward -> {
                                     val parsed = DnsPacketEngine.parseDnsQuery(query)
                                     if (parsed == null) base else DnsEvaluation.Blocked(
                                         base.question,
@@ -515,20 +495,15 @@ class DnsFirewallService : VpnService() {
             null -> FirewallRepository.evaluateDomain(query.domain)
         }
         val appBlocked = appUid >= 0 && AppFirewallManager.isUidBlocked(appUid)
-        val observationMode = FirewallRepository.isObservationModeEnabled()
         val policyWouldBlock = appBlocked || engineDecision.first
-        val shouldBlock = policyWouldBlock && !observationMode
+        val shouldBlock = policyWouldBlock
+        val policyIsObserve = (evaluation as? DnsEvaluation.Forward)?.decision?.action == PolicyAction.OBSERVE
         when {
             shouldBlock -> FirewallDnsTrafficMetrics.dnsBlocked()
-            observationMode -> FirewallDnsTrafficMetrics.dnsObserved()
+            policyIsObserve -> FirewallDnsTrafficMetrics.dnsObserved()
             else -> FirewallDnsTrafficMetrics.dnsAllowed()
         }
-        val ruleReason = if (appBlocked) "DNS bloqueado para la aplicación" else engineDecision.second
-        val finalReason = when {
-            observationMode && policyWouldBlock -> "OBSERVE: $ruleReason"
-            observationMode -> "OBSERVE: permitido"
-            else -> ruleReason
-        }
+        val finalReason = if (appBlocked) "DNS bloqueado para la aplicación" else engineDecision.second
 
         var upstreamWasCancelled = false
         val dnsResponse: ByteArray?
