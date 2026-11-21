@@ -409,6 +409,7 @@ class DnsFirewallService : VpnService() {
                         val copy = buffer.copyOf(length)
                         val fragmentResult = session.fragmentReassembler.process(copy)
                         session.fragmentReassembler.evictExpired()
+                        FirewallDnsTrafficMetrics.fragmentSnapshot(session.fragmentReassembler.metrics())
                         val normalized = when (val result = fragmentResult) {
                             IpFragmentReassembler.Result.Pending -> continue
                             is IpFragmentReassembler.Result.Dropped -> {
