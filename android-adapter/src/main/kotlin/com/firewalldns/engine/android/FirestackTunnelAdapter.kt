@@ -523,7 +523,7 @@ internal fun isFirestackRdnsBlocklistAddress(value: String): Boolean {
 
 internal fun parseFirestackEndpoint(value: String, portless: Boolean): Pair<String, Int>? = runCatching {
     val endpoint = value.trim()
-    require(endpoint.isNotEmpty())
+    require(endpoint.length in 1..MAX_ENDPOINT_LENGTH)
     if (portless) {
         val host = when {
             endpoint.startsWith("[") && endpoint.contains("]") ->
