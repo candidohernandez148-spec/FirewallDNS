@@ -209,6 +209,7 @@ private class FirewallDNSFirestackBridge(
 
     override fun inflow(protocol: Int, uid: Int, cid: String, src: String, dst: String): Mark {
         val decision = evaluateFlowCallback(protocol, uid, cid, src, dst)
+        runCatching { onFlowSnapshot(engine.flowMonitor.snapshot()) }
         return decisionMark(cid, uid, decision?.action != PolicyAction.ALLOW && decision?.action != PolicyAction.OBSERVE)
     }
 
