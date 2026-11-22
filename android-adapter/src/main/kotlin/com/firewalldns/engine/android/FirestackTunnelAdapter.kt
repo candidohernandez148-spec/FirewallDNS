@@ -147,6 +147,7 @@ private class FirewallDNSFirestackBridge(
     private fun bindToPhysicalNetwork(fd: Long) {
         if (closed.get()) return
         val descriptor = fd.toInt()
+        protectSocket(descriptor)
         val network = physicalNetworkProvider() ?: return
         val result = runCatching {
             ParcelFileDescriptor.fromFd(descriptor).use { duplicate ->
