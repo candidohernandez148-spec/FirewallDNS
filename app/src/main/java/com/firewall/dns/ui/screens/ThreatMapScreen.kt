@@ -903,9 +903,6 @@ private fun LiveEngineOperations(
             "Protocolos L3 desconocidos" to metrics.tunUnknownL3Packets,
             "Protocolos L4 desconocidos" to metrics.tunUnknownL4Packets,
             "Descartes de interfaz" to metrics.tunDrops,
-            "Errores de escritura registrados por host" to metrics.writeErrors,
-            "Rechazos de cola del host" to metrics.queueRejected,
-            "Rechazos del parser del host" to metrics.parserRejected,
         ), "Bytes RX ${metrics.tunRxBytes} · TX ${metrics.tunTxBytes}. Firestack no separa aquí el total por IPv4 e IPv6.")
         LiveMetricSection("CAPA IP Y REENVÍO", listOf(
             "Paquetes IP recibidos" to metrics.ipPacketsReceived,
@@ -934,33 +931,24 @@ private fun LiveEngineOperations(
             "Descartes UDP" to metrics.udpDrops,
         ))
         LiveMetricSection("PROTOCOLO ICMP · NATIVO", listOf(
-            "ICMPv4 recibidos" to metrics.icmpV4Received,
-            "ICMPv4 enviados" to metrics.icmpV4Sent,
-            "ICMPv6 recibidos" to metrics.icmpV6Received,
-            "ICMPv6 enviados" to metrics.icmpV6Sent,
+            "Echo reply ICMPv4 RX" to metrics.icmpV4Received,
+            "Echo request ICMPv4 TX" to metrics.icmpV4Sent,
+            "Echo reply ICMPv6 RX" to metrics.icmpV6Received,
+            "Echo request ICMPv6 TX" to metrics.icmpV6Sent,
         ))
         LiveMetricSection("INSPECCIÓN DNS Y DECISIONES", listOf(
-            "Consultas DNS UDP" to metrics.dnsUdpPackets,
-            "Consultas DNS TCP" to metrics.dnsTcp,
-            "DNS malformado" to metrics.malformedDns,
+            "Evaluaciones DNS" to metrics.dnsPolicyDecisions,
             "Bloqueadas" to metrics.dnsBlocked,
             "Observadas" to metrics.dnsObserved,
             "Permitidas" to metrics.dnsAllowed,
-            "Rechazadas" to metrics.dnsRejected,
-            "Aciertos de caché" to metrics.cacheHits,
-            "Fallos de caché" to metrics.cacheMisses,
+            "Rechazadas por política/parser DNS" to metrics.dnsRejected,
+            "Aciertos de caché de política" to metrics.cacheHits,
+            "Fallos de caché de política" to metrics.cacheMisses,
             "Eventos de telemetría descartados" to metrics.engineEventsDropped,
             "Eventos pendientes en cola" to metrics.engineQueuedEvents,
         ))
         LiveMetricSection("RESOLUCIÓN Y RED FÍSICA", listOf(
-            "Respuestas upstream correctas" to metrics.upstreamSuccess,
-            "Fallos upstream" to metrics.upstreamFailure,
-            "Intentos fallidos upstream" to metrics.upstreamAttemptFailures,
-            "Timeouts upstream" to metrics.upstreamFailureTimeouts,
-            "Cancelaciones upstream" to metrics.upstreamCancelled,
-            "Cambios de resolvers" to metrics.upstreamResolverRefreshes,
-            "Intentos proteger UDP" to metrics.upstreamProtectUdpAttempts,
-            "Intentos proteger TCP" to metrics.upstreamProtectTcpAttempts,
+            "Cambios de lista de resolvers" to metrics.upstreamResolverRefreshes,
         ), metrics.upstreamResolvers.ifBlank { "Resolvers: sin datos" })
         LiveMetricSection("CONEXIONES Y FLUJOS FIRESTACK", listOf(
             "Flujos activos" to metrics.flowsActive,
@@ -973,24 +961,11 @@ private fun LiveEngineOperations(
             "Firestack activo (0/1)" to metrics.firestackActive,
         ))
         LiveActiveFlows(metrics.activeFlows)
-        LiveMetricSection("FRAGMENTACIÓN Y PROTECCIÓN DE SOCKETS", listOf(
-            "Fragmentos aceptados" to metrics.fragmentsAccepted,
-            "Paquetes reensamblados" to metrics.packetsReassembled,
-            "Fragmentos inválidos" to metrics.fragmentsDroppedInvalid,
-            "Fragmentos exceden límites" to metrics.fragmentsDroppedLimit,
-            "Ensamblajes pendientes" to metrics.fragmentPendingAssemblies,
-            "Bytes fragmentados en buffer" to metrics.fragmentBufferedBytes,
+        LiveMetricSection("PROTECCIÓN DE SOCKETS FIRESTACK", listOf(
             "Protección socket correcta" to metrics.firestackProtectSuccess,
             "Fallos protección socket" to metrics.firestackProtectFailure,
             "Vinculación a red correcta" to metrics.firestackBindSuccess,
             "Fallos vinculación a red" to metrics.firestackBindFailure,
-        ))
-        LiveMetricSection("ESTADO DE ERRORES", listOf(
-            "Errores de workers" to metrics.workerErrors,
-            "Respuestas DNS construidas" to metrics.dnsResponsesBuilt,
-            "Respuestas DNS ausentes" to metrics.noDnsResponse,
-            "RST TCP enviados" to metrics.tcpRstSent,
-            "RST TCP suprimidos" to metrics.tcpRstSuppressed,
         ))
         Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(15.dp)) {
             Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
