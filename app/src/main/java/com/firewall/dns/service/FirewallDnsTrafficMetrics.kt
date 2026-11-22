@@ -2,6 +2,7 @@ package com.firewall.dns.service
 
 import com.firewalldns.engine.android.DnsSocketProtectionProtocol
 import com.firewalldns.engine.android.FragmentReassemblerMetrics
+import com.firewalldns.engine.monitor.ActiveFlowSnapshot
 import com.firewalldns.engine.monitor.FlowMonitorSnapshot
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
@@ -65,6 +66,7 @@ object FirewallDnsTrafficMetrics {
         val fragmentBufferedBytes: Long,
         val firestackActive: Long,
         val flowsActive: Long,
+        val activeFlows: List<ActiveFlowSnapshot>,
         val flowsOpened: Long,
         val flowsClosed: Long,
         val flowsBlocked: Long,
@@ -129,6 +131,7 @@ object FirewallDnsTrafficMetrics {
     private val fragmentPendingAssemblies = AtomicLong()
     private val fragmentBufferedBytes = AtomicLong()
     private val firestackActive = AtomicLong()
+    private val activeFlows = AtomicReference<List<ActiveFlowSnapshot>>(emptyList())
     private val flowsActive = AtomicLong()
     private val flowsOpened = AtomicLong()
     private val flowsClosed = AtomicLong()
@@ -217,9 +220,13 @@ object FirewallDnsTrafficMetrics {
     internal fun firestackStopped() {
         firestackActive.set(0L)
         flowsActive.set(0L)
+        activeFlows.set(emptyList())
     }
     internal fun flowSnapshot(snapshot: FlowMonitorSnapshot) {
         flowsActive.set(snapshot.active.toLong())
+        if (snapshot.flows.isNotEmpty() || snapshot.active == 0) {
+            activeFlows.set(snapshot.flows)
+        }
         flowsOpened.set(snapshot.opened)
         flowsClosed.set(snapshot.closed)
         flowsBlocked.set(snapshot.blocked)
@@ -290,6 +297,7 @@ object FirewallDnsTrafficMetrics {
         fragmentBufferedBytes = fragmentBufferedBytes.get(),
         firestackActive = firestackActive.get(),
         flowsActive = flowsActive.get(),
+        activeFlows = activeFlows.get(),
         flowsOpened = flowsOpened.get(),
         flowsClosed = flowsClosed.get(),
         flowsBlocked = flowsBlocked.get(),
