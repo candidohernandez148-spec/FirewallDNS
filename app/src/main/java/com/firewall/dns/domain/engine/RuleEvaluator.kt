@@ -159,17 +159,29 @@ object RuleEvaluator {
 
         // Important exceptions outrank important blocks; important blocks
         // outrank ordinary exceptions and ordinary blocks.
-        if (matchesDomainOrParent(clean, importantExceptions) || clean in importantExactExceptions) {
+        if (matchesDomainOrParent(clean, importantExceptions)) {
             return DecisionResult(false, "Excepción importante @@||", RuleSource.LIST_EXCEPTION)
         }
-        if (matchesDomainOrParent(clean, importantBlock) || clean in importantExactBlock) {
+        if (clean in importantExactExceptions) {
+            return DecisionResult(false, "Excepción importante exacta", RuleSource.LIST_EXCEPTION)
+        }
+        if (matchesDomainOrParent(clean, importantBlock)) {
             return DecisionResult(true, "Adblock importante ||^", RuleSource.LIST_BLOCK)
         }
-        if (matchesDomainOrParent(clean, hostExceptions) || clean in exactExceptions) {
+        if (clean in importantExactBlock) {
+            return DecisionResult(true, "Adblock importante exacto", RuleSource.LIST_BLOCK)
+        }
+        if (matchesDomainOrParent(clean, hostExceptions)) {
             return DecisionResult(false, "Excepción @@||", RuleSource.LIST_EXCEPTION)
         }
-        if (matchesDomainOrParent(clean, hostBlock) || clean in exactBlock) {
+        if (clean in exactExceptions) {
+            return DecisionResult(false, "Excepción exacta", RuleSource.LIST_EXCEPTION)
+        }
+        if (matchesDomainOrParent(clean, hostBlock)) {
             return DecisionResult(true, "Adblock ||^", RuleSource.LIST_BLOCK)
+        }
+        if (clean in exactBlock) {
+            return DecisionResult(true, "Adblock exacto", RuleSource.LIST_BLOCK)
         }
         return DecisionResult(false, "Permitido", RuleSource.CACHE, cacheTtlMs = 30_000L)
     }
