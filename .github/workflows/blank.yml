@@ -25,23 +25,10 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Configurar Rust para Android ARM64
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android
-
       - name: Configurar Android SDK
         uses: android-actions/setup-android@v3
         with:
           packages: platform-tools
-
-      - name: Instalar Android NDK para JNI
-        run: |
-          sdkmanager --install "ndk;27.2.12479018"
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
-
-      - name: Instalar cargo-ndk
-        run: cargo install cargo-ndk --locked
 
       - name: Checkout Firestack fijado
         uses: actions/checkout@v7
@@ -153,21 +140,18 @@ jobs:
       - name: Compilar APK FirewallDNS Release
         run: gradle :app:assembleRelease --no-daemon --stacktrace
 
-      - name: Verificar motor Rust/JNI en FirewallDNS Release
+      - name: Verificar Firestack/gVisor en FirewallDNS Release
         shell: bash
         run: |
           set -euo pipefail
           APK="app/build/outputs/apk/release/app-release.apk"
           test -s "$APK"
-          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libfirewalldns_native.so' || {
-            echo "::error::El APK Release no contiene el motor Rust ARM64"; exit 1;
-          }
           unzip -l "$APK" | grep -q 'lib/arm64-v8a/libgojni.so' || {
             echo "::error::El APK Release no contiene Firestack/gVisor ARM64"; exit 1;
           }
           BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
           "$BUILD_TOOLS/apksigner" verify "$APK"
-          echo "APK FirewallDNS Release: motores Rust/JNI + Firestack/gVisor ARM64 y firma verificados"
+          echo "APK FirewallDNS Release: Firestack/gVisor ARM64 y firma verificados"
 
       - name: Subir APK FirewallDNS
         uses: actions/upload-artifact@v7
