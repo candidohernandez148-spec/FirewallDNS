@@ -1,4 +1,4 @@
-name: Build Debug (FirewallDNS TUN + smoltcp)
+name: Build Debug (FirewallDNS TUN + Firestack)
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -55,28 +55,10 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android
-
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
           packages: platform-tools
-
-      - name: Install Android NDK for Rust JNI
-        run: |
-          sdkmanager --install "ndk;27.2.12479018"
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
-
-      - name: Install cargo-ndk
-        run: cargo install cargo-ndk --locked
-
-      - name: Probar núcleo Rust y transporte smoltcp
-        run: cargo test --manifest-path rust-core/Cargo.toml
-
-      - name: Comprobar Rust para Android ARM64
-        run: cargo check --manifest-path rust-core/Cargo.toml --target aarch64-linux-android
 
       - uses: gradle/actions/setup-gradle@v6
         with:
@@ -88,15 +70,14 @@ jobs:
       - name: Compilar APK FirewallDNS
         run: gradle :app:assembleDebug --no-daemon --stacktrace
 
-      - name: Verificar motor Rust/JNI en APK FirewallDNS
+      - name: Verificar Firestack/gVisor en APK FirewallDNS
         shell: bash
         run: |
           set -euo pipefail
           APK="app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
-          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libfirewalldns_native.so'
           unzip -l "$APK" | grep -q 'lib/arm64-v8a/libgojni.so'
-          echo "APK FirewallDNS Debug: motor Rust/JNI y Firestack/gVisor ARM64 incluidos"
+          echo "APK FirewallDNS Debug: Firestack/gVisor ARM64 incluido"
 
       - uses: actions/upload-artifact@v4
         with:
