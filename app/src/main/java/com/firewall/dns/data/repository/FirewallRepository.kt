@@ -224,6 +224,10 @@ object FirewallRepository {
             },
             importantBlocked = snapshot.importantBlocked.toSet(),
             importantExceptions = snapshot.importantExceptions.toSet(),
+            exactBlocked = snapshot.exactBlocked.toSet(),
+            exactExceptions = snapshot.exactExceptions.toSet(),
+            importantExactBlocked = snapshot.importantExactBlocked.toSet(),
+            importantExactExceptions = snapshot.importantExactExceptions.toSet(),
             summary = snapshot.summary
         )
         // Sincroniza el evaluador determinista antes de publicar el snapshot completo.
@@ -363,17 +367,37 @@ object FirewallRepository {
                 add(PolicyRule("list-important-exception:$domain", domain, action = PolicyAction.ALLOW,
                     source = RuleSource.MANAGED, priority = 85_000, reason = "blocklist_important_exception"))
             }
+            snapshot.importantExactExceptions.forEach { domain ->
+                add(PolicyRule("list-important-exact-exception:$domain", domain, includeSubdomains = false,
+                    action = PolicyAction.ALLOW, source = RuleSource.MANAGED, priority = 85_000,
+                    reason = "blocklist_important_exact_exception"))
+            }
             snapshot.importantBlocked.forEach { domain ->
                 add(PolicyRule("list-important-block:$domain", domain, action = PolicyAction.BLOCK,
                     source = RuleSource.MANAGED, priority = 84_000, reason = "blocklist_important_match"))
+            }
+            snapshot.importantExactBlocked.forEach { domain ->
+                add(PolicyRule("list-important-exact-block:$domain", domain, includeSubdomains = false,
+                    action = PolicyAction.BLOCK, source = RuleSource.MANAGED, priority = 84_000,
+                    reason = "blocklist_important_exact_match"))
             }
             (snapshot.exceptions - snapshot.importantExceptions).forEach { domain ->
                 add(PolicyRule("list-exception:$domain", domain, action = PolicyAction.ALLOW,
                     source = RuleSource.MANAGED, priority = 80_000, reason = "blocklist_exception"))
             }
+            (snapshot.exactExceptions - snapshot.importantExactExceptions).forEach { domain ->
+                add(PolicyRule("list-exact-exception:$domain", domain, includeSubdomains = false,
+                    action = PolicyAction.ALLOW, source = RuleSource.MANAGED, priority = 80_000,
+                    reason = "blocklist_exact_exception"))
+            }
             (snapshot.blocked - snapshot.importantBlocked).forEach { domain ->
                 add(PolicyRule("blocklist:$domain", domain, action = PolicyAction.BLOCK,
                     source = RuleSource.MANAGED, priority = 10_000, reason = "blocklist_match"))
+            }
+            (snapshot.exactBlocked - snapshot.importantExactBlocked).forEach { domain ->
+                add(PolicyRule("blocklist-exact:$domain", domain, includeSubdomains = false,
+                    action = PolicyAction.BLOCK, source = RuleSource.MANAGED, priority = 10_000,
+                    reason = "blocklist_exact_match"))
             }
         }
     }
@@ -389,7 +413,11 @@ object FirewallRepository {
             hostExceptions = activeRules.exceptions - activeRules.importantExceptions,
             hostBlock = activeRules.blocked - activeRules.importantBlocked,
             importantExceptions = activeRules.importantExceptions,
-            importantBlock = activeRules.importantBlocked
+            importantBlock = activeRules.importantBlocked,
+            exactExceptions = activeRules.exactExceptions - activeRules.importantExactExceptions,
+            exactBlock = activeRules.exactBlocked - activeRules.importantExactBlocked,
+            importantExactExceptions = activeRules.importantExactExceptions,
+            importantExactBlock = activeRules.importantExactBlocked
         )
         if (!baseEval.first && baseEval.second != "Permitido") {
             return baseEval
