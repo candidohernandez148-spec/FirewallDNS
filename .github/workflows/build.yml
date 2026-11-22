@@ -136,7 +136,7 @@ jobs:
         working-directory: third_party/firestack
         env:
           GOTOOLCHAIN: local
-        run: go test ./intra -run TestCaptureDnsPortEnablesAllPort53Interception -count=1
+        run: go test ./intra ./intra/dnsx -run 'TestCaptureDnsPortEnablesAllPort53Interception|TestFirewallDNSPortModeInterceptsAnyResolverAddress' -count=1
 
       - name: Set up Android SDK and NDK
         uses: android-actions/setup-android@v3
