@@ -36,6 +36,45 @@ data class FirestackDnsResponseSummary(
     val latency: Double,
 )
 
+data class FirestackNativeStatsSnapshot(
+    val tunOpen: Boolean,
+    val tunUp: Boolean,
+    val tunMtu: Int,
+    val tunReadBytes: String,
+    val tunWrittenBytes: String,
+    val nicRxPackets: Long,
+    val nicTxPackets: Long,
+    val nicRxBytes: String,
+    val nicTxBytes: String,
+    val nicInvalidPackets: Long,
+    val nicUnknownL3: Long,
+    val nicUnknownL4: Long,
+    val nicDrops: Long,
+    val ipReceived: Long,
+    val ipSent: Long,
+    val ipInvalid: Long,
+    val ipReceiveErrors: Long,
+    val ipSendErrors: Long,
+    val forwardDrops: Long,
+    val forwardErrors: Long,
+    val tcpReceived: Long,
+    val tcpSent: Long,
+    val tcpEstablished: Long,
+    val tcpConnectFailures: Long,
+    val tcpRetransmits: Long,
+    val tcpTimeouts: Long,
+    val tcpDrops: Long,
+    val udpReceived: Long,
+    val udpSent: Long,
+    val udpReceiveErrors: Long,
+    val udpDrops: Long,
+    val icmpV4Received: Long,
+    val icmpV4Sent: Long,
+    val icmpV6Received: Long,
+    val icmpV6Sent: Long,
+    val capturedAtEpochMs: Long,
+)
+
 class FirestackTunnelAdapter private constructor(
     private val tunReference: ParcelFileDescriptor,
     private val tunnel: Tunnel,
@@ -108,6 +147,62 @@ class FirestackTunnelAdapter private constructor(
     fun isConnected(): Boolean = !closed.get() && runCatching { tunnel.isConnected() }.getOrDefault(false)
 
     fun stat() = runCatching { tunnel.stat() }.getOrNull()
+
+    /**
+     * Reads Firestack's typed gVisor NetStat snapshot. Firestack caches this
+     * snapshot internally; callers must display its capture time and must not
+     * interpret these counters as packet callbacks or per-flow totals.
+     */
+    fun nativeStats(): FirestackNativeStatsSnapshot? = runCatching {
+        val net = tunnel.stat() ?: return@runCatching null
+        val nic = net.nic() ?: return@runCatching null
+        val tun = net.tun() ?: return@runCatching null
+        val ip = net.ip() ?: return@runCatching null
+        val fwd = net.fwd() ?: return@runCatching null
+        val tcp = net.tcp() ?: return@runCatching null
+        val udp = net.udp() ?: return@runCatching null
+        val icmp = net.icmp() ?: return@runCatching null
+        val read = Regex("(?:^|[, ])R: ([^,]+)").find(tun.epStats)?.groupValues?.get(1) ?: "—"
+        val written = Regex("(?:^|[, ])W: ([^,]+)").find(tun.epStats)?.groupValues?.get(1) ?: "—"
+        FirestackNativeStatsSnapshot(
+            tunOpen = tun.open,
+            tunUp = tun.up,
+            tunMtu = tun.mtu.toInt(),
+            tunReadBytes = read,
+            tunWrittenBytes = written,
+            nicRxPackets = nic.rxPkts,
+            nicTxPackets = nic.txPkts,
+            nicRxBytes = nic.rx,
+            nicTxBytes = nic.tx,
+            nicInvalidPackets = nic.invalid,
+            nicUnknownL3 = nic.l3Unknown,
+            nicUnknownL4 = nic.l4Unknown,
+            nicDrops = nic.drops,
+            ipReceived = ip.rcv,
+            ipSent = ip.snd,
+            ipInvalid = ip.invalidPkt + ip.invalidDst + ip.invalidSrc + ip.invalidFrag,
+            ipReceiveErrors = ip.errRcv,
+            ipSendErrors = ip.errSnd,
+            forwardDrops = fwd.drops,
+            forwardErrors = fwd.errs,
+            tcpReceived = tcp.rcv,
+            tcpSent = tcp.snd,
+            tcpEstablished = tcp.est,
+            tcpConnectFailures = tcp.conFail,
+            tcpRetransmits = tcp.retrans,
+            tcpTimeouts = tcp.timeouts,
+            tcpDrops = tcp.drops,
+            udpReceived = udp.rcv,
+            udpSent = udp.snd,
+            udpReceiveErrors = udp.errRcv + udp.errChecksum + udp.portFail,
+            udpDrops = udp.drops,
+            icmpV4Received = icmp.rcv4,
+            icmpV4Sent = icmp.snd4,
+            icmpV6Received = icmp.rcv6,
+            icmpV6Sent = icmp.snd6,
+            capturedAtEpochMs = System.currentTimeMillis(),
+        )
+    }.getOrNull()
 
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
