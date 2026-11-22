@@ -119,11 +119,12 @@ class DnsFirewallService : VpnService() {
         }
         serviceScope.launch {
             while (isActive) {
-                delay(5_000L)
+                delay(1_000L)
                 val runtime = sharedEngine?.engine ?: continue
                 if (!isRunning || activeTunSession?.firestack == null) continue
                 runtime.evictIdleFlows()
-                FirewallDnsTrafficMetrics.flowSnapshot(runtime.flowMonitor.snapshot(includeFlows = false))
+                // Detailed active-flow snapshots are sampled off packet callbacks for the topology UI.
+                FirewallDnsTrafficMetrics.flowSnapshot(runtime.flowMonitor.snapshot(includeFlows = true))
             }
         }
     }
