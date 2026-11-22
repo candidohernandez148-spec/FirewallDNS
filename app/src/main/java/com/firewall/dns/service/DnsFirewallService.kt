@@ -274,7 +274,7 @@ class DnsFirewallService : VpnService() {
                 onSocketProtectionResult = FirewallDnsTrafficMetrics::firestackSocketProtectionResult,
                 onSocketBindingResult = FirewallDnsTrafficMetrics::firestackSocketBindingResult,
                 onDnsResponse = { summary: FirestackDnsResponseSummary ->
-                    FirewallDnsTrafficMetrics.dnsResponse(summary.status, summary.cached, summary.latency)
+                    FirewallDnsTrafficMetrics.dnsResponse(summary.getStatus().toInt(), summary.getCached(), summary.getLatency())
                 },
                 onDnsDecision = { domain, qType, uid, reason, action ->
                     when (action) {
