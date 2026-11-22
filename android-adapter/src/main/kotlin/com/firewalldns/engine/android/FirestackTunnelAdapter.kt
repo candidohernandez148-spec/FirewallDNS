@@ -303,7 +303,17 @@ private class FirewallDNSFirestackBridge(
             else -> encryptedDnsDecision
         }
         val safeCid = cid.orEmpty()
-        val decision = evaluateFlowCallback(protocol, resolvedUid, safeCid, src.orEmpty(), dst.orEmpty(), effectiveDomainDecision)
+        val originalDestinations = if (dstIsAlg) {
+            origdsts.orEmpty().split(',').mapNotNull { raw ->
+                parseFirestackEndpoint(raw.trim(), portless = true)?.first
+            }.distinct()
+        } else {
+            emptyList()
+        }
+        val decision = evaluateFlowCallback(
+            protocol, resolvedUid, safeCid, src.orEmpty(), dst.orEmpty(),
+            effectiveDomainDecision, originalDestinations,
+        )
         runCatching { onFlowSnapshot(engine.flowMonitor.snapshot()) }
         return decisionMark(safeCid, resolvedUid, decision.action != PolicyAction.ALLOW && decision.action != PolicyAction.OBSERVE)
     }
@@ -322,6 +332,7 @@ private class FirewallDNSFirestackBridge(
         src: String,
         dst: String,
         domainDecision: NetworkFlowDecision? = null,
+        originalDestinations: List<String> = emptyList(),
     ): NetworkFlowDecision = runCatching {
         val portless = protocol == 1 || protocol == 58
         val source = requireNotNull(parseFirestackEndpoint(src, portless)) { "Invalid Firestack source endpoint" }
@@ -335,6 +346,7 @@ private class FirewallDNSFirestackBridge(
             destinationAddress = destination.first,
             destinationPort = destination.second,
             domainDecision = domainDecision,
+            destinationAddresses = originalDestinations.ifEmpty { listOf(destination.first) },
         )
     }.getOrElse {
         engine.flowMonitor.recordBlocked()
