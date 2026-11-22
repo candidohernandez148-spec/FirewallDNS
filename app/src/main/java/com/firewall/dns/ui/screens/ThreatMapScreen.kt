@@ -154,6 +154,7 @@ fun ThreatMapScreen(
             item { SocPolicyDiagnostics(metrics = tunMetrics) }
             item { SocTunnelPath(metrics = tunMetrics, vpnRunning = vpnRunning) }
             item { LiveMapTelemetry(metrics = tunMetrics, logs = logs, vpnRunning = vpnRunning) }
+            item { SocAppDnsActivity(logs = logs) }
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     MindMapAction("Motor", "red", "⚙") { section = it }
@@ -601,6 +602,50 @@ private fun SocKpi(
             Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface)
             Text(detail, style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun SocAppDnsActivity(logs: List<DnsLogEntry>) {
+    val appRows = logs.asSequence()
+        .filter { it.appName.isNotBlank() && it.appName != "Sistema / DNS" }
+        .groupBy { it.appName }
+        .map { (app, events) ->
+            Triple(app, events.count { it.isBlocked }, events.size - events.count { it.isBlocked })
+        }
+        .sortedByDescending { it.second + it.third }
+        .take(5)
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+        Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("ACTIVIDAD DNS POR APLICACIÓN", style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold)
+            if (appRows.isEmpty()) {
+                Text("Sin consultas DNS atribuibles a aplicaciones en los eventos recientes.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                appRows.forEach { (app, blocked, allowed) ->
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(app, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold, maxLines = 1)
+                            Text("BLOQ. $blocked  ·  PERM. $allowed",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        androidx.compose.material3.LinearProgressIndicator(
+                            progress = { if (blocked + allowed == 0) 0f else blocked.toFloat() / (blocked + allowed) },
+                            modifier = Modifier.fillMaxWidth(),
+                            color = MaterialTheme.colorScheme.error,
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    }
+                }
+            }
+            Text("Basado en las consultas DNS recientes atribuidas por Android. No incluye anuncios servidos desde conexiones cifradas sin dominio DNS visible.",
+                style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
