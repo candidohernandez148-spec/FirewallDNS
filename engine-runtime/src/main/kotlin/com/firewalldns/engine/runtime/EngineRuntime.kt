@@ -47,6 +47,11 @@ class EngineRuntime(
         policyEngine.replaceRules(rules)
     }
 
+    /** Hot-swaps curated threat intelligence while preserving the active packet-stack runtime. */
+    fun replaceThreatAnalyzer(analyzer: ThreatAnalyzer) {
+        dnsAdapter.replaceThreatAnalyzer(analyzer)
+    }
+
     /** Atomically replaces TCP/UDP/ICMP flow rules used by the TUN stack adapter. */
     fun replaceFlowRules(rules: Collection<NetworkFlowRule>) {
         networkFlowPolicy.replaceRules(rules)
