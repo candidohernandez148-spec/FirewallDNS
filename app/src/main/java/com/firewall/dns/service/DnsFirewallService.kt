@@ -282,7 +282,7 @@ class DnsFirewallService : VpnService() {
     }
 
     private fun notificationText(): String =
-        "FirewallDNS TUN: filtra consultas DNS; el tráfico TCP/UDP general y DoH/DoT no se inspeccionan en esta etapa"
+        "FirewallDNS TUN: filtra DNS y controla conexiones TCP/UDP/ICMP por aplicación, IP y puerto; DoH/DoT/DoQ no se descifran"
 
     private fun buildNotification() = NotificationCompat.Builder(this, CHANNEL_ID)
         .setContentTitle("Firewall DNS activo")
