@@ -17,6 +17,7 @@ on:
       - "engine-core/**"
       - "engine-monitor/**"
       - "threat-engine/**"
+      - "third_party/**"
       - "docs/**"
       - "third_party/patches/**"
       - "app/**"
