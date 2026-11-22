@@ -272,6 +272,7 @@ class DnsFirewallService : VpnService() {
                         PolicyAction.OBSERVE -> FirewallDnsTrafficMetrics.dnsObserved()
                         PolicyAction.ALLOW -> FirewallDnsTrafficMetrics.dnsAllowed()
                     }
+                    FirewallDnsTrafficMetrics.dnsDecision(domain, action.name, reason)
                     FirewallRepository.addLog(
                         domain = domain,
                         qType = DnsPacketEngine.queryTypeToString(qType),
@@ -312,7 +313,13 @@ class DnsFirewallService : VpnService() {
         // FirewallDNS always uses its own unified policy runtime.
         val existing = sharedEngine
         if (existing != null) {
-            existing.engine.replaceRules(FirewallRepository.enginePolicyRules())
+            val policyRules = FirewallRepository.enginePolicyRules()
+            val policyApplied = runCatching { existing.engine.replaceRules(policyRules) }.isSuccess
+            if (policyApplied) {
+                FirewallDnsTrafficMetrics.policyRulesApplied(policyRules.size, existing.engine.policyRevision)
+            } else {
+                FirewallDnsTrafficMetrics.policyRulesApplyFailed()
+            }
             existing.engine.replaceFlowRules(FirewallRepository.engineFlowPolicyRules())
             existing.engine.replaceThreatAnalyzer(
                 if (FirewallRepository.isSmartModeEnabled()) {
@@ -333,7 +340,9 @@ class DnsFirewallService : VpnService() {
                 },
                 physicalNetworkProvider = { selectedPhysicalNetwork },
             ).also {
-                it.engine.replaceRules(FirewallRepository.enginePolicyRules())
+                val policyRules = FirewallRepository.enginePolicyRules()
+                it.engine.replaceRules(policyRules)
+                FirewallDnsTrafficMetrics.policyRulesApplied(policyRules.size, it.engine.policyRevision)
                 it.engine.replaceFlowRules(FirewallRepository.engineFlowPolicyRules())
             }
         }.getOrNull()
