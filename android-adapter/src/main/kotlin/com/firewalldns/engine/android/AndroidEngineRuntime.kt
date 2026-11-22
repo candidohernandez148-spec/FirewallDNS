@@ -30,6 +30,18 @@ class AndroidEngineRuntime(
 
     private val protectionResult = onSocketProtectionResult
 
+    /** Creates the one flow-policy adapter shared by all packet-stack callbacks. */
+    fun createFlowPolicyAdapter(
+        resolvePackage: (Int) -> String? = { null },
+        isUidBlocked: (Int) -> Boolean = { false },
+        networkGeneration: () -> Long = { 0L },
+    ): AndroidFlowPolicyAdapter = AndroidFlowPolicyAdapter(
+        engine = engine,
+        resolvePackage = resolvePackage,
+        isUidBlocked = isUidBlocked,
+        networkGeneration = networkGeneration,
+    )
+
     /**
      * Builds a failover client pinned to the exact physical Network that supplied
      * its resolver list. The Network is captured for this client generation so an
