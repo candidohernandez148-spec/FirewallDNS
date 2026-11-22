@@ -89,6 +89,14 @@ La implementación Kotlin debe ser un adaptador delgado hacia interfaces de Fire
 - Pruebas automatizadas, pruebas en dispositivo y métricas de rendimiento.
 - Licencias, avisos y fuentes de terceros incluidos.
 
+## Estado de implementación de esta rama
+
+- Añadido `NetworkFlowPolicyEngine` al módulo `engine-core`: reglas TCP/UDP/ICMP por protocolo, UID, paquete, CIDR IPv4/IPv6 y puerto; snapshots atómicos; prioridad/origen; caducidad; evaluación sin I/O; las reglas HEURISTIC no pueden bloquear.
+- Expuesto `replaceFlowRules` y `evaluateFlow` desde `EngineRuntime` para que el futuro `FlowListener` de Firestack delegue en el motor único de FirewallDNS.
+- Añadidas pruebas unitarias para CIDR IPv4/IPv6, UID desconocido, expiración y rechazo de reglas heurísticas de bloqueo.
+- Actualizado el workflow para ejecutar pruebas de `engine-core`, `engine-runtime`, `android-adapter` y `app`, y para activarse cuando cambien los módulos de política.
+- **Todavía no integrado** el AAR/Go runtime de Firestack ni conectado `intra.Connect` al descriptor TUN. El siguiente paso es implementar el adaptador `Bridge` y verificar sus callbacks y protección de sockets.
+
 ## Estado al iniciar esta integración
 
 - El servicio productivo existente sigue siendo principalmente DNS y ya registra bloqueos/permitidos UDP en el dispositivo.
