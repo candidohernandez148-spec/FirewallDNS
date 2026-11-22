@@ -279,6 +279,8 @@ class DnsFirewallService : VpnService() {
                         isBlocked = action == PolicyAction.BLOCK,
                         reason = reason,
                         appName = resolveAppName(uid ?: Process.INVALID_UID),
+                        uid = uid ?: Process.INVALID_UID,
+                        decisionAction = action.name
                     )
                 },
             )
