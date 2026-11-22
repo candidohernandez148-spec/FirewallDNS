@@ -149,6 +149,17 @@ class FirestackTunnelAdapter private constructor(
     }
 }
 
+private fun isNumericIpLiteral(value: String): Boolean {
+    val address = value.substringBefore('%')
+    return if (address.contains(':')) {
+        if (!Regex("[0-9A-Fa-f:.]+").matches(address)) return false
+        runCatching { InetAddress.getByName(address).address.size == 16 }.getOrDefault(false)
+    } else {
+        val octets = address.split('.')
+        octets.size == 4 && octets.all { it.toIntOrNull()?.let { octet -> octet in 0..255 } == true }
+    }
+}
+
 private class FirewallDNSFirestackBridge(
     private val vpnService: VpnService,
     private val engine: EngineRuntime,
@@ -381,7 +392,7 @@ internal fun parseFirestackEndpoint(value: String, portless: Boolean): Pair<Stri
             endpoint.count { it == ':' } == 1 -> endpoint.substringBeforeLast(':')
             else -> endpoint
         }
-        require(host.isNotBlank())
+        require(host.isNotBlank() && isNumericIpLiteral(host))
         host to 0
     } else {
         val host: String
@@ -398,7 +409,7 @@ internal fun parseFirestackEndpoint(value: String, portless: Boolean): Pair<Stri
             portText = endpoint.substring(separator + 1)
         }
         val port = portText.toIntOrNull() ?: throw IllegalArgumentException("Invalid port")
-        require(port in 1..65535)
+        require(port in 1..65535 && isNumericIpLiteral(host))
         host to port
     }
 }.getOrNull()
