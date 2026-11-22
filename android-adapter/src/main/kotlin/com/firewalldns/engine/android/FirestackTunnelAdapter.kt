@@ -1,9 +1,12 @@
 package com.firewalldns.engine.android
 
+import android.net.ConnectivityManager
 import android.net.Network
 import android.net.VpnService
+import android.os.Build
 import android.os.ParcelFileDescriptor
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import com.celzero.firestack.backend.Backend
 import com.celzero.firestack.backend.DNSOpts
 import com.celzero.firestack.backend.DNSSummary
@@ -174,6 +177,22 @@ private class FirewallDNSFirestackBridge(
 ) : Bridge, AutoCloseable {
 
     private val closed = AtomicBoolean(false)
+    private val connectivityManager = vpnService.getSystemService(ConnectivityManager::class.java)
+
+    /** Firestack normally supplies the owner UID; Android Q+ can recover it from the original socket tuple. */
+    private fun resolveOwnerUid(protocol: Int, uid: Int, src: String, dst: String): Int {
+        if (uid >= 0 || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || (protocol != 6 && protocol != 17)) return uid
+        val portless = false
+        val source = parseFirestackEndpoint(src, portless) ?: return uid
+        val destination = parseFirestackEndpoint(dst, portless) ?: return uid
+        return runCatching {
+            connectivityManager.getConnectionOwnerUid(
+                protocol,
+                InetSocketAddress(InetAddress.getByName(source.first), source.second),
+                InetSocketAddress(InetAddress.getByName(destination.first), destination.second),
+            ).takeIf { it >= 0 } ?: uid
+        }.getOrDefault(uid)
+    }
 
     override fun bind4(who: String?, addrport: String?, fd: Long) = bindToPhysicalNetwork(fd)
     override fun bind6(who: String?, addrport: String?, fd: Long) = bindToPhysicalNetwork(fd)
@@ -226,7 +245,8 @@ private class FirewallDNSFirestackBridge(
         blocklists: String?,
         dstIsAlg: Boolean,
     ): Mark {
-        val appPackage = flowPolicyAdapter.resolvePackageForUid(uid)
+        val resolvedUid = resolveOwnerUid(protocol, uid, src.orEmpty(), dst.orEmpty())
+        val appPackage = flowPolicyAdapter.resolvePackageForUid(resolvedUid)
         val domainAssessment = domains.orEmpty().split(',').map(String::trim).filter(String::isNotEmpty)
             .map { domain -> runCatching { engine.evaluateDomain(domain, appPackage) }.getOrNull() }
             .filterNotNull()
@@ -264,9 +284,9 @@ private class FirewallDNSFirestackBridge(
             else -> encryptedDnsDecision
         }
         val safeCid = cid.orEmpty()
-        val decision = evaluateFlowCallback(protocol, uid, safeCid, src.orEmpty(), dst.orEmpty(), effectiveDomainDecision)
+        val decision = evaluateFlowCallback(protocol, resolvedUid, safeCid, src.orEmpty(), dst.orEmpty(), effectiveDomainDecision)
         runCatching { onFlowSnapshot(engine.flowMonitor.snapshot()) }
-        return decisionMark(safeCid, uid, decision.action != PolicyAction.ALLOW && decision.action != PolicyAction.OBSERVE)
+        return decisionMark(safeCid, resolvedUid, decision.action != PolicyAction.ALLOW && decision.action != PolicyAction.OBSERVE)
     }
 
     override fun inflow(protocol: Int, uid: Int, cid: String?, src: String?, dst: String?): Mark {
