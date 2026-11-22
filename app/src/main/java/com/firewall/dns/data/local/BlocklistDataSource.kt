@@ -251,7 +251,7 @@ class BlocklistDataSource(context: Context) {
                 writer.newLine()
             }
             importantBlocked.sorted().forEach { domain ->
-                writer.write("||$domain^\u0024important")
+                writer.write("||" + domain + "^" + 36.toChar() + "important")
                 writer.newLine()
             }
             (exceptions - importantExceptions).sorted().forEach { domain ->
@@ -259,7 +259,7 @@ class BlocklistDataSource(context: Context) {
                 writer.newLine()
             }
             importantExceptions.sorted().forEach { domain ->
-                writer.write("@@||$domain^\u0024important")
+                writer.write("@@||" + domain + "^" + 36.toChar() + "important")
                 writer.newLine()
             }
             writer.flush()
