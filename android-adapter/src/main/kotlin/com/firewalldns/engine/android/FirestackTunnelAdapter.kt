@@ -44,11 +44,19 @@ class FirestackTunnelAdapter private constructor(
             Intra.addDefaultTransport(tunnel, Backend.DNS53, address, "")
             true
         }.getOrDefault(false)
-        val mtuUpdated = if (linkMtu == currentLinkMtu) true else runCatching {
+        return updateLinkMtu(linkMtu) && dnsUpdated
+    }
+
+    @Synchronized
+    fun updateLinkMtu(linkMtu: Int): Boolean {
+        if (closed.get() || linkMtu !in 576..9000) return false
+        if (linkMtu == currentLinkMtu) return true
+        val updated = runCatching {
             tunnel.setLinkMtu(linkMtu.toLong())
+            true
         }.getOrDefault(false)
-        if (mtuUpdated) currentLinkMtu = linkMtu
-        return dnsUpdated && mtuUpdated
+        if (updated) currentLinkMtu = linkMtu
+        return updated
     }
 
     fun isConnected(): Boolean = !closed.get() && runCatching { tunnel.isConnected() }.getOrDefault(false)
