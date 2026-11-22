@@ -1,7 +1,6 @@
 package com.firewall.dns.service
 
 import com.firewalldns.engine.android.DnsSocketProtectionProtocol
-import com.firewalldns.engine.android.FirestackNativeStats
 import com.firewalldns.engine.android.FragmentReassemblerMetrics
 import com.firewalldns.engine.monitor.ActiveFlowSnapshot
 import com.firewalldns.engine.monitor.FlowMonitorSnapshot
@@ -247,41 +246,6 @@ object FirewallDnsTrafficMetrics {
     internal fun dnsAllowed() { dnsAllowed.incrementAndGet() }
     internal fun cacheHit() { cacheHits.incrementAndGet() }
     internal fun cacheMiss() { cacheMisses.incrementAndGet() }
-
-    internal fun firestackNativeSnapshot(stats: FirestackNativeStats) {
-        // These are native gVisor counters, not estimates from app callbacks.
-        packetsRead.set(stats.tunRxPackets)
-        packetsWritten.set(stats.tunTxPackets)
-        fragmentsDroppedInvalid.set(stats.ipInvalidFragments)
-        tunRxBytes.set(stats.tunRxBytes)
-        tunTxBytes.set(stats.tunTxBytes)
-        tunInvalidPackets.set(stats.tunInvalidPackets)
-        tunUnknownL3Packets.set(stats.tunUnknownL3Packets)
-        tunUnknownL4Packets.set(stats.tunUnknownL4Packets)
-        tunDrops.set(stats.tunDrops)
-        ipPacketsReceived.set(stats.ipPacketsReceived)
-        ipPacketsSent.set(stats.ipPacketsSent)
-        ipInvalidPackets.set(stats.ipInvalidPackets)
-        ipReceiveErrors.set(stats.ipReceiveErrors)
-        ipSendErrors.set(stats.ipSendErrors)
-        ipForwardDrops.set(stats.ipForwardDrops)
-        ipForwardErrors.set(stats.ipForwardErrors)
-        tcpSegmentsReceived.set(stats.tcpSegmentsReceived)
-        tcpSegmentsSent.set(stats.tcpSegmentsSent)
-        tcpEstablished.set(stats.tcpEstablished)
-        tcpConnectFailures.set(stats.tcpConnectFailures)
-        tcpRetransmits.set(stats.tcpRetransmits)
-        tcpTimeouts.set(stats.tcpTimeouts)
-        tcpDrops.set(stats.tcpDrops)
-        udpPacketsReceived.set(stats.udpPacketsReceived)
-        udpPacketsSent.set(stats.udpPacketsSent)
-        udpReceiveErrors.set(stats.udpReceiveErrors)
-        udpDrops.set(stats.udpDrops)
-        icmpV4Received.set(stats.icmpV4Received)
-        icmpV4Sent.set(stats.icmpV4Sent)
-        icmpV6Received.set(stats.icmpV6Received)
-        icmpV6Sent.set(stats.icmpV6Sent)
-    }
 
     internal fun engineMonitorSnapshot(snapshot: EngineMetricsSnapshot) {
         // These values come from the shared policy runtime, not inferred UI events.
