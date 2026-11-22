@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -66,6 +69,8 @@ fun AppsSettingsScreen(
 ) {
     val firestackActive = stats.isRunning && stats.engine.contains("Firestack/gVisor", ignoreCase = true)
     var selectedApp by remember { mutableStateOf<AppInfoItem?>(null) }
+
+    BackHandler(enabled = selectedApp != null) { selectedApp = null }
 
     if (selectedApp != null) {
         AppActivityDetailScreen(app = selectedApp!!, logs = logs, flows = activeFlows, onBack = { selectedApp = null })
@@ -259,7 +264,14 @@ private fun AppActivityDetailScreen(
     val appFlows = flows.filter { it.identity.appUid == app.uid }
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 10.dp),
+        modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 10.dp).pointerInput(app.uid) {
+            var horizontalDrag = 0f
+            detectHorizontalDragGestures(
+                onHorizontalDrag = { _, dragAmount -> horizontalDrag += dragAmount },
+                onDragEnd = { if (horizontalDrag > 72f) onBack(); horizontalDrag = 0f },
+                onDragCancel = { horizontalDrag = 0f }
+            )
+        },
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
