@@ -634,12 +634,12 @@ class DnsFirewallService : VpnService() {
                 }
                 dnsResponse = when (upstreamResult) {
                     is DnsUpstreamResult.Success -> upstreamResult.response.message
-                    is DnsUpstreamResult.Failure -> forwardDnsQuery(dnsPayload)
+                    is DnsUpstreamResult.Failure -> forwardDnsQuery(dnsPayload, queryUpstream)
                     DnsUpstreamResult.Cancelled -> {
                         upstreamWasCancelled = true
                         null
                     }
-                    null -> forwardDnsQuery(dnsPayload)
+                    null -> forwardDnsQuery(dnsPayload, queryUpstream)
                 }
                 if (dnsResponse != null) {
                     FirewallDnsTrafficMetrics.upstreamSuccess()
@@ -829,11 +829,17 @@ class DnsFirewallService : VpnService() {
         }
     }
 
-    private fun forwardDnsQuery(dnsPayload: ByteArray): ByteArray? {
+    private fun forwardDnsQuery(
+        dnsPayload: ByteArray,
+        networkGeneration: UpstreamSnapshot?,
+    ): ByteArray? {
         var socket: DatagramSocket? = null
         return try {
             socket = DatagramSocket()
             socket.soTimeout = 3500
+            // Keep the legacy UDP fallback on the same physical Network and
+            // resolver generation as the primary exchange.
+            networkGeneration?.physicalNetwork?.bindSocket(socket)
             val wasProtected = try {
                 protect(socket)
             } catch (error: Throwable) {
@@ -842,7 +848,8 @@ class DnsFirewallService : VpnService() {
             }
             FirewallDnsTrafficMetrics.socketProtectionResult(DnsSocketProtectionProtocol.UDP, wasProtected)
             if (!wasProtected) return null
-            val addr = InetAddress.getByName(FirewallRepository.getUpstreamDns())
+            val resolver = networkGeneration?.resolvers?.firstOrNull() ?: NetworkDns.EMERGENCY_DNS
+            val addr = InetAddress.getByName(resolver)
             // A connected UDP socket accepts datagrams only from this upstream endpoint.
             socket.connect(addr, 53)
             socket.send(DatagramPacket(dnsPayload, dnsPayload.size))
