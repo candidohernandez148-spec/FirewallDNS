@@ -211,7 +211,7 @@ class DnsFirewallService : VpnService() {
                 val runtime = sharedEngine?.engine ?: continue
                 if (!isRunning || activeTunSession?.firestack == null) continue
                 runtime.evictIdleFlows()
-                FirewallDnsTrafficMetrics.flowSnapshot(runtime.flowMonitor.snapshot())
+                FirewallDnsTrafficMetrics.flowSnapshot(runtime.flowMonitor.snapshot(includeFlows = false))
             }
         }
     }
