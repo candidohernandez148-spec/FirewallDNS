@@ -112,6 +112,7 @@ object FirewallDnsTrafficMetrics {
         val fragmentBufferedBytes: Long,
         val firestackActive: Long,
         val flowsActive: Long,
+        val lastFlowEventAtEpochMs: Long,
         val activeFlows: List<ActiveFlowSnapshot>,
         val flowsOpened: Long,
         val flowsClosed: Long,
@@ -231,6 +232,8 @@ object FirewallDnsTrafficMetrics {
     private val firestackActive = AtomicLong()
     private val activeFlows = AtomicReference<List<ActiveFlowSnapshot>>(emptyList())
     private val flowsActive = AtomicLong()
+    private val lastFlowEventAtEpochMs = AtomicLong()
+    private val lastFlowEventSignature = AtomicReference("")
     private val flowsOpened = AtomicLong()
     private val flowsClosed = AtomicLong()
     private val flowsBlocked = AtomicLong()
@@ -370,6 +373,11 @@ object FirewallDnsTrafficMetrics {
         activeFlows.set(emptyList())
     }
     internal fun flowSnapshot(snapshot: FlowMonitorSnapshot) {
+        val signature = "${snapshot.active}:${snapshot.opened}:${snapshot.closed}:${snapshot.blocked}:${snapshot.bytesSent}:${snapshot.bytesReceived}"
+        val previousSignature = lastFlowEventSignature.getAndSet(signature)
+        if (previousSignature.isNotEmpty() && previousSignature != signature) {
+            lastFlowEventAtEpochMs.set(System.currentTimeMillis())
+        }
         flowsActive.set(snapshot.active.toLong())
         if (snapshot.flows.isNotEmpty() || snapshot.active == 0) {
             activeFlows.set(snapshot.flows)
@@ -525,6 +533,7 @@ object FirewallDnsTrafficMetrics {
         fragmentBufferedBytes = fragmentBufferedBytes.get(),
         firestackActive = firestackActive.get(),
         flowsActive = flowsActive.get(),
+        lastFlowEventAtEpochMs = lastFlowEventAtEpochMs.get(),
         activeFlows = activeFlows.get(),
         flowsOpened = flowsOpened.get(),
         flowsClosed = flowsClosed.get(),
