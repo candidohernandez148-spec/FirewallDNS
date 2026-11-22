@@ -27,6 +27,12 @@ object FirewallDnsTrafficMetrics {
         val nicRxBytes: String,
         val nicTxBytes: String,
         val nativeStatsUpdatedAtEpochMs: Long,
+        val nicChangeObservedAtEpochMs: Long,
+        val ipChangeObservedAtEpochMs: Long,
+        val tcpChangeObservedAtEpochMs: Long,
+        val udpChangeObservedAtEpochMs: Long,
+        val icmpChangeObservedAtEpochMs: Long,
+        val forwardChangeObservedAtEpochMs: Long,
         val tunInvalidPackets: Long,
         val tunUnknownL3Packets: Long,
         val tunUnknownL4Packets: Long,
@@ -146,6 +152,18 @@ object FirewallDnsTrafficMetrics {
     private val nicRxBytes = AtomicReference("—")
     private val nicTxBytes = AtomicReference("—")
     private val nativeStatsUpdatedAtEpochMs = AtomicLong()
+    private val nicChangeObservedAtEpochMs = AtomicLong()
+    private val ipChangeObservedAtEpochMs = AtomicLong()
+    private val tcpChangeObservedAtEpochMs = AtomicLong()
+    private val udpChangeObservedAtEpochMs = AtomicLong()
+    private val icmpChangeObservedAtEpochMs = AtomicLong()
+    private val forwardChangeObservedAtEpochMs = AtomicLong()
+    private val nicStatsSignature = AtomicReference("")
+    private val ipStatsSignature = AtomicReference("")
+    private val tcpStatsSignature = AtomicReference("")
+    private val udpStatsSignature = AtomicReference("")
+    private val icmpStatsSignature = AtomicReference("")
+    private val forwardStatsSignature = AtomicReference("")
     private val tunInvalidPackets = AtomicLong()
     private val tunUnknownL3Packets = AtomicLong()
     private val tunUnknownL4Packets = AtomicLong()
@@ -391,6 +409,20 @@ object FirewallDnsTrafficMetrics {
     }
     /** Publishes one coherent native Firestack/gVisor snapshot. */
     internal fun firestackNativeSnapshot(stats: FirestackNativeStatsSnapshot) {
+        // These timestamps indicate when a changed native counter was observed by
+        // polling. Firestack may serve a cached NetStat snapshot, so they are not
+        // packet timestamps and are never presented as per-packet capture times.
+        val observedAt = stats.sampledAtEpochMs
+        fun changed(signature: AtomicReference<String>, next: String): Boolean {
+            val previous = signature.getAndSet(next)
+            return previous.isNotEmpty() && previous != next
+        }
+        if (changed(nicStatsSignature, "${stats.nicRxPackets}:${stats.nicTxPackets}:${stats.nicRxBytes}:${stats.nicTxBytes}:${stats.nicInvalidPackets}:${stats.nicDrops}")) nicChangeObservedAtEpochMs.set(observedAt)
+        if (changed(ipStatsSignature, "${stats.ipReceived}:${stats.ipSent}:${stats.ipInvalid}:${stats.ipReceiveErrors}:${stats.ipSendErrors}")) ipChangeObservedAtEpochMs.set(observedAt)
+        if (changed(tcpStatsSignature, "${stats.tcpReceived}:${stats.tcpSent}:${stats.tcpEstablished}:${stats.tcpConnectFailures}:${stats.tcpRetransmits}:${stats.tcpTimeouts}:${stats.tcpDrops}")) tcpChangeObservedAtEpochMs.set(observedAt)
+        if (changed(udpStatsSignature, "${stats.udpReceived}:${stats.udpSent}:${stats.udpReceiveErrors}:${stats.udpDrops}")) udpChangeObservedAtEpochMs.set(observedAt)
+        if (changed(icmpStatsSignature, "${stats.icmpV4Received}:${stats.icmpV4Sent}:${stats.icmpV6Received}:${stats.icmpV6Sent}")) icmpChangeObservedAtEpochMs.set(observedAt)
+        if (changed(forwardStatsSignature, "${stats.forwardDrops}:${stats.forwardErrors}")) forwardChangeObservedAtEpochMs.set(observedAt)
         tunRxBytes.set(stats.tunReadBytes)
         tunTxBytes.set(stats.tunWrittenBytes)
         nicRxPackets.set(stats.nicRxPackets)
@@ -448,6 +480,12 @@ object FirewallDnsTrafficMetrics {
         nicRxBytes = nicRxBytes.get(),
         nicTxBytes = nicTxBytes.get(),
         nativeStatsUpdatedAtEpochMs = nativeStatsUpdatedAtEpochMs.get(),
+        nicChangeObservedAtEpochMs = nicChangeObservedAtEpochMs.get(),
+        ipChangeObservedAtEpochMs = ipChangeObservedAtEpochMs.get(),
+        tcpChangeObservedAtEpochMs = tcpChangeObservedAtEpochMs.get(),
+        udpChangeObservedAtEpochMs = udpChangeObservedAtEpochMs.get(),
+        icmpChangeObservedAtEpochMs = icmpChangeObservedAtEpochMs.get(),
+        forwardChangeObservedAtEpochMs = forwardChangeObservedAtEpochMs.get(),
         tunInvalidPackets = tunInvalidPackets.get(),
         tunUnknownL3Packets = tunUnknownL3Packets.get(),
         tunUnknownL4Packets = tunUnknownL4Packets.get(),
