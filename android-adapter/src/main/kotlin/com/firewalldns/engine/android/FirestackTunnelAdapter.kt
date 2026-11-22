@@ -304,7 +304,7 @@ private class FirewallDNSFirestackBridge(
         }
         val safeCid = cid.orEmpty()
         val originalDestinations = if (dstIsAlg) {
-            origdsts.orEmpty().split(',').mapNotNull { raw ->
+            origdsts.orEmpty().take(1024).split(',').take(8).mapNotNull { raw ->
                 parseFirestackEndpoint(raw.trim(), portless = true)?.first
             }.distinct()
         } else {
