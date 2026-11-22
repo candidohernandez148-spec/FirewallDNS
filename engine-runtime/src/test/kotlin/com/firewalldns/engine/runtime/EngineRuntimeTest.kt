@@ -77,6 +77,18 @@ class EngineRuntimeTest {
         assertEquals("explicit_allow", result.decision.reason)
     }
 
+    @Test fun domainCallbackUsesSameCuratedThreatKnowledge() {
+        val runtime = EngineRuntime()
+        val blocked = runtime.evaluateDomain("ads.doubleclick.net", "com.example.app", 100)
+        assertEquals(PolicyAction.BLOCK, blocked.action)
+        assertEquals("known_ad_delivery_domain", blocked.reason)
+
+        val observed = runtime.evaluateDomain("metrics.example.net", "com.example.app", 101)
+        assertEquals(PolicyAction.OBSERVE, observed.action)
+        assertEquals("heuristic_signals_require_observation", observed.reason)
+        assertEquals(2L, runtime.metrics().decisions)
+    }
+
     @Test fun runtimeExposesNetworkFlowPolicyForTheTunAdapter() {
         val runtime = EngineRuntime()
         runtime.replaceFlowRules(
