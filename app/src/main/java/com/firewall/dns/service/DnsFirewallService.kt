@@ -53,7 +53,6 @@ class DnsFirewallService : VpnService() {
     @Volatile
     private var activeTunSession: TunSession? = null
     private val vpnLock = Any()
-    private val vpnLock = Any()
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     @Volatile
@@ -186,22 +185,6 @@ class DnsFirewallService : VpnService() {
         }
         private const val CHANNEL_ID = "dns_firewall_channel"
         private const val NOTIFICATION_ID = 2001
-        private const val CACHE_TTL_MS = 60_000L
-
-        /** Paquetes descartados explícitamente por saturación de la cola TUN. */
-        val queueRejectedPackets = AtomicLong(0L)
-
-        /** Fallos inesperados al procesar un paquete en un worker. */
-        val packetProcessingErrors = AtomicLong(0L)
-
-        /** Fallos al escribir respuestas en el descriptor TUN. */
-        val packetWriteErrors = AtomicLong(0L)
-
-        private val TRAPPED_IPV4_DNS = listOf("8.8.8.8", "8.8.4.4", "1.1.1.1", "1.0.0.1")
-        private val TRAPPED_IPV6_DNS = listOf(
-            "2001:4860:4860::8888", "2001:4860:4860::8844",
-            "2606:4700:4700::1111", "2606:4700:4700::1001"
-        )
     }
 
     override fun onCreate() {
@@ -392,6 +375,9 @@ class DnsFirewallService : VpnService() {
         if (firestack == null) {
             runCatching { tunDescriptor.close() }
             isRunning = false
+            sharedEngine = null
+            sharedFlowPolicyAdapter = null
+            upstreamSnapshot = null
             FirewallRepository.setRunning(false, "")
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
