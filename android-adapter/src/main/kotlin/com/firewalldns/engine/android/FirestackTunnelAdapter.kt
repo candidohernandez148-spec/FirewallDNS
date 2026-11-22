@@ -17,6 +17,7 @@ import com.celzero.firestack.intra.PreMark
 import com.celzero.firestack.intra.Tunnel
 import com.firewalldns.engine.core.PolicyAction
 import com.firewalldns.engine.core.NetworkFlowDecision
+import com.firewalldns.engine.core.RuleSource
 import com.firewalldns.engine.monitor.FlowMonitorSnapshot
 import com.firewalldns.engine.runtime.EngineRuntime
 import java.util.concurrent.atomic.AtomicBoolean
@@ -206,8 +207,37 @@ private class FirewallDNSFirestackBridge(
             ?: domainAssessment.firstOrNull { it.action == PolicyAction.OBSERVE })?.let {
             NetworkFlowDecision(it.action, it.reason, it.ruleId, it.source, it.policyRevision)
         }
+        val destination = parseFirestackEndpoint(dst.orEmpty(), portless = false)
+        val encryptedDnsPort = destination?.let {
+            EncryptedDnsGuard.shouldBlockPort(protocol, it.second)
+        } == true
+        val confirmedDoh = domains.orEmpty().split(',').map(String::trim)
+            .any(EncryptedDnsGuard::isKnownDohEndpoint)
+        val probableDoh = probableDomains.orEmpty().split(',').map(String::trim)
+            .any(EncryptedDnsGuard::isKnownDohEndpoint)
+        val encryptedDnsDecision = when {
+            encryptedDnsPort -> NetworkFlowDecision(
+                PolicyAction.BLOCK, "encrypted_dns_transport_blocked",
+                "encrypted-dns-port-guard", RuleSource.MANAGED, engine.flowPolicyRevision,
+            )
+            confirmedDoh -> NetworkFlowDecision(
+                PolicyAction.BLOCK, "known_doh_endpoint_blocked",
+                "known-doh-endpoint-guard", RuleSource.MANAGED, engine.flowPolicyRevision,
+            )
+            probableDoh -> NetworkFlowDecision(
+                PolicyAction.OBSERVE, "probable_doh_endpoint_observed",
+                "probable-doh-endpoint-guard", RuleSource.HEURISTIC, engine.flowPolicyRevision,
+            )
+            else -> null
+        }
+        val effectiveDomainDecision = when {
+            encryptedDnsDecision?.action == PolicyAction.BLOCK -> encryptedDnsDecision
+            selectedDomainDecision?.action == PolicyAction.BLOCK -> selectedDomainDecision
+            selectedDomainDecision?.action == PolicyAction.OBSERVE -> selectedDomainDecision
+            else -> encryptedDnsDecision
+        }
         val safeCid = cid.orEmpty()
-        val decision = evaluateFlowCallback(protocol, uid, safeCid, src.orEmpty(), dst.orEmpty(), selectedDomainDecision)
+        val decision = evaluateFlowCallback(protocol, uid, safeCid, src.orEmpty(), dst.orEmpty(), effectiveDomainDecision)
         runCatching { onFlowSnapshot(engine.flowMonitor.snapshot()) }
         return decisionMark(safeCid, uid, decision?.action != PolicyAction.ALLOW && decision?.action != PolicyAction.OBSERVE)
     }
