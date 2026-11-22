@@ -30,17 +30,25 @@ class FirestackTunnelAdapter private constructor(
     private val tunReference: ParcelFileDescriptor,
     private val tunnel: Tunnel,
     private val bridge: FirewallDNSFirestackBridge,
+    private var currentLinkMtu: Int,
 ) : AutoCloseable {
 
     private val closed = AtomicBoolean(false)
 
-    fun updatePhysicalNetworkResolver(resolver: String): Boolean {
+    @Synchronized
+    fun updatePhysicalNetworkResolver(resolver: String, linkMtu: Int): Boolean {
         if (closed.get()) return false
+        if (linkMtu !in 576..9000) return false
         val address = formatHostPort(resolver)
-        return runCatching {
+        val dnsUpdated = runCatching {
             Intra.addDefaultTransport(tunnel, Backend.DNS53, address, "")
             true
         }.getOrDefault(false)
+        val mtuUpdated = if (linkMtu == currentLinkMtu) true else runCatching {
+            tunnel.setLinkMtu(linkMtu.toLong())
+        }.getOrDefault(false)
+        if (mtuUpdated) currentLinkMtu = linkMtu
+        return dnsUpdated && mtuUpdated
     }
 
     fun isConnected(): Boolean = !closed.get() && runCatching { tunnel.isConnected() }.getOrDefault(false)
@@ -62,6 +70,7 @@ class FirestackTunnelAdapter private constructor(
             vpnService: VpnService,
             tunDescriptor: ParcelFileDescriptor,
             mtu: Int,
+            linkMtu: Int,
             resolver: String,
             engine: EngineRuntime,
             flowPolicyAdapter: AndroidFlowPolicyAdapter,
@@ -73,6 +82,7 @@ class FirestackTunnelAdapter private constructor(
             onFlowSnapshot: (FlowMonitorSnapshot) -> Unit = {},
         ): FirestackTunnelAdapter {
             require(mtu in 576..9000) { "Invalid TUN MTU" }
+            require(linkMtu in 576..9000) { "Invalid physical link MTU" }
             val tunReference = ParcelFileDescriptor.dup(tunDescriptor.fileDescriptor)
             var bridge: FirewallDNSFirestackBridge? = null
             var createdTunnel: Tunnel? = null
@@ -98,7 +108,7 @@ class FirestackTunnelAdapter private constructor(
                 Intra.defaultDNSAsFallback(false)
                 val tunnel = Intra.connect(
                     tunReference.fd.toLong(),
-                    mtu.toLong(),
+                    linkMtu.toLong(),
                     mtu.toLong(),
                     TUN_IFADDRS,
                     FAKE_DNS,
@@ -107,7 +117,7 @@ class FirestackTunnelAdapter private constructor(
                 )
                 createdTunnel = tunnel
                 check(tunnel.isConnected()) { "Firestack returned a disconnected TUN stack" }
-                return FirestackTunnelAdapter(tunReference, tunnel, bridge)
+                return FirestackTunnelAdapter(tunReference, tunnel, bridge, linkMtu)
             } catch (error: Throwable) {
                 runCatching { createdTunnel?.disconnect() }
                 runCatching { bridge?.close() }
