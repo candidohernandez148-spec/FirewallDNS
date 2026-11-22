@@ -17,9 +17,11 @@ Aplicación Android de **firewall virtual local sin permisos root**, construida 
 
 ## ✨ Características principales
 
-* **Motor virtual de red TCP/UDP sobre TUN:**
+* **Motor virtual único FirewallDNS sobre TUN:**
+    * Existe un único `VpnService`, un descriptor TUN y una autoridad de políticas. Firestack/gVisor es un componente integrado del motor FirewallDNS, no una segunda VPN ni un segundo motor de reglas.
+    * Si la pila productiva no puede iniciarse, FirewallDNS falla de forma segura y no activa un motor DNS alternativo ni muestra protección como activa.
     * Un solo `VpnService` y un solo descriptor TUN, administrado por `DnsFirewallService`.
-    * Firestack/gVisor procesa conexiones TCP, UDP e ICMP IPv4/IPv6; smoltcp/Rust se conserva como componente nativo de DNS/TCP y banco de pruebas, no como una segunda pila que compita por el TUN.
+    * Firestack/gVisor es la única pila de paquetes de producción para TCP/UDP/ICMP IPv4/IPv6. Rust/smoltcp queda aislado en pruebas y diagnósticos; nunca procesa tráfico de la VPN activa.
     * Los callbacks de Firestack se conectan a la política única de FirewallDNS para bloquear, observar o permitir conexiones por UID, aplicación, protocolo, IP/CIDR y puerto.
     * Los sockets de salida se protegen contra bucles VPN y se enlazan a la red física seleccionada. Los cambios Wi-Fi/datos móviles actualizan resolvers y MTU sin reiniciar el TUN.
 * **Filtrado DNS y protección de amenazas:**
