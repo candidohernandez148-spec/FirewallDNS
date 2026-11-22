@@ -7,6 +7,7 @@ import com.firewalldns.engine.core.PolicyEngine
 import com.firewalldns.engine.core.PolicyRequest
 import com.firewalldns.engine.threat.ThreatAnalyzer
 import com.firewalldns.engine.monitor.EngineMonitor
+import java.util.concurrent.atomic.AtomicReference
 
 sealed interface DnsEvaluation {
     data class Forward(val question: DnsQuestion, val decision: PolicyDecision) : DnsEvaluation
@@ -18,9 +19,17 @@ sealed interface DnsEvaluation {
 class DnsPolicyAdapter(
     private val policyEngine: PolicyEngine,
     private val decisionCache: DnsDecisionCache = DnsDecisionCache(),
-    private val threatAnalyzer: ThreatAnalyzer = ThreatAnalyzer(),
+    threatAnalyzer: ThreatAnalyzer = ThreatAnalyzer(),
     val monitor: EngineMonitor = EngineMonitor(),
 ) {
+    private val threatAnalyzer = AtomicReference(threatAnalyzer)
+
+    /** Replace threat intelligence without replacing the live packet-stack runtime. */
+    fun replaceThreatAnalyzer(analyzer: ThreatAnalyzer) {
+        threatAnalyzer.set(analyzer)
+        decisionCache.clear()
+    }
+
     fun evaluate(packet: ByteArray, appPackage: String? = null, nowEpochMillis: Long = System.currentTimeMillis()): DnsEvaluation {
         val question = when (val parsed = DnsMessageParser.parse(packet)) {
             is DnsParseResult.Valid -> parsed.question
@@ -66,7 +75,7 @@ class DnsPolicyAdapter(
                 nowEpochMillis,
             )
             val effectiveDecision = if (policyDecision.reason == "no_matching_rule") {
-                val assessment = threatAnalyzer.analyze(normalizedDomain)
+                val assessment = threatAnalyzer.get().analyze(normalizedDomain)
                 policyDecision.copy(
                     action = assessment.action,
                     reason = assessment.reason,
