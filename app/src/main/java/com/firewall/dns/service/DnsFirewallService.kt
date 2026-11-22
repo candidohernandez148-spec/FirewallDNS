@@ -967,9 +967,10 @@ class DnsFirewallService : VpnService() {
         // restart Firestack's netstack on the same TUN to retire stale TCP/UDP flows.
         val physicalNetworkChanged = current != null && physicalNetwork != current.physicalNetwork
         activeTunSession?.firestack?.let { stack ->
-            val resolverUpdated = stack.updatePhysicalNetworkResolver(discovered.joinToString(","), linkMtu)
-            val stackReady = resolverUpdated && (
-                !physicalNetworkChanged || stack.restartForPhysicalNetworkChange(linkMtu)
+            val stackReady = stack.reconfigurePhysicalNetwork(
+                resolver = discovered.joinToString(","),
+                linkMtu = linkMtu,
+                networkChanged = physicalNetworkChanged,
             )
             if (stackReady) {
                 firestackResolverGeneration.set(upstreamConfigGeneration.get())
