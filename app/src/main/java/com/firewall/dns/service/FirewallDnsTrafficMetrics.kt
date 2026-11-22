@@ -2,7 +2,6 @@ package com.firewall.dns.service
 
 import com.firewalldns.engine.android.DnsSocketProtectionProtocol
 import com.firewalldns.engine.android.FragmentReassemblerMetrics
-import com.firewalldns.engine.android.SmoltcpDnsTcpMetrics
 import com.firewalldns.engine.monitor.FlowMonitorSnapshot
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
@@ -57,16 +56,6 @@ object FirewallDnsTrafficMetrics {
         val packetsWritten: Long,
         val writeErrors: Long,
         val workerErrors: Long,
-        val smoltcpTransportAvailable: Long,
-        val smoltcpSessionsActive: Long,
-        val smoltcpPacketsAccepted: Long,
-        val smoltcpSessionsOpened: Long,
-        val smoltcpSessionsClosed: Long,
-        val smoltcpIngressRejected: Long,
-        val smoltcpDataEvents: Long,
-        val smoltcpResponsesQueued: Long,
-        val smoltcpResponseFailures: Long,
-        val smoltcpNativeErrors: Long,
         val fragmentsAccepted: Long,
         val packetsReassembled: Long,
         val fragmentsDroppedInvalid: Long,
@@ -132,16 +121,6 @@ object FirewallDnsTrafficMetrics {
     private val packetsWritten = AtomicLong()
     private val writeErrors = AtomicLong()
     private val workerErrors = AtomicLong()
-    private val smoltcpTransportAvailable = AtomicLong()
-    private val smoltcpSessionsActive = AtomicLong()
-    private val smoltcpPacketsAccepted = AtomicLong()
-    private val smoltcpSessionsOpened = AtomicLong()
-    private val smoltcpSessionsClosed = AtomicLong()
-    private val smoltcpIngressRejected = AtomicLong()
-    private val smoltcpDataEvents = AtomicLong()
-    private val smoltcpResponsesQueued = AtomicLong()
-    private val smoltcpResponseFailures = AtomicLong()
-    private val smoltcpNativeErrors = AtomicLong()
     private val fragmentsAccepted = AtomicLong()
     private val packetsReassembled = AtomicLong()
     private val fragmentsDroppedInvalid = AtomicLong()
@@ -248,11 +227,6 @@ object FirewallDnsTrafficMetrics {
         flowBytesReceived.set(snapshot.bytesReceived)
         flowCapacityRejected.set(snapshot.capacityRejected)
     }
-    internal fun smoltcpStarted() { smoltcpTransportAvailable.set(1L) }
-    internal fun smoltcpStopped() {
-        smoltcpTransportAvailable.set(0L)
-        smoltcpSessionsActive.set(0L)
-    }
     internal fun fragmentSnapshot(metrics: FragmentReassemblerMetrics) {
         fragmentsAccepted.set(metrics.fragmentsAccepted)
         packetsReassembled.set(metrics.packetsReassembled)
@@ -261,19 +235,6 @@ object FirewallDnsTrafficMetrics {
         fragmentAssembliesExpired.set(metrics.assembliesExpired)
         fragmentPendingAssemblies.set(metrics.pendingAssemblies.toLong())
         fragmentBufferedBytes.set(metrics.bufferedBytes.toLong())
-    }
-
-    internal fun smoltcpSnapshot(metrics: SmoltcpDnsTcpMetrics) {
-        smoltcpTransportAvailable.set(1L)
-        smoltcpSessionsActive.set(metrics.activeSessions.toLong())
-        smoltcpPacketsAccepted.set(metrics.packetsAccepted)
-        smoltcpSessionsOpened.set(metrics.sessionsOpened)
-        smoltcpSessionsClosed.set(metrics.sessionsClosed)
-        smoltcpIngressRejected.set(metrics.ingressRejected)
-        smoltcpDataEvents.set(metrics.dataEvents)
-        smoltcpResponsesQueued.set(metrics.responsesQueued)
-        smoltcpResponseFailures.set(metrics.responseFailures)
-        smoltcpNativeErrors.set(metrics.nativeErrors)
     }
 
     /** Returns a non-blocking point-in-time aggregate snapshot for UI/diagnostics. */
@@ -320,16 +281,6 @@ object FirewallDnsTrafficMetrics {
         packetsWritten = packetsWritten.get(),
         writeErrors = writeErrors.get(),
         workerErrors = workerErrors.get(),
-        smoltcpTransportAvailable = smoltcpTransportAvailable.get(),
-        smoltcpSessionsActive = smoltcpSessionsActive.get(),
-        smoltcpPacketsAccepted = smoltcpPacketsAccepted.get(),
-        smoltcpSessionsOpened = smoltcpSessionsOpened.get(),
-        smoltcpSessionsClosed = smoltcpSessionsClosed.get(),
-        smoltcpIngressRejected = smoltcpIngressRejected.get(),
-        smoltcpDataEvents = smoltcpDataEvents.get(),
-        smoltcpResponsesQueued = smoltcpResponsesQueued.get(),
-        smoltcpResponseFailures = smoltcpResponseFailures.get(),
-        smoltcpNativeErrors = smoltcpNativeErrors.get(),
         fragmentsAccepted = fragmentsAccepted.get(),
         packetsReassembled = packetsReassembled.get(),
         fragmentsDroppedInvalid = fragmentsDroppedInvalid.get(),
