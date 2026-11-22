@@ -576,7 +576,7 @@ private fun SocKpiGrid(metrics: FirewallDnsTrafficMetrics.Snapshot) {
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
         Text("RESUMEN OPERATIVO", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            SocKpi("PAQUETES TUN", metrics.packetsRead.toString(), "IPv4 ${metrics.ipv4Packets} · IPv6 ${metrics.ipv6Packets}", Color(0xFF2776B8), Modifier.weight(1f))
+            SocKpi("FLUJOS IP ACTIVOS", metrics.flowsActive.toString(), "IPv4/IPv6 identificados abajo", Color(0xFF2776B8), Modifier.weight(1f))
             SocKpi("FLUJOS ACTIVOS", metrics.flowsActive.toString(), "Abiertos ${metrics.flowsOpened}", Color(0xFF247A62), Modifier.weight(1f))
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -771,11 +771,11 @@ private fun SocTunnelPath(
             Text("Contadores acumulados reportados por el servicio; no representan paquetes simultáneos.",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             val stages = listOf(
-                Triple("ENTRADA TUN", metrics.packetsRead, "Paquetes recibidos"),
-                Triple("CLASIFICACIÓN IP", metrics.ipv4Packets + metrics.ipv6Packets, "IPv4 + IPv6"),
-                Triple("POLÍTICA DNS", metrics.dnsBlocked + metrics.dnsObserved + metrics.dnsAllowed, "Bloquear · observar · permitir"),
-                Triple("FLUJOS", metrics.flowsOpened, "Conexiones abiertas"),
-                Triple("SALIDA TUN", metrics.packetsWritten, "Paquetes escritos")
+                Triple("ENTRADA TUN", "N/D", "Firestack no expone contador de paquetes TUN en esta API"),
+                Triple("CLASIFICACIÓN IP", "${metrics.ipv4Packets + metrics.ipv6Packets}", "Contadores del parser de paquetes disponibles"),
+                Triple("POLÍTICA DNS", "${metrics.dnsBlocked + metrics.dnsObserved + metrics.dnsAllowed}", "Bloquear · observar · permitir"),
+                Triple("FLUJOS", "${metrics.flowsOpened}", "Conexiones abiertas por FlowMonitor"),
+                Triple("SALIDA TUN", "N/D", "Firestack no expone contador de paquetes TUN en esta API")
             )
             stages.forEachIndexed { index, stage ->
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -890,52 +890,14 @@ private fun LiveEngineOperations(
             Text("ACTIVIDAD OPERATIVA EN TIEMPO REAL", style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold)
             Text(
-                if (vpnRunning) "DNS y flujos se actualizan con el servicio; los contadores nativos TUN/IP/TCP/UDP/ICMP se consultan desde Firestack (caché máxima aproximada: 30 s)."
+                if (vpnRunning) "Flujos, decisiones DNS y cola del motor se actualizan desde métricas reales. La API Firestack incluida no expone contadores nativos TUN/IP/TCP/UDP/ICMP compatibles."
                 else "Servicio detenido. Se muestran los últimos contadores disponibles; no se simula actividad.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        LiveMetricSection("TRÁFICO TUN · INTERFAZ NATIVA", listOf(
-            "Paquetes recibidos por TUN" to metrics.packetsRead,
-            "Paquetes enviados por TUN" to metrics.packetsWritten,
-            "Paquetes inválidos L4" to metrics.tunInvalidPackets,
-            "Protocolos L3 desconocidos" to metrics.tunUnknownL3Packets,
-            "Protocolos L4 desconocidos" to metrics.tunUnknownL4Packets,
-            "Descartes de interfaz" to metrics.tunDrops,
-        ), "Bytes RX ${metrics.tunRxBytes} · TX ${metrics.tunTxBytes}. Firestack no separa aquí el total por IPv4 e IPv6.")
-        LiveMetricSection("CAPA IP Y REENVÍO", listOf(
-            "Paquetes IP recibidos" to metrics.ipPacketsReceived,
-            "Paquetes IP enviados" to metrics.ipPacketsSent,
-            "Fragmentos IP inválidos" to metrics.fragmentsDroppedInvalid,
-            "Paquetes IP inválidos" to metrics.ipInvalidPackets,
-            "Errores IP al recibir" to metrics.ipReceiveErrors,
-            "Errores IP al enviar" to metrics.ipSendErrors,
-            "Descartes de forwarding" to metrics.ipForwardDrops,
-            "Errores de forwarding" to metrics.ipForwardErrors,
-        ))
-        LiveMetricSection("PROTOCOLO TCP · NATIVO", listOf(
-            "Segmentos recibidos" to metrics.tcpSegmentsReceived,
-            "Segmentos enviados" to metrics.tcpSegmentsSent,
-            "Conexiones establecidas" to metrics.tcpEstablished,
-            "Fallos al conectar" to metrics.tcpConnectFailures,
-            "Retransmisiones" to metrics.tcpRetransmits,
-            "Timeouts" to metrics.tcpTimeouts,
-            "Descartes TCP" to metrics.tcpDrops,
-        ))
-        LiveMetricSection("PROTOCOLO UDP · NATIVO", listOf(
-            "Datagramas recibidos" to metrics.udpPacketsReceived,
-            "Datagramas enviados" to metrics.udpPacketsSent,
-            "Errores al recibir" to metrics.udpReceiveErrors,
-            "Errores al enviar" to metrics.udpSendErrors,
-            "Descartes UDP" to metrics.udpDrops,
-        ))
-        LiveMetricSection("PROTOCOLO ICMP · NATIVO", listOf(
-            "Mensajes ICMPv4 recibidos" to metrics.icmpV4Received,
-            "Mensajes ICMPv4 enviados" to metrics.icmpV4Sent,
-            "Mensajes ICMPv6 recibidos" to metrics.icmpV6Received,
-            "Mensajes ICMPv6 enviados" to metrics.icmpV6Sent,
-        ))
+        LiveMetricSection("ESTADÍSTICAS NATIVAS NO EXPUESTAS", emptyList(),
+            "La versión actual de Firestack no publica una API tipada accesible para contadores TUN/IP/TCP/UDP/ICMP. Se omiten en vez de mostrar ceros ficticios.")
         LiveMetricSection("INSPECCIÓN DNS Y DECISIONES", listOf(
             "Evaluaciones DNS" to metrics.dnsPolicyDecisions,
             "Bloqueadas" to metrics.dnsBlocked,
