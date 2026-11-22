@@ -62,4 +62,13 @@ class FirestackSocketBindingTest {
 
         assertEquals(false, protectionResult)
     }
+
+    @Test
+    fun recognizesFirestackRdnsBlocklistSentinelsForIpv4AndIpv6() {
+        assertEquals(true, isFirestackRdnsBlocklistAddress("0.0.0.0"))
+        assertEquals(true, isFirestackRdnsBlocklistAddress("::"))
+        assertEquals(false, isFirestackRdnsBlocklistAddress("203.0.113.25"))
+        assertEquals(false, isFirestackRdnsBlocklistAddress("2001:db8::25"))
+    }
+
 }
