@@ -62,7 +62,7 @@ object RuleEvaluator {
 
         // This DNS-only policy does not yet model Adblock option precedence or
         // request context. Reject every option instead of widening its semantics.
-        fun hasOnlyDnsSafeOptions(value: String): Boolean = !value.contains('
+        fun hasNoUnsupportedOptions(value: String): Boolean = !value.contains('
 
         val tokens = body.split(Regex("\\s+")).filter(String::isNotBlank)
         if (!isException && tokens.size >= 2 && tokens.first() in HOST_SINK_ADDRESSES) {
@@ -73,7 +73,7 @@ object RuleEvaluator {
 
         val candidate = when {
             body.startsWith("||") -> {
-                if (!hasOnlyDnsSafeOptions(body)) return emptyList()
+                if (!hasNoUnsupportedOptions(body)) return emptyList()
                 val rawTarget = body.removePrefix("||")
                     .substringBefore('$')
                     .removeSuffix("^")
@@ -83,7 +83,7 @@ object RuleEvaluator {
                 rawTarget
             }
             else -> {
-                if (!hasOnlyDnsSafeOptions(body)) return emptyList()
+                if (!hasNoUnsupportedOptions(body)) return emptyList()
                 val rawTarget = body.substringBefore('$').removeSuffix("^")
                 if (rawTarget.isEmpty() || rawTarget.contains('/') || rawTarget.contains('*') ||
                     rawTarget.contains('^') || rawTarget.contains(':')
@@ -174,7 +174,7 @@ object RuleEvaluator {
 
         val candidate = when {
             body.startsWith("||") -> {
-                if (!hasOnlyDnsSafeOptions(body)) return emptyList()
+                if (!hasNoUnsupportedOptions(body)) return emptyList()
                 val rawTarget = body.removePrefix("||")
                     .substringBefore('$')
                     .removeSuffix("^")
@@ -184,7 +184,7 @@ object RuleEvaluator {
                 rawTarget
             }
             else -> {
-                if (!hasOnlyDnsSafeOptions(body)) return emptyList()
+                if (!hasNoUnsupportedOptions(body)) return emptyList()
                 val rawTarget = body.substringBefore('$').removeSuffix("^")
                 if (rawTarget.isEmpty() || rawTarget.contains('/') || rawTarget.contains('*') ||
                     rawTarget.contains('^') || rawTarget.contains(':')
