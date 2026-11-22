@@ -18,7 +18,7 @@ import com.firewalldns.engine.threat.ThreatAnalyzer
  * This does not create a TUN reader, packet stack, or replace the host VPN.
  */
 class AndroidEngineRuntime(
-    vpnService: VpnService,
+    private val vpnService: VpnService,
     enableThreatAnalysis: Boolean = true,
     private val onSocketProtectionResult: (DnsSocketProtectionProtocol, Boolean) -> Unit = { _, _ -> },
     private val physicalNetworkProvider: () -> Network? = { null },
