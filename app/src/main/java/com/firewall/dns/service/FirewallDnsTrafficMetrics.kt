@@ -5,6 +5,7 @@ import com.firewalldns.engine.android.FragmentReassemblerMetrics
 import com.firewalldns.engine.monitor.ActiveFlowSnapshot
 import com.firewalldns.engine.monitor.FlowMonitorSnapshot
 import com.firewalldns.engine.monitor.EngineMetricsSnapshot
+import com.firewalldns.engine.android.FirestackNativeStatsSnapshot
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
@@ -21,6 +22,11 @@ object FirewallDnsTrafficMetrics {
 
         val tunRxBytes: String,
         val tunTxBytes: String,
+        val nicRxPackets: Long,
+        val nicTxPackets: Long,
+        val nicRxBytes: String,
+        val nicTxBytes: String,
+        val nativeStatsUpdatedAtEpochMs: Long,
         val tunInvalidPackets: Long,
         val tunUnknownL3Packets: Long,
         val tunUnknownL4Packets: Long,
@@ -134,6 +140,11 @@ object FirewallDnsTrafficMetrics {
 
     private val tunRxBytes = AtomicReference("—")
     private val tunTxBytes = AtomicReference("—")
+    private val nicRxPackets = AtomicLong()
+    private val nicTxPackets = AtomicLong()
+    private val nicRxBytes = AtomicReference("—")
+    private val nicTxBytes = AtomicReference("—")
+    private val nativeStatsUpdatedAtEpochMs = AtomicLong()
     private val tunInvalidPackets = AtomicLong()
     private val tunUnknownL3Packets = AtomicLong()
     private val tunUnknownL4Packets = AtomicLong()
@@ -370,6 +381,43 @@ object FirewallDnsTrafficMetrics {
         flowBytesReceived.set(snapshot.bytesReceived)
         flowCapacityRejected.set(snapshot.capacityRejected)
     }
+    /** Publishes one coherent native Firestack/gVisor snapshot. */
+    internal fun firestackNativeSnapshot(stats: FirestackNativeStatsSnapshot) {
+        tunRxBytes.set(stats.tunReadBytes)
+        tunTxBytes.set(stats.tunWrittenBytes)
+        nicRxPackets.set(stats.nicRxPackets)
+        nicTxPackets.set(stats.nicTxPackets)
+        nicRxBytes.set(stats.nicRxBytes)
+        nicTxBytes.set(stats.nicTxBytes)
+        tunInvalidPackets.set(stats.nicInvalidPackets)
+        tunUnknownL3Packets.set(stats.nicUnknownL3)
+        tunUnknownL4Packets.set(stats.nicUnknownL4)
+        tunDrops.set(stats.nicDrops)
+        ipPacketsReceived.set(stats.ipReceived)
+        ipPacketsSent.set(stats.ipSent)
+        ipInvalidPackets.set(stats.ipInvalid)
+        ipReceiveErrors.set(stats.ipReceiveErrors)
+        ipSendErrors.set(stats.ipSendErrors)
+        ipForwardDrops.set(stats.forwardDrops)
+        ipForwardErrors.set(stats.forwardErrors)
+        tcpSegmentsReceived.set(stats.tcpReceived)
+        tcpSegmentsSent.set(stats.tcpSent)
+        tcpEstablished.set(stats.tcpEstablished)
+        tcpConnectFailures.set(stats.tcpConnectFailures)
+        tcpRetransmits.set(stats.tcpRetransmits)
+        tcpTimeouts.set(stats.tcpTimeouts)
+        tcpDrops.set(stats.tcpDrops)
+        udpPacketsReceived.set(stats.udpReceived)
+        udpPacketsSent.set(stats.udpSent)
+        udpReceiveErrors.set(stats.udpReceiveErrors)
+        udpDrops.set(stats.udpDrops)
+        icmpV4Received.set(stats.icmpV4Received)
+        icmpV4Sent.set(stats.icmpV4Sent)
+        icmpV6Received.set(stats.icmpV6Received)
+        icmpV6Sent.set(stats.icmpV6Sent)
+        nativeStatsUpdatedAtEpochMs.set(stats.capturedAtEpochMs)
+    }
+
     internal fun fragmentSnapshot(metrics: FragmentReassemblerMetrics) {
         fragmentsAccepted.set(metrics.fragmentsAccepted)
         packetsReassembled.set(metrics.packetsReassembled)
@@ -387,6 +435,11 @@ object FirewallDnsTrafficMetrics {
 
         tunRxBytes = tunRxBytes.get(),
         tunTxBytes = tunTxBytes.get(),
+        nicRxPackets = nicRxPackets.get(),
+        nicTxPackets = nicTxPackets.get(),
+        nicRxBytes = nicRxBytes.get(),
+        nicTxBytes = nicTxBytes.get(),
+        nativeStatsUpdatedAtEpochMs = nativeStatsUpdatedAtEpochMs.get(),
         tunInvalidPackets = tunInvalidPackets.get(),
         tunUnknownL3Packets = tunUnknownL3Packets.get(),
         tunUnknownL4Packets = tunUnknownL4Packets.get(),
