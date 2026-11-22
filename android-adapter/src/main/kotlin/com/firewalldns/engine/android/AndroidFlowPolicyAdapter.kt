@@ -7,6 +7,7 @@ import com.firewalldns.engine.core.PolicyAction
 import com.firewalldns.engine.core.RuleSource
 import com.firewalldns.engine.monitor.FlowIdentity
 import com.firewalldns.engine.runtime.EngineRuntime
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Adapts the packet-stack's flow callbacks to FirewallDNS' single policy and
@@ -20,6 +21,14 @@ class AndroidFlowPolicyAdapter(
     private val isUidBlocked: (Int) -> Boolean = { false },
     private val nowEpochMillis: () -> Long = System::currentTimeMillis,
 ) {
+    private val packageCache = ConcurrentHashMap<Int, String>()
+
+    fun resolvePackageForUid(uid: Int): String? {
+        if (uid < 0) return null
+        if (packageCache.size > 4096) packageCache.clear()
+        return packageCache.computeIfAbsent(uid) { runCatching { resolvePackage(it) }.getOrNull().orEmpty() }
+            .takeIf(String::isNotEmpty)
+    }
     fun evaluate(
         flowId: String,
         protocolNumber: Int,
@@ -42,7 +51,7 @@ class AndroidFlowPolicyAdapter(
             )
         }
         val uid = ownerUid.takeIf { it >= 0 }
-        val appPackage = uid?.let { runCatching { resolvePackage(it) }.getOrNull() }
+        val appPackage = uid?.let(::resolvePackageForUid)
         val request = NetworkFlowRequest(
             protocol = protocol,
             appUid = uid,
