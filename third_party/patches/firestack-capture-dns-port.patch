@@ -1,0 +1,24 @@
+diff --git a/intra/firewalldns.go b/intra/firewalldns.go
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/intra/firewalldns.go
+@@ -0,0 +1,19 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at http://mozilla.org/MPL/2.0/.
++
++package intra
++
++import "github.com/celzero/firestack/intra/settings"
++
++// CaptureDnsPort makes the DNS handler intercept DNS over UDP and TCP port 53
++// for every destination address, not only the synthetic DNS addresses assigned
++// by Android VpnService. The DNS transport's own upstream sockets are protected
++// by the Android Bridge and therefore do not loop back into the TUN.
++//
++// FirewallDNS uses this entry point so hard-coded resolver IPs receive the same
++// domain policy as Android's configured system resolver.
++func CaptureDnsPort() {
++	settings.SetTunMode(settings.DNSModePort, settings.BlockModeNone, settings.PtModeNone)
++}
