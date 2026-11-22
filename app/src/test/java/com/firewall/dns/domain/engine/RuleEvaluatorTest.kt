@@ -108,6 +108,20 @@ class RuleEvaluatorTest {
             RuleEvaluator.AdblockParseResult("tracker.example", false),
             RuleEvaluator.parseAdblockLine("0.0.0.0 tracker.example # local sinkhole"),
         )
+        assertEquals(
+            listOf(
+                RuleEvaluator.AdblockParseResult("tracker.example", false),
+                RuleEvaluator.AdblockParseResult("www.tracker.example", false),
+                RuleEvaluator.AdblockParseResult("cdn.tracker.example", false),
+            ),
+            RuleEvaluator.parseAdblockLineEntries(
+                "0.0.0.0 tracker.example www.tracker.example cdn.tracker.example",
+            ),
+        )
+        assertEquals(
+            listOf(RuleEvaluator.AdblockParseResult("tracker.example", false)),
+            RuleEvaluator.parseAdblockLineEntries("::1 tracker.example"),
+        )
     }
 
     @Test
