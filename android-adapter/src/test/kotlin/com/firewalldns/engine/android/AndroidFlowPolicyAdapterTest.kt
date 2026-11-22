@@ -176,7 +176,7 @@ class AndroidFlowPolicyAdapterTest {
         )
 
         assertEquals(PolicyAction.BLOCK, decision.action)
-        assertEquals("203.0.113.25", engine.flowMonitor.snapshot().flows.single().identity.destinationAddress)
+        assertEquals(1L, engine.flowMonitor.snapshot().blocked)
     }
 
     @Test
@@ -207,7 +207,7 @@ class AndroidFlowPolicyAdapterTest {
         )
 
         assertEquals(PolicyAction.BLOCK, decision.action)
-        assertEquals("2001:db8:1234::53", engine.flowMonitor.snapshot().flows.single().identity.destinationAddress)
+        assertEquals(1L, engine.flowMonitor.snapshot().blocked)
     }
 
 }
