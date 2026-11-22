@@ -889,14 +889,50 @@ private fun LiveEngineOperations(
             Text("ACTIVIDAD OPERATIVA EN TIEMPO REAL", style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold)
             Text(
-                if (vpnRunning) "Flujos, decisiones DNS y cola del motor se actualizan desde métricas reales. La API Firestack incluida no expone contadores nativos TUN/IP/TCP/UDP/ICMP compatibles."
+                if (vpnRunning) "Flujos, decisiones DNS y estadísticas nativas de Firestack/gVisor proceden del mismo túnel de producción. Los contadores nativos son snapshots y Firestack puede reutilizarlos durante hasta 30 segundos."
                 else "Servicio detenido. Se muestran los últimos contadores disponibles; no se simula actividad.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        LiveMetricSection("ESTADÍSTICAS NATIVAS NO EXPUESTAS", emptyList(),
-            "La versión actual de Firestack no publica una API tipada accesible para contadores TUN/IP/TCP/UDP/ICMP. Se omiten en vez de mostrar ceros ficticios.")
+        LiveMetricSection("TUN / NIC · INTERFAZ DEL MOTOR", listOf(
+            "Paquetes NIC RX" to metrics.nicRxPackets,
+            "Paquetes NIC TX" to metrics.nicTxPackets,
+            "Paquetes NIC inválidos" to metrics.tunInvalidPackets,
+            "Protocolos L3 desconocidos" to metrics.tunUnknownL3Packets,
+            "Protocolos L4 desconocidos" to metrics.tunUnknownL4Packets,
+            "Descartes NIC" to metrics.tunDrops,
+        ), "TUN endpoint · bytes leídos hacia gVisor: ${metrics.tunRxBytes} · bytes escritos hacia Android: ${metrics.tunTxBytes}. NIC bytes RX: ${metrics.nicRxBytes} · TX: ${metrics.nicTxBytes}.")
+        LiveMetricSection("IP · PAQUETES Y ERRORES", listOf(
+            "Paquetes IP recibidos" to metrics.ipPacketsReceived,
+            "Paquetes IP enviados" to metrics.ipPacketsSent,
+            "Paquetes IP inválidos" to metrics.ipInvalidPackets,
+            "Errores de recepción IP" to metrics.ipReceiveErrors,
+            "Errores de envío IP" to metrics.ipSendErrors,
+            "Descartes de reenvío" to metrics.ipForwardDrops,
+            "Errores de reenvío" to metrics.ipForwardErrors,
+        ), "Contadores de la capa IP de gVisor; no se suman con los contadores NIC/TUN.")
+        LiveMetricSection("TCP · SEGMENTOS Y CONEXIONES", listOf(
+            "Segmentos recibidos" to metrics.tcpSegmentsReceived,
+            "Segmentos enviados" to metrics.tcpSegmentsSent,
+            "Conexiones establecidas actuales" to metrics.tcpEstablished,
+            "Fallos al conectar" to metrics.tcpConnectFailures,
+            "Retransmisiones" to metrics.tcpRetransmits,
+            "Timeouts" to metrics.tcpTimeouts,
+            "Descartes TCP" to metrics.tcpDrops,
+        ))
+        LiveMetricSection("UDP · DATAGRAMAS", listOf(
+            "Datagramas recibidos" to metrics.udpPacketsReceived,
+            "Datagramas enviados" to metrics.udpPacketsSent,
+            "Errores de recepción / checksum / puerto" to metrics.udpReceiveErrors,
+            "Descartes UDP" to metrics.udpDrops,
+        ), "No se expone ErrSnd: la versión Firestack revisada asigna incorrectamente ese campo.")
+        LiveMetricSection("ICMP · IPv4 / IPv6", listOf(
+            "ICMPv4 recibidos" to metrics.icmpV4Received,
+            "ICMPv4 enviados" to metrics.icmpV4Sent,
+            "ICMPv6 recibidos" to metrics.icmpV6Received,
+            "ICMPv6 enviados" to metrics.icmpV6Sent,
+        ), "Los contadores ICMP sí están separados por familia IP. Los contadores TCP/UDP/IP generales no ofrecen esa separación.")
         LiveMetricSection("INSPECCIÓN DNS Y DECISIONES", listOf(
             "Evaluaciones DNS" to metrics.dnsPolicyDecisions,
             "Bloqueadas" to metrics.dnsBlocked,
