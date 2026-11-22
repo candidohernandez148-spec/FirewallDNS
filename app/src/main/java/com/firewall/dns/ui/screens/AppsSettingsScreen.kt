@@ -276,7 +276,8 @@ private fun AppActivityDetailScreen(
         if (appFlows.isEmpty()) {
             Text("No hay flujos TUN activos atribuidos a este UID en la última muestra.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
-            appFlows.forEach { flow ->
+            Text("${appFlows.size} conexiones activas atribuidas al UID. Se muestran hasta 3.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            appFlows.take(3).forEach { flow ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
