@@ -38,7 +38,7 @@ fun SocDashboardScreen(
     onOpenThreats: () -> Unit,
     onOpenProtection: () -> Unit
 ) {
-    val operational = stats.isRunning && !otherVpnActive
+    val operational = stats.isRunning && !otherVpnActive && tunMetrics.firestackActive > 0L
     val threatMatches = logs.count { e ->
         e.isBlocked && listOf("phishing", "malware", "ransomware", "botnet", "tracker", "rastreo", "sospech")
             .any(e.reason.lowercase()::contains)
@@ -96,8 +96,9 @@ fun SocDashboardScreen(
                         style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text(when {
                         otherVpnActive -> "Otra VPN ocupa la conexión VPN de Android."
-                        !stats.isRunning -> "El filtrado DNS está desactivado."
-                        else -> "Motor activo: ${stats.engine.ifBlank { "DNS" }}."
+                        !stats.isRunning -> "El servicio VPN está desactivado."
+                        tunMetrics.firestackActive <= 0L -> "El servicio figura iniciado, pero Firestack/gVisor no confirma actividad."
+                        else -> "Motor operativo: ${stats.engine.ifBlank { "Firestack/gVisor" }}."
                     }, style = MaterialTheme.typography.bodySmall)
                     Text("Red: ${stats.networkType.ifBlank { "No disponible" }}",
                         style = MaterialTheme.typography.labelMedium,
