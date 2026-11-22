@@ -148,11 +148,17 @@ fun ThreatMapScreen(
                 Text(if (vpnRunning) "ON" else "OFF", style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold)
             }
-            LiveTrafficFlowMap(metrics = tunMetrics, logs = logs, vpnRunning = vpnRunning)
-            Text("Solo se muestran contadores, flujos y eventos entregados por el servicio. Las conexiones visibles son registros reales; no se generan paquetes de demostración.",
-                Modifier.fillMaxWidth().padding(horizontal = 5.dp),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            ThreeDimensionalMindMap(nodes = nodes, selectedNode = selectedNode) { id ->
+                section = when (id) {
+                    "tun" -> "red"
+                    "dns" -> "dns"
+                    "threats" -> "amenazas"
+                    "rules" -> "reglas"
+                    "apps" -> "apps"
+                    else -> "map"
+                }
+            }
+            LiveMapTelemetry(metrics = tunMetrics, logs = logs, vpnRunning = vpnRunning)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 MindMapAction("Motor", "red", "⚙") { section = it }
                 MindMapAction("DNS", "dns", "⇄") { section = it }
@@ -394,6 +400,12 @@ private fun ThreeDimensionalMindMap(
         animationSpec = infiniteRepeatable(tween(1500), RepeatMode.Reverse),
         label = "mind-map-pulse"
     )
+    val flowPhase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(2600, easing = LinearEasing), RepeatMode.Restart),
+        label = "mind-map-flow-particles"
+    )
     val background = MaterialTheme.colorScheme.surface
     val lineColor = MaterialTheme.colorScheme.outlineVariant
     val onSurface = MaterialTheme.colorScheme.onSurface
@@ -460,6 +472,21 @@ private fun ThreeDimensionalMindMap(
                         basePaint.strokeWidth = 2.1f
                         basePaint.color = to.tint.copy(alpha = .58f).toArgb()
                         canvas.drawLine(start.x, start.y, end.x, end.y, basePaint)
+
+                        // Animated route markers visualize the architecture only.
+                        // They are deliberately not presented as captured network packets.
+                        val particle = (flowPhase + edge.from.hashCode().mod(17) / 17f) % 1f
+                        val px = start.x + (end.x - start.x) * particle
+                        val py = start.y + (end.y - start.y) * particle
+                        basePaint.style = Paint.Style.FILL
+                        basePaint.color = to.tint.copy(alpha = .95f).toArgb()
+                        basePaint.setShadowLayer(10f, 0f, 0f, to.tint.toArgb())
+                        canvas.drawCircle(px, py, 3.2f * density, basePaint)
+                        basePaint.clearShadowLayer()
+                        canvas.drawCircle(px, py, 1.4f * density, android.graphics.Paint().apply {
+                            color = android.graphics.Color.WHITE
+                            isAntiAlias = true
+                        })
                     }
 
                     // Back-to-front sorting makes nearer nodes larger and visually layered.
@@ -492,8 +519,41 @@ private fun ThreeDimensionalMindMap(
                     }
                 }
             }
-            Text("Las líneas muestran rutas reales del código (TUN, DNS, política y upstream). No son paquetes en movimiento ni conexiones activas.",
+            Text("Animación 3D de la arquitectura y sus rutas funcionales. Los puntos luminosos son un efecto visual, no paquetes capturados. Las cifras se alimentan de la telemetría real.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun LiveMapTelemetry(
+    metrics: FirewallDnsTrafficMetrics.Snapshot,
+    logs: List<DnsLogEntry>,
+    vpnRunning: Boolean,
+) {
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+        Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                MapStatPill("TUN", metrics.packetsRead.toString(), Color(0xFF1C806B))
+                MapStatPill("DNS", (metrics.dnsUdpPackets + metrics.dnsTcp).toString(), Color(0xFF315FA8))
+                MapStatPill("ACTIVOS", metrics.flowsActive.toString(), Color(0xFF7655A8))
+                MapStatPill("VPN", if (vpnRunning) "ON" else "OFF",
+                    if (vpnRunning) Color(0xFF1C806B) else MaterialTheme.colorScheme.surfaceVariant)
+            }
+            val latest = logs.firstOrNull()
+            Text(
+                latest?.let {
+                    "ÚLTIMO DNS · ${it.domain} · ${when {
+                        it.isBlocked -> "BLOQUEADO"
+                        it.reason.startsWith("OBSERVE:", true) -> "OBSERVADO"
+                        else -> "PERMITIDO"
+                    }}"
+                } ?: "ÚLTIMO DNS · Sin eventos registrados",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
         }
     }
 }
