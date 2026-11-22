@@ -83,7 +83,8 @@ class FlowConnectionMonitor(
     fun open(identity: FlowIdentity, decision: NetworkFlowDecision, nowEpochMillis: Long): Boolean {
         require(identity.id.isNotBlank())
         require(identity.appUid == null || identity.appUid >= 0)
-        require(identity.sourcePort in 0..65535 && identity.destinationPort in 1..65535)
+        require(identity.sourcePort in 0..65535)
+        require(if (identity.protocol == FlowProtocol.ICMP) identity.destinationPort in 0..65535 else identity.destinationPort in 1..65535)
         if (decision.action == PolicyAction.BLOCK) {
             blocked.increment()
             return true
