@@ -44,6 +44,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
@@ -260,6 +262,15 @@ class DnsFirewallService : VpnService() {
         serviceScope.launch {
             FirewallRepository.rebuildVpnEvent.collect {
                 if (isRunning) startVpn()
+            }
+        }
+        serviceScope.launch {
+            while (isActive) {
+                delay(5_000L)
+                val runtime = sharedEngine?.engine ?: continue
+                if (!isRunning || activeTunSession?.firestack == null) continue
+                runtime.evictIdleFlows()
+                FirewallDnsTrafficMetrics.flowSnapshot(runtime.flowMonitor.snapshot())
             }
         }
     }
