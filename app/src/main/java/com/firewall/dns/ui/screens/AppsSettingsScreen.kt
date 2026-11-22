@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -26,6 +27,9 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.graphics.drawable.toBitmap
@@ -42,11 +46,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.firewall.dns.domain.model.AppInfoItem
 import com.firewall.dns.domain.model.FirewallStats
+import com.firewall.dns.domain.model.DnsLogEntry
 
 @Composable
 fun AppsSettingsScreen(
     stats: FirewallStats,
     apps: List<AppInfoItem>,
+    logs: List<DnsLogEntry>,
     excludedPackages: Set<String>,
     blockedApps: Set<String>,
     onToggleBlockedApp: (AppInfoItem) -> Unit,
@@ -57,8 +63,11 @@ fun AppsSettingsScreen(
     onOpenVpnSettings: () -> Unit
 ) {
     val firestackActive = stats.isRunning && stats.engine.contains("Firestack/gVisor", ignoreCase = true)
+    var selectedApp by remember { mutableStateOf<AppInfoItem?>(null) }
 
-    LazyColumn(
+    if (selectedApp != null) {
+        AppActivityDetailScreen(app = selectedApp!!, logs = logs, onBack = { selectedApp = null })
+    } else LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 9.dp),
         contentPadding = PaddingValues(bottom = 12.dp),
         verticalArrangement = Arrangement.spacedBy(9.dp)
@@ -157,7 +166,10 @@ fun AppsSettingsScreen(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                 ) {
                     Column(modifier = Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable { selectedApp = app },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             AppIcon(app)
                             Column(modifier = Modifier.weight(1f).padding(start = 9.dp)) {
                                 Text(app.label, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -168,6 +180,7 @@ fun AppsSettingsScreen(
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
+                                Text("Ver actividad e historial  ›", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                                 if (app.isSystemApp) {
                                     Text(
                                         "Aplicación del sistema",
@@ -221,6 +234,88 @@ fun AppsSettingsScreen(
                     Text("Firewall DNS", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Text("Protección DNS local para tu dispositivo.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Text("Desarrollado por Candido y Elizabeth · Versión 1.0", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f))
+                }
+            }
+        }
+    }
+}
+
+
+@Composable
+private fun AppActivityDetailScreen(
+    app: AppInfoItem,
+    logs: List<DnsLogEntry>,
+    onBack: () -> Unit
+) {
+    var selectedAction by remember { mutableStateOf("TODOS") }
+    val appLogs = logs.filter { app.uid >= 0 && it.uid == app.uid }
+    val visibleLogs = appLogs.filter { selectedAction == "TODOS" || it.decisionAction.equals(selectedAction, ignoreCase = true) }
+    val blocked = appLogs.count { it.decisionAction.equals("BLOCK", ignoreCase = true) }
+    val allowed = appLogs.count { it.decisionAction.equals("ALLOW", ignoreCase = true) }
+    val observed = appLogs.count { it.decisionAction.equals("OBSERVE", ignoreCase = true) }
+
+    Column(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("‹  Aplicaciones", modifier = Modifier.clickable(onClick = onBack), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            AppIcon(app)
+            Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                Text(app.label, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text("UID ${app.uid} · ${app.packageName}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Text("Historial de actividad DNS", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            StatusChip("BLOCK $blocked", MaterialTheme.colorScheme.error)
+            StatusChip("ALLOW $allowed", MaterialTheme.colorScheme.primary)
+            StatusChip("OBSERVE $observed", MaterialTheme.colorScheme.tertiary)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf("TODOS", "BLOCK", "ALLOW", "OBSERVE").forEach { action ->
+                FilterChip(
+                    selected = selectedAction == action,
+                    onClick = { selectedAction = action },
+                    label = { Text(action) }
+                )
+            }
+        }
+        if (app.uid < 0) {
+            Text("Android no proporcionó un UID válido para esta aplicación. No es posible atribuirle eventos con seguridad.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else if (visibleLogs.isEmpty()) {
+            Text(
+                if (appLogs.isEmpty()) "Todavía no hay eventos DNS registrados para este UID. La aplicación permanece en el catálogo; su historial aparecerá cuando el motor registre actividad atribuible."
+                else "No hay eventos de esta categoría para la aplicación.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(bottom = 18.dp)
+            ) {
+                items(visibleLogs, key = { it.id }) { entry ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f))
+                    ) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(entry.decisionAction.uppercase(), fontWeight = FontWeight.Bold, color = when (entry.decisionAction.uppercase()) {
+                                    "BLOCK" -> MaterialTheme.colorScheme.error
+                                    "OBSERVE" -> MaterialTheme.colorScheme.tertiary
+                                    else -> MaterialTheme.colorScheme.primary
+                                })
+                                Text(entry.timestamp, modifier = Modifier.weight(1f), textAlign = TextAlign.End, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Text(entry.domain, fontWeight = FontWeight.SemiBold)
+                            Text("${entry.queryType} · ${entry.reason}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                 }
             }
         }
