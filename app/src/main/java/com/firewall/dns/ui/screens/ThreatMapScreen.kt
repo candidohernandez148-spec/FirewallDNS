@@ -90,220 +90,197 @@ fun ThreatMapScreen(
     observationModeEnabled: Boolean,
     onSetRule: (String, Boolean) -> Unit,
 ) {
-    var query by remember { mutableStateOf("") }
-    var showObserved by remember { mutableStateOf(false) }
-    var selectedNode by remember { mutableStateOf("core") }
+    var section by remember { mutableStateOf("map") }
     val catalog = remember { ThreatKnowledgeGraph.catalogSnapshot() }
     val observedApps = logs.map { it.appName }
-        .filter { it.isNotBlank() && it != "Sistema / DNS" }
-        .distinct().size
-    val mindMapNodes = remember(logs, customBlock, customAllow, tunMetrics, vpnRunning,
+        .filter { it.isNotBlank() && it != "Sistema / DNS" }.distinct()
+    val nodes = remember(logs, customBlock, customAllow, tunMetrics, vpnRunning,
         smartModeEnabled, observationModeEnabled, catalog) {
         listOf(
-            MindMapNode("core", "FIREWALL DNS", "Servicio VPN: estado real", if (vpnRunning) "ACTIVO" else "DETENIDO",
+            MindMapNode("core", "FIREWALL DNS", "Servicio VPN", if (vpnRunning) "ACTIVO" else "DETENIDO",
                 0f, 0f, 0f, Color(0xFF42D9FF)),
-            MindMapNode("tun", "MOTOR DE RED", "Firestack/gVisor · flujos activos", tunMetrics.flowsActive.toString(),
+            MindMapNode("tun", "MOTOR DE RED", "Firestack/gVisor", tunMetrics.flowsActive.toString(),
                 -0.88f, -0.55f, -0.18f, Color(0xFF58D6B0)),
-            MindMapNode("dns", "DECISIONES DNS", "Consultas evaluadas por FirewallDNS",
+            MindMapNode("dns", "DNS", "Consultas evaluadas",
                 (tunMetrics.dnsBlocked + tunMetrics.dnsObserved + tunMetrics.dnsAllowed).toString(),
                 0.82f, -0.63f, 0.20f, Color(0xFF78A8FF)),
-            MindMapNode("decisions", "DECISIONES", "Bloqueadas / observadas / permitidas",
+            MindMapNode("decisions", "DECISIONES", "Bloquear / observar / permitir",
                 "${tunMetrics.dnsBlocked} / ${tunMetrics.dnsObserved} / ${tunMetrics.dnsAllowed}",
                 -0.96f, 0.48f, 0.24f, Color(0xFFFF667D)),
-            MindMapNode("threats", "REFERENCIAS", "Catálogo local de consulta; no prueba de detección del motor",
-                catalog.size.toString(),
-                0.96f, 0.46f, -0.22f, Color(0xFFFFB454)),
-            MindMapNode("rules", "REGLAS", "Reglas personalizadas de usuario",
+            MindMapNode("threats", "AMENAZAS", "Catálogo local de referencia",
+                catalog.size.toString(), 0.96f, 0.46f, -0.22f, Color(0xFFFFB454)),
+            MindMapNode("rules", "REGLAS", "Reglas personalizadas",
                 "${customBlock.size} bloqueo · ${customAllow.size} permiso",
                 -0.18f, 0.94f, -0.42f, Color(0xFFB69CFF)),
-            MindMapNode("upstream", "RESOLVERS", "Servidores DNS de la red física activa",
+            MindMapNode("upstream", "RESOLVERS", "DNS de red física",
                 tunMetrics.upstreamResolverRefreshes.toString(),
                 0.20f, -0.98f, 0.42f, Color(0xFF68D9A5)),
-            MindMapNode("apps", "APLICACIONES", "Apps identificadas en el historial",
-                observedApps.toString(),
-                0.08f, 0.68f, -0.35f, Color(0xFF58D6B0))
+            MindMapNode("apps", "APLICACIONES", "Identificadas en historial",
+                observedApps.size.toString(), 0.08f, 0.68f, -0.35f, Color(0xFF58D6B0))
         )
     }
-    val observedDomains = logs.asSequence()
-        .map { it.domain.trim().lowercase().trimEnd('.') }
-        .filter { it.isNotBlank() }
-        .distinct()
-        .filter { query.isBlank() || it.contains(query, ignoreCase = true) }
-        .take(40)
-        .toList()
-    val filteredCatalog = catalog.filter { evidence ->
-        query.isBlank() || evidence.provider.contains(query, true) ||
-            evidence.platform.orEmpty().contains(query, true)
+    val selectedNode = when (section) {
+        "red" -> "tun"
+        "dns" -> "dns"
+        "amenazas" -> "threats"
+        "reglas" -> "rules"
+        "apps" -> "apps"
+        else -> "core"
     }
-    val selected = mindMapNodes.firstOrNull { it.id == selectedNode } ?: mindMapNodes.first()
-    val selectedDescription = when (selected.id) {
-        "tun" -> "Pila productiva: Firestack/gVisor. Flujos activos: ${tunMetrics.flowsActive}; abiertos: ${tunMetrics.flowsOpened}; cerrados: ${tunMetrics.flowsClosed}; bloqueados: ${tunMetrics.flowsBlocked}."
-        "dns" -> "Decisiones DNS recibidas por el motor: ${tunMetrics.dnsBlocked} bloqueadas, ${tunMetrics.dnsObserved} observadas y ${tunMetrics.dnsAllowed} permitidas. No representa el contenido cifrado DoH/DoT/DoQ."
-        "decisions" -> "Contadores del servicio: ${tunMetrics.dnsBlocked} bloqueadas, ${tunMetrics.dnsObserved} observadas y ${tunMetrics.dnsAllowed} permitidas."
-        "threats" -> "Catálogo local curado de ${catalog.size} referencias. Es una fuente de consulta de esta pantalla; no prueba que el motor compartido haya utilizado cada entrada."
-        "apps" -> "Nombres de aplicaciones resueltos en el historial visible: $observedApps. Los eventos cuyo UID no pudo resolverse se excluyen; no es el total de apps instaladas."
-        "rules" -> "Reglas personalizadas: ${customBlock.size} bloqueos y ${customAllow.size} permisos. Listas descargadas no se incluyen en esta cifra."
-        "upstream" -> "Resolvers de la red física: ${tunMetrics.upstreamResolvers.ifBlank { "sin datos" }}. Actualizaciones detectadas: ${tunMetrics.upstreamResolverRefreshes}."
-        else -> "VPN: ${if (vpnRunning) "activa" else "detenida"}. Modo inteligente: ${if (smartModeEnabled) "activo" else "inactivo"}. Observación: ${if (observationModeEnabled) "activa" else "inactiva"}."
-    }
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(
-            start = 14.dp, top = 12.dp, end = 14.dp, bottom = 26.dp
-        ),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Mapa mental de seguridad", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text("Arquitectura del servicio y telemetría real; no representa conexiones geográficas.",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-        item {
-            ThreeDimensionalMindMap(
-                nodes = mindMapNodes,
-                selectedNode = selectedNode,
-                onSelectNode = { selectedNode = it }
-            )
-        }
-        item {
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
-                Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text(selected.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
-                        color = selected.tint)
-                    Text(selectedDescription, style = MaterialTheme.typography.bodySmall)
-                    Text("La telemetría viene del servicio. El catálogo local se identifica como referencia separada y no como detección activa.",
-                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
-        item {
-            val latest = logs.firstOrNull()
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
-                Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text("ÚLTIMA ACTIVIDAD REGISTRADA", style = MaterialTheme.typography.labelMedium,
+    if (section == "map") {
+        Column(
+            Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("MAPA MENTAL · FIREWALLDNS", style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold)
-                    if (latest == null) {
-                        Text("Sin eventos DNS registrados todavía.", style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    } else {
-                        val eventStatus = when {
-                            latest.isBlocked -> "BLOQUEADO"
-                            latest.reason.startsWith("OBSERVE:", ignoreCase = true) -> "OBSERVADO · REENVIADO"
-                            else -> "PERMITIDO · REENVIADO"
-                        }
-                        Text(latest.domain, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                        Text("$eventStatus · ${latest.queryType} · ${latest.appName}",
-                            style = MaterialTheme.typography.bodySmall)
-                        Text(latest.reason, style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        if (latest.timestamp.isNotBlank()) {
-                            Text(latest.timestamp, style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(if (vpnRunning) "Motor activo · telemetría real" else "Motor detenido · últimos datos disponibles",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Text(" ● ", color = if (vpnRunning) Color(0xFF35C995) else MaterialTheme.colorScheme.outline)
+                Text(if (vpnRunning) "ON" else "OFF", style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold)
+            }
+            ThreeDimensionalMindMap(nodes = nodes, selectedNode = selectedNode, onSelectNode = { })
+            Text("Explora cada área desde sus accesos. Los valores proceden del servicio; las conexiones del mapa representan relaciones entre módulos.",
+                Modifier.fillMaxWidth().padding(horizontal = 5.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                MindMapAction("Motor", "red", "⚙") { section = it }
+                MindMapAction("DNS", "dns", "⇄") { section = it }
+                MindMapAction("Amenazas", "amenazas", "⚠") { section = it }
+                MindMapAction("Reglas", "reglas", "☷") { section = it }
+                MindMapAction("Apps", "apps", "▦") { section = it }
+            }
+        }
+    } else {
+        Column(Modifier.fillMaxSize()) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                androidx.compose.material3.TextButton(onClick = { section = "map" }) {
+                    Text("← Mapa mental")
+                }
+                Text(
+                    when (section) {
+                        "red" -> "Motor y conexiones"
+                        "dns" -> "Actividad DNS"
+                        "amenazas" -> "Catálogo de amenazas"
+                        "reglas" -> "Reglas personalizadas"
+                        else -> "Aplicaciones observadas"
+                    },
+                    Modifier.weight(1f), style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            when (section) {
+                "red" -> LazyColumn(
+                    Modifier.fillMaxSize(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    item { LiveEngineOperations(metrics = tunMetrics, logs = logs, vpnRunning = vpnRunning) }
+                }
+                "dns" -> LazyColumn(
+                    Modifier.fillMaxSize(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    item { LiveMetricSection("DECISIONES DNS", listOf(
+                        "Bloqueadas" to tunMetrics.dnsBlocked,
+                        "Observadas" to tunMetrics.dnsObserved,
+                        "Permitidas" to tunMetrics.dnsAllowed,
+                        "Rechazadas" to tunMetrics.dnsRejected,
+                        "Consultas UDP" to tunMetrics.dnsUdpPackets,
+                        "Consultas TCP" to tunMetrics.dnsTcp
+                    )) }
+                    if (logs.isEmpty()) item { Text("Sin eventos DNS registrados.") }
+                    items(logs.take(100)) { event ->
+                        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text(event.domain, fontWeight = FontWeight.Bold)
+                                Text("${if (event.isBlocked) "BLOQUEADO" else if (event.reason.startsWith("OBSERVE:", true)) "OBSERVADO" else "PERMITIDO"} · ${event.queryType} · ${event.appName}",
+                                    style = MaterialTheme.typography.bodySmall)
+                                Text(event.reason, style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                     }
                 }
-            }
-        }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                MapStatPill("VPN", if (vpnRunning) "ACTIVA" else "DETENIDA", MaterialTheme.colorScheme.secondaryContainer)
-                MapStatPill("Flujos", tunMetrics.flowsActive.toString(), MaterialTheme.colorScheme.primaryContainer)
-                MapStatPill("Eventos", logs.size.toString(), MaterialTheme.colorScheme.errorContainer)
-            }
-        }
-        item {
-            LiveEngineOperations(
-                metrics = tunMetrics,
-                logs = logs,
-                vpnRunning = vpnRunning,
-            )
-        }
-        item {
-            OutlinedTextField(
-                value = query, onValueChange = { query = it },
-                modifier = Modifier.fillMaxWidth(), singleLine = true,
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                label = { Text("Buscar proveedor o dominio") },
-                shape = RoundedCornerShape(13.dp)
-            )
-        }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = !showObserved, onClick = { showObserved = false }, label = { Text("Catálogo") })
-                FilterChip(selected = showObserved, onClick = { showObserved = true }, label = { Text("Actividad real") })
-            }
-        }
-        if (!showObserved) {
-            if (filteredCatalog.isEmpty()) {
-                item { Text("No hay coincidencias en el catálogo.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            }
-            items(filteredCatalog, key = { "${it.provider}-${it.category}" }) { evidence ->
-                val blocked = customBlock.any { it.equals(evidence.provider, true) }
-                val allowed = customAllow.any { it.equals(evidence.provider, true) }
-                Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(15.dp)) {
-                    Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(evidence.provider, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold)
-                            Text(when {
-                                blocked -> "BLOQUEAR"
-                                allowed -> "PERMITIR"
-                                else -> "CATÁLOGO"
-                            }, style = MaterialTheme.typography.labelSmall,
-                                color = if (blocked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
-                        }
-                        Text("${categoryLabel(evidence.category)} · Confianza ${if (evidence.confidence == ThreatKnowledgeGraph.Confidence.HIGH) "alta" else "media"}",
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            NodePill(evidence.platform ?: "Internet")
-                            Text("→", color = MaterialTheme.colorScheme.primary)
-                            NodePill(evidence.provider)
-                            Text("→", color = MaterialTheme.colorScheme.primary)
-                            NodePill(evidence.relation)
-                        }
-                        Text(evidence.knowledgePath.joinToString("  ›  "), style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = { onSetRule(evidence.provider, true) }, Modifier.weight(1f), enabled = !blocked) { Text("Bloquear") }
-                            Button(onClick = { onSetRule(evidence.provider, false) }, Modifier.weight(1f), enabled = !allowed) { Text("Permitir") }
+                "amenazas" -> LazyColumn(
+                    Modifier.fillMaxSize(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    item { Text("Referencias locales para consulta. Su presencia aquí no significa que cada entrada haya sido detectada por el motor.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    items(catalog, key = { "${it.provider}-${it.category}" }) { evidence ->
+                        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                Text(evidence.provider, fontWeight = FontWeight.Bold)
+                                Text("${categoryLabel(evidence.category)} · ${evidence.platform ?: "Internet"} · ${evidence.relation}",
+                                    style = MaterialTheme.typography.bodySmall)
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(onClick = { onSetRule(evidence.provider, true) }, Modifier.weight(1f)) { Text("Bloquear") }
+                                    Button(onClick = { onSetRule(evidence.provider, false) }, Modifier.weight(1f)) { Text("Permitir") }
+                                }
+                            }
                         }
                     }
                 }
-            }
-        } else {
-            if (observedDomains.isEmpty()) {
-                item { Text("Todavía no hay dominios en el historial que coincidan con la búsqueda.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            }
-            items(observedDomains, key = { it }) { domain ->
-                val event = logs.lastOrNull { it.domain.equals(domain, true) }
-                val blocked = customBlock.any { domain == it || domain.endsWith(".$it") }
-                val allowed = customAllow.any { domain == it || domain.endsWith(".$it") }
-                val evidence = ThreatKnowledgeGraph.inspect(domain)
-                Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
-                    Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                        Text(domain, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                        Text(when {
-                            blocked -> "Regla personalizada: bloqueado"
-                            allowed -> "Regla personalizada: permitido"
-                            event?.isBlocked == true -> "Último evento: bloqueado"
-                            else -> "Último evento: no bloqueado"
-                        }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        if (evidence != null) {
-                            Text("${categoryLabel(evidence.category)} · proveedor ${evidence.provider}", style = MaterialTheme.typography.bodySmall)
-                        }
-                        Text(event?.reason ?: "Sin motivo disponible en el historial",
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = { onSetRule(domain, true) }, Modifier.weight(1f)) { Text("Bloquear") }
-                            Button(onClick = { onSetRule(domain, false) }, Modifier.weight(1f)) { Text("Permitir") }
-                        }
+                "reglas" -> LazyColumn(
+                    Modifier.fillMaxSize(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    item { Text("Bloqueo personalizado · ${customBlock.size}", fontWeight = FontWeight.Bold) }
+                    items(customBlock) { domain ->
+                        Card(Modifier.fillMaxWidth()) { Text(domain, Modifier.padding(12.dp)) }
                     }
+                    item { Text("Permiso personalizado · ${customAllow.size}", fontWeight = FontWeight.Bold) }
+                    items(customAllow) { domain ->
+                        Card(Modifier.fillMaxWidth()) { Text(domain, Modifier.padding(12.dp)) }
+                    }
+                    if (customBlock.isEmpty() && customAllow.isEmpty()) item { Text("Todavía no hay reglas personalizadas.") }
+                }
+                else -> LazyColumn(
+                    Modifier.fillMaxSize(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    item { Text("Aplicaciones identificadas en los eventos DNS visibles: ${observedApps.size}. No representa todas las apps instaladas.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    items(observedApps) { app ->
+                        Card(Modifier.fillMaxWidth()) { Text(app, Modifier.padding(12.dp)) }
+                    }
+                    if (observedApps.isEmpty()) item { Text("No hay aplicaciones identificadas en el historial.") }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun MindMapAction(label: String, destination: String, symbol: String, onOpen: (String) -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Surface(
+            onClick = { onOpen(destination) },
+            modifier = Modifier.size(54.dp),
+            shape = androidx.compose.foundation.shape.CircleShape,
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            shadowElevation = 3.dp
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(symbol, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            }
+        }
+        Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
     }
 }
 
@@ -341,7 +318,7 @@ private fun ThreeDimensionalMindMap(
                     color = MaterialTheme.colorScheme.primary)
             }
             Canvas(
-                Modifier.fillMaxWidth().height(252.dp)
+                Modifier.fillMaxWidth().height(360.dp)
                     .pointerInput(Unit) {
                         detectTapGestures { tap ->
                             val hit = nodes.map { node ->
