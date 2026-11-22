@@ -164,6 +164,23 @@ private fun isNumericIpLiteral(value: String): Boolean {
     }
 }
 
+/**
+ * Applies Android's required socket setup order before the packet stack connects:
+ * physical Network binding first, VPN protection second. A failed bind is reported
+ * but does not skip protect(), so the socket is still exempted from the TUN route.
+ */
+internal fun bindThenProtectSocket(
+    bindPhysicalNetwork: () -> Unit,
+    protectFromVpn: () -> Boolean,
+    onBindingResult: (Boolean) -> Unit,
+    onProtectionResult: (Boolean) -> Unit,
+) {
+    val bound = runCatching(bindPhysicalNetwork).isSuccess
+    runCatching { onBindingResult(bound) }
+    val protected = runCatching(protectFromVpn).getOrDefault(false)
+    runCatching { onProtectionResult(protected) }
+}
+
 private class FirewallDNSFirestackBridge(
     private val vpnService: VpnService,
     private val engine: EngineRuntime,
@@ -200,20 +217,22 @@ private class FirewallDNSFirestackBridge(
     private fun bindToPhysicalNetwork(fd: Long) {
         if (closed.get()) return
         val descriptor = fd.toInt()
-        // Firestack invokes Bind4/Bind6 instead of Protect for global-unicast
-        // sockets, so this callback must perform both Android operations.
-        protectSocket(descriptor)
-        val network = physicalNetworkProvider() ?: run {
-            runCatching { onSocketBindingResult(false) }
-            return
-        }
-        val result = runCatching {
-            ParcelFileDescriptor.fromFd(descriptor).use { duplicate ->
-                network.bindSocket(duplicate.fileDescriptor)
-            }
-        }
-        runCatching { onSocketBindingResult(result.isSuccess) }
-
+        // Bind the socket to the resolver's/current physical Network first,
+        // then exempt it from the VPN. Both operations must finish before
+        // Firestack connects the socket; this matches Android's DNS upstream
+        // socket ordering and prevents a handover from using the wrong route.
+        val network = physicalNetworkProvider()
+        bindThenProtectSocket(
+            bindPhysicalNetwork = {
+                checkNotNull(network) { "No active physical network to bind Firestack socket" }
+                ParcelFileDescriptor.fromFd(descriptor).use { duplicate ->
+                    network.bindSocket(duplicate.fileDescriptor)
+                }
+            },
+            protectFromVpn = { vpnService.protect(descriptor) },
+            onBindingResult = onSocketBindingResult,
+            onProtectionResult = onSocketProtectionResult,
+        )
     }
 
     override fun protect(who: String?, fd: Long) {
@@ -277,14 +296,41 @@ private class FirewallDNSFirestackBridge(
             )
             else -> null
         }
+        // Firestack marks destinations rewritten by an RDNS blocklist with
+        // an unspecified original address (0.0.0.0 or ::). Preserve that signal
+        // as an explicit flow block even though DNS resolution itself succeeded.
+        val rdnsBlocklistBlocked = origdsts.orEmpty().take(1024).split(',').take(8)
+            .any(::isFirestackRdnsBlocklistAddress)
+        val rdnsBlocklistDecision = if (rdnsBlocklistBlocked) {
+            NetworkFlowDecision(
+                PolicyAction.BLOCK,
+                "firestack_rdns_blocklist_match",
+                "firestack-rdns-blocklist",
+                RuleSource.MANAGED,
+                engine.flowPolicyRevision,
+            )
+        } else {
+            null
+        }
         val effectiveDomainDecision = when {
+            rdnsBlocklistDecision != null -> rdnsBlocklistDecision
             encryptedDnsDecision?.action == PolicyAction.BLOCK -> encryptedDnsDecision
             selectedDomainDecision?.action == PolicyAction.BLOCK -> selectedDomainDecision
             selectedDomainDecision?.action == PolicyAction.OBSERVE -> selectedDomainDecision
             else -> encryptedDnsDecision
         }
         val safeCid = cid.orEmpty()
-        val decision = evaluateFlowCallback(protocol, resolvedUid, safeCid, src.orEmpty(), dst.orEmpty(), effectiveDomainDecision)
+        val originalDestinations = if (dstIsAlg) {
+            origdsts.orEmpty().take(1024).split(',').take(8).mapNotNull { raw ->
+                parseFirestackEndpoint(raw.trim(), portless = true)?.first
+            }.distinct()
+        } else {
+            emptyList()
+        }
+        val decision = evaluateFlowCallback(
+            protocol, resolvedUid, safeCid, src.orEmpty(), dst.orEmpty(),
+            effectiveDomainDecision, originalDestinations,
+        )
         runCatching { onFlowSnapshot(engine.flowMonitor.snapshot()) }
         return decisionMark(safeCid, resolvedUid, decision.action != PolicyAction.ALLOW && decision.action != PolicyAction.OBSERVE)
     }
@@ -303,6 +349,7 @@ private class FirewallDNSFirestackBridge(
         src: String,
         dst: String,
         domainDecision: NetworkFlowDecision? = null,
+        originalDestinations: List<String> = emptyList(),
     ): NetworkFlowDecision = runCatching {
         val portless = protocol == 1 || protocol == 58
         val source = requireNotNull(parseFirestackEndpoint(src, portless)) { "Invalid Firestack source endpoint" }
@@ -316,6 +363,7 @@ private class FirewallDNSFirestackBridge(
             destinationAddress = destination.first,
             destinationPort = destination.second,
             domainDecision = domainDecision,
+            destinationAddresses = originalDestinations.ifEmpty { listOf(destination.first) },
         )
     }.getOrElse {
         engine.flowMonitor.recordBlocked()
@@ -401,6 +449,11 @@ private class FirewallDNSFirestackBridge(
         if (!closed.compareAndSet(false, true)) return
     }
 
+}
+
+internal fun isFirestackRdnsBlocklistAddress(value: String): Boolean {
+    val address = parseFirestackEndpoint(value, portless = true)?.first ?: return false
+    return address == "0.0.0.0" || address == "::"
 }
 
 internal fun parseFirestackEndpoint(value: String, portless: Boolean): Pair<String, Int>? = runCatching {

@@ -23,6 +23,10 @@ class AndroidFlowPolicyAdapter(
 ) {
     private val packageCache = ConcurrentHashMap<Int, String>()
 
+    private companion object {
+        const val MAX_ORIGINAL_DESTINATIONS = 8
+    }
+
     fun resolvePackageForUid(uid: Int): String? {
         if (uid < 0) return null
         if (packageCache.size > 4096) packageCache.clear()
@@ -38,6 +42,7 @@ class AndroidFlowPolicyAdapter(
         destinationAddress: String,
         destinationPort: Int,
         domainDecision: NetworkFlowDecision? = null,
+        destinationAddresses: List<String> = listOf(destinationAddress),
     ): NetworkFlowDecision {
         require(flowId.isNotBlank())
         val protocol = when (protocolNumber) {
@@ -59,7 +64,21 @@ class AndroidFlowPolicyAdapter(
             destinationAddress = destinationAddress,
             destinationPort = destinationPort,
         )
-        val flowDecision = engine.evaluateFlow(request, nowEpochMillis())
+        val evaluatedDestinations = destinationAddresses.asSequence().take(MAX_ORIGINAL_DESTINATIONS)
+            .distinct().mapNotNull { candidate ->
+            runCatching {
+                candidate to engine.evaluateFlow(request.copy(destinationAddress = candidate), nowEpochMillis())
+            }.getOrNull()
+        }.toList().ifEmpty {
+            listOf(destinationAddress to engine.evaluateFlow(request, nowEpochMillis()))
+        }
+        // Firestack may expose a synthetic ALG destination plus one or more
+        // original IPs. Apply CIDR rules to every original target and prefer
+        // the strongest applicable decision for the connection.
+        val selectedDestination = evaluatedDestinations.firstOrNull { it.second.action == PolicyAction.BLOCK }
+            ?: evaluatedDestinations.firstOrNull { it.second.action == PolicyAction.OBSERVE }
+            ?: evaluatedDestinations.first()
+        val flowDecision = selectedDestination.second
         val appBlocked = uid != null && runCatching { isUidBlocked(uid) }.getOrDefault(false)
         val decision = when {
             appBlocked -> NetworkFlowDecision(
@@ -82,7 +101,7 @@ class AndroidFlowPolicyAdapter(
                 appPackage = appPackage,
                 sourceAddress = sourceAddress,
                 sourcePort = sourcePort,
-                destinationAddress = destinationAddress,
+                destinationAddress = selectedDestination.first,
                 destinationPort = destinationPort,
                 networkGeneration = networkGeneration(),
             ),

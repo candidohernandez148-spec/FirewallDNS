@@ -147,4 +147,67 @@ class AndroidFlowPolicyAdapterTest {
         assertEquals(null, parseFirestackEndpoint("192.0.2.1:70000", false))
     }
 
+
+    @Test
+    fun appliesCidrRulesToOriginalDestinationBehindFirestackAlgAddress() {
+        val engine = EngineRuntime()
+        engine.replaceFlowRules(
+            listOf(
+                NetworkFlowRule(
+                    id = "block-original-subnet",
+                    action = PolicyAction.BLOCK,
+                    source = RuleSource.USER,
+                    reason = "original_destination_blocked",
+                    destinationCidr = "203.0.113.0/24",
+                ),
+            ),
+        )
+        val adapter = AndroidFlowPolicyAdapter(engine, nowEpochMillis = { 400L })
+
+        val decision = adapter.evaluate(
+            flowId = "alg-destination",
+            protocolNumber = 6,
+            ownerUid = -1,
+            sourceAddress = "10.10.10.2",
+            sourcePort = 41000,
+            destinationAddress = "198.18.0.10",
+            destinationPort = 443,
+            destinationAddresses = listOf("203.0.113.25"),
+        )
+
+        assertEquals(PolicyAction.BLOCK, decision.action)
+        assertEquals(1L, engine.flowMonitor.snapshot().blocked)
+    }
+
+    @Test
+    fun blocksAlgFlowWhenAnyOriginalDestinationMatchesPolicy() {
+        val engine = EngineRuntime()
+        engine.replaceFlowRules(
+            listOf(
+                NetworkFlowRule(
+                    id = "block-sensitive-range",
+                    action = PolicyAction.BLOCK,
+                    source = RuleSource.USER,
+                    reason = "destination_range_blocked",
+                    destinationCidr = "2001:db8:1234::/48",
+                ),
+            ),
+        )
+        val adapter = AndroidFlowPolicyAdapter(engine, nowEpochMillis = { 500L })
+
+        val decision = adapter.evaluate(
+            flowId = "alg-multiple-destinations",
+            protocolNumber = 17,
+            ownerUid = -1,
+            sourceAddress = "fd00::2",
+            sourcePort = 53000,
+            destinationAddress = "198.18.0.20",
+            destinationPort = 443,
+            destinationAddresses = listOf("2001:db8:ffff::1", "2001:db8:1234::53"),
+        )
+
+        assertEquals(PolicyAction.BLOCK, decision.action)
+        assertEquals(1L, engine.flowMonitor.snapshot().blocked)
+    }
+
 }
