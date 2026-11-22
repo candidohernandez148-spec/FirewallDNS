@@ -132,11 +132,19 @@ fun SocDashboardScreen(
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // Mismo contador acumulado que Actividad de red: cada decisión DNS
+                    // bloqueada se registra una sola vez en FirewallRepository.
+                    TunMetric("Bloqueos DNS", stats.totalBlocked, Modifier.weight(1f))
                     TunMetric("Flujos activos", tunMetrics.flowsActive, Modifier.weight(1f))
-                    TunMetric("Bloqueados", tunMetrics.flowsBlocked, Modifier.weight(1f))
-                    TunMetric("Abiertos", tunMetrics.flowsOpened, Modifier.weight(1f))
-                    TunMetric("Cerrados", tunMetrics.flowsClosed, Modifier.weight(1f))
+                    TunMetric("Flujos rechazados", tunMetrics.flowsBlocked, Modifier.weight(1f))
+                    TunMetric("Flujos abiertos", tunMetrics.flowsOpened, Modifier.weight(1f))
                 }
+                Text(
+                    "Bloqueos DNS comparte el contador acumulado de Actividad de red. " +
+                        "Flujos rechazados es una métrica distinta del transporte TUN.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Text("FirewallDNS · Firestack/gVisor: ${if (tunMetrics.firestackActive > 0) "activo" else "inactivo"}",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
