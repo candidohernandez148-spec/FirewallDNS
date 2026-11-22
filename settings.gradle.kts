@@ -10,7 +10,7 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven { url = uri(\"$rootDir/build/firestack-maven\") }
+        maven { url = uri("$rootDir/build/firestack-maven") }
     }
 }
 rootProject.name = "FirewallDNS"
