@@ -51,18 +51,6 @@ class FirestackTunnelAdapter private constructor(
     fun updateLinkMtu(linkMtu: Int): Boolean {
         if (closed.get() || linkMtu !in 576..9000) return false
         if (linkMtu == currentLinkMtu) return true
-        val updated = runCatching {
-            tunnel.setLinkMtu(linkMtu.toLong())
-            true
-        }.getOrDefault(false)
-        if (updated) currentLinkMtu = linkMtu
-        return updated
-    }
-
-    @Synchronized
-    fun updateLinkMtu(linkMtu: Int): Boolean {
-        if (closed.get() || linkMtu !in 576..9000) return false
-        if (linkMtu == currentLinkMtu) return true
         val updated = runCatching { tunnel.setLinkMtu(linkMtu.toLong()) }.getOrDefault(false)
         if (updated) currentLinkMtu = linkMtu
         return updated
