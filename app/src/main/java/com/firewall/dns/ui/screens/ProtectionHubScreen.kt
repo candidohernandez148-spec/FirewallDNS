@@ -21,11 +21,13 @@ import com.firewall.dns.domain.model.AppInfoItem
 import com.firewall.dns.domain.model.BlocklistDownloadProgress
 import com.firewall.dns.domain.model.FirewallStats
 import com.firewall.dns.domain.model.DnsLogEntry
+import com.firewall.dns.service.FirewallDnsTrafficMetrics
 import com.firewalldns.engine.core.NetworkFlowRule
 
 @Composable
 fun ProtectionHubScreen(
     stats: FirewallStats,
+    tunMetrics: FirewallDnsTrafficMetrics.Snapshot,
     customBlock: List<String>,
     customAllow: List<String>,
     blocklistUrls: List<String>,
@@ -59,6 +61,16 @@ fun ProtectionHubScreen(
         Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Centro de protección", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Text("Reglas, listas y control de aplicaciones en un solo lugar.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                "TUN ${tunMetrics.tunRxBytes}/${tunMetrics.tunTxBytes} B · IP ${tunMetrics.ipPacketsReceived}/${tunMetrics.ipPacketsSent} · TCP ${tunMetrics.tcpSegmentsReceived}/${tunMetrics.tcpSegmentsSent} · UDP ${tunMetrics.udpPacketsReceived}/${tunMetrics.udpPacketsSent}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                "Firestack: ${if (tunMetrics.firestackActive > 0L) "activo" else "sin confirmación"} · Flujos activos: ${tunMetrics.flowsActive} · ICMPv4 ${tunMetrics.icmpV4Received}/${tunMetrics.icmpV4Sent} · ICMPv6 ${tunMetrics.icmpV6Received}/${tunMetrics.icmpV6Sent}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(selected = section == 0, onClick = { section = 0 }, label = { Text("DNS y listas") })
                 FilterChip(selected = section == 1, onClick = { section = 1 }, label = { Text("Aplicaciones") })
