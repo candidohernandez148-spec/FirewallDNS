@@ -187,7 +187,7 @@ private class FirewallDNSFirestackBridge(
     ): Mark {
         val appPackage = uid.takeIf { it >= 0 }?.let { runCatching { resolvePackage(it) }.getOrNull() }
         val domainAssessment = domains.orEmpty().split(',').map(String::trim).filter(String::isNotEmpty)
-            .map { domain -> runCatching { engine.evaluateDomain(domainValue, appPackage) }.getOrNull() }
+            .map { domain -> runCatching { engine.evaluateDomain(domain, appPackage) }.getOrNull() }
             .filterNotNull()
         val selectedDomainDecision = (domainAssessment.firstOrNull { it.action == PolicyAction.BLOCK }
             ?: domainAssessment.firstOrNull { it.action == PolicyAction.OBSERVE })?.let {
@@ -254,7 +254,7 @@ private class FirewallDNSFirestackBridge(
         val domainValue = domain.orEmpty()
         val ownerUid = uidValue.toIntOrNull()
         val appPackage = ownerUid?.takeIf { it >= 0 }?.let { runCatching { resolvePackage(it) }.getOrNull() }
-        val decision = engine.evaluateDomain(domain, appPackage)
+        val decision = engine.evaluateDomain(domainValue, appPackage)
         val appBlocked = ownerUid?.takeIf { it >= 0 }?.let { runCatching { isUidBlocked(it) }.getOrDefault(false) } == true
         val action = if (appBlocked) PolicyAction.BLOCK else decision.action
         val reason = if (appBlocked) "app_uid_blocked" else decision.reason
@@ -266,8 +266,8 @@ private class FirewallDNSFirestackBridge(
     }
 
     override fun onUpstreamAnswer(
-        who: String,
-        fid: String,
+        who: String?,
+        fid: String?,
         summary: DNSSummary?,
         forPref: DNSOpts?,
         unmodifiedipcsv: String?,
