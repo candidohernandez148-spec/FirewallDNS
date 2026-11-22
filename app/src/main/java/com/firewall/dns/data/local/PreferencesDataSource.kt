@@ -173,7 +173,12 @@ class PreferencesDataSource(context: Context) {
                                 queryType = item.optString("queryType"),
                                 isBlocked = item.optBoolean("isBlocked"),
                                 reason = item.optString("reason"),
-                                appName = item.optString("appName")
+                                appName = item.optString("appName"),
+                                uid = item.optInt("uid", -1),
+                                decisionAction = item.optString(
+                                    "decisionAction",
+                                    if (item.optBoolean("isBlocked")) "BLOCK" else "ALLOW"
+                                )
                             )
                         )
                     }
@@ -199,6 +204,8 @@ class PreferencesDataSource(context: Context) {
                     .put("isBlocked", entry.isBlocked)
                     .put("reason", entry.reason)
                     .put("appName", entry.appName)
+                    .put("uid", entry.uid)
+                    .put("decisionAction", entry.decisionAction)
             )
         }
         prefs.edit()
