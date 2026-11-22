@@ -1,7 +1,6 @@
 package com.firewall.dns.ui.screens
 
 import android.content.Intent
-import android.os.SystemClock
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,12 +23,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.firewalldns.engine.android.NativeTcpDnsTransport
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.concurrent.atomic.AtomicInteger
-import com.firewall.dns.service.DnsFirewallService
 import com.firewall.dns.service.NetworkDns
 import com.firewall.dns.service.FirewallDnsTrafficMetrics
 import org.json.JSONObject
@@ -50,17 +46,11 @@ fun IntegratedDiagnosticsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val physicalNetwork = NetworkDns.activeSnapshot(context)
-    var nativeTestRunning by remember { mutableStateOf(false) }
-    var nativeTestResult by remember { mutableStateOf("Prueba nativa pendiente") }
-    var tcpProbeRunning by remember { mutableStateOf(false) }
-    var tcpProbeResult by remember { mutableStateOf("Prueba DNS/TCP pendiente") }
     val report = JSONObject().apply {
         put("generatedAt", SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US).format(Date()))
         put("vpnRunning", vpnRunning)
         put("engine", engine)
         put("observedEvents", observedEvents)
-        put("nativeJniTest", nativeTestResult)
-        put("forcedTcpProbe", tcpProbeResult)
         put("physicalNetwork", JSONObject().apply {
             put("transport", physicalNetwork.transport)
             put("validated", physicalNetwork.validated)
@@ -198,62 +188,6 @@ fun IntegratedDiagnosticsScreen(
         }
         Card {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Prueba directa Rust/JNI", style = MaterialTheme.typography.titleMedium)
-                Text("Inicializa smoltcp IPv4/IPv6 y comprueba límites de paquetes, sesión inexistente, colas y propietario del hilo. Es una prueba nativa local, no sustituye una prueba de tráfico VPN.")
-                Button(
-                    enabled = !nativeTestRunning,
-                    onClick = {
-                        nativeTestRunning = true
-                        nativeTestResult = "Ejecutando…"
-                        scope.launch(Dispatchers.IO) {
-                            val result = runNativeBoundaryTest()
-                            withContext(Dispatchers.Main) {
-                                nativeTestResult = result
-                                nativeTestRunning = false
-                            }
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text(if (nativeTestRunning) "Ejecutando prueba nativa…" else "Ejecutar prueba Rust/JNI") }
-                Text(nativeTestResult, style = MaterialTheme.typography.bodySmall)
-            }
-        }
-        Card {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Prueba DNS/TCP upstream real", style = MaterialTheme.typography.titleMedium)
-                Text("Envía una consulta DNS de prueba (example.com, tipo A) por TCP/53 a los resolvers configurados, usando los mismos sockets protegidos del servicio VPN. No crea otra VPN ni modifica las reglas. Esta prueba mide la salida upstream; no inyecta una conexión TCP/53 entrante por el TUN. smoltcp solo se ejecuta en el banco nativo de pruebas.")
-                Button(
-                    enabled = vpnRunning && !tcpProbeRunning,
-                    onClick = {
-                        tcpProbeRunning = true
-                        tcpProbeResult = "Ejecutando consulta TCP/53 a los resolvers configurados…"
-                        scope.launch(Dispatchers.IO) {
-                            val result = runCatching {
-                                DnsFirewallService.runDiagnosticTcpProbe(buildDiagnosticDnsQuery())
-                            }.fold(
-                                onSuccess = { bundle ->
-                                    val approved = bundle.getBoolean("approved", false)
-                                    val detail = bundle.getString("detail").orEmpty()
-                                    (if (approved) "APROBADO: " else "FALLIDO: ") + detail
-                                },
-                                onFailure = { error ->
-                                    "FALLIDO: ${error.javaClass.simpleName}: ${error.message ?: "sin detalle"}"
-                                },
-                            )
-                            withContext(Dispatchers.Main) {
-                                tcpProbeResult = result
-                                tcpProbeRunning = false
-                            }
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text(if (tcpProbeRunning) "Probando TCP/53…" else "Probar DNS/TCP real") }
-                Text(tcpProbeResult, style = MaterialTheme.typography.bodySmall)
-                Text("La prueba solo se habilita con la VPN activa. Un resultado APROBADO exige respuesta DNS validada sobre TCP; protect() exitoso por sí solo no cuenta como aprobación.")
-            }
-        }
-        Card {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Pila de red Firestack / gVisor · producción", style = MaterialTheme.typography.titleMedium)
                 Text(if (metrics.firestackActive == 1L) "CONECTADA AL TUN" else "NO CONECTADA")
                 Metric("Flujos activos", metrics.flowsActive)
@@ -263,19 +197,6 @@ fun IntegratedDiagnosticsScreen(
                 Metric("Rechazos por límite de telemetría", metrics.flowCapacityRejected)
                 Metric("VpnService.protect correctos / fallidos", metrics.firestackProtectSuccess, metrics.firestackProtectFailure)
                 Metric("Bind a red física correctos / fallidos", metrics.firestackBindSuccess, metrics.firestackBindFailure)
-            }
-        }
-        Card {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("smoltcp · banco nativo de pruebas", style = MaterialTheme.typography.titleMedium)
-                Text("No compite con Firestack por el descriptor TUN en el modo de producción.")
-                Metric("Transporte smoltcp disponible (1=sí)", metrics.smoltcpTransportAvailable)
-                Metric("Sesiones activas", metrics.smoltcpSessionsActive)
-                Metric("Sesiones abiertas / cerradas", metrics.smoltcpSessionsOpened, metrics.smoltcpSessionsClosed)
-                Metric("Paquetes aceptados en cola JNI", metrics.smoltcpPacketsAccepted)
-                Metric("Rechazos de entrada", metrics.smoltcpIngressRejected)
-                Metric("Errores nativos", metrics.smoltcpNativeErrors)
-                Metric("Fallos al encolar respuestas", metrics.smoltcpResponseFailures)
             }
         }
         Card {
@@ -330,61 +251,5 @@ private fun Metric(label: String, first: Long, second: Long? = null) {
         Text(label, style = MaterialTheme.typography.bodyMedium)
         Text(if (second == null) first.toString() else "$first / $second",
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
-    }
-}
-
-
-/** Consulta DNS estándar de example.com para probar el upstream TCP real. */
-private fun buildDiagnosticDnsQuery(): ByteArray = byteArrayOf(
-    0x4A, 0x31, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x07, 0x65, 0x78, 0x61, 0x6D, 0x70, 0x6C, 0x65,
-    0x03, 0x63, 0x6F, 0x6D, 0x00, 0x00, 0x01, 0x00, 0x01,
-)
-
-private fun runNativeBoundaryTest(): String {
-    val v4Dns = byteArrayOf(10, 77, 0, 1)
-    val v4Client = byteArrayOf(10, 77, 0, 2)
-    val v6Dns = ByteArray(16).apply {
-        this[0] = 0x20.toByte(); this[1] = 0x01.toByte()
-        this[2] = 0x0d.toByte(); this[3] = 0xb8.toByte(); this[15] = 1
-    }
-    val v6Client = v6Dns.copyOf().apply { this[15] = 2 }
-    return try {
-        val transport = NativeTcpDnsTransport.create(1500, v4Dns, v4Client, v6Dns, v6Client, 16)
-            ?: return "FALLO: JNI no pudo crear smoltcp."
-        transport.use { native ->
-            val emptyPacket = native.enqueuePacket(byteArrayOf())
-            val oversizedPacket = native.enqueuePacket(ByteArray(1501))
-            val pollResult = native.poll(SystemClock.elapsedRealtime(), 0)
-            val missingSession = native.queueResponse(
-                Long.MAX_VALUE,
-                byteArrayOf(0, 12, 0x12, 0x34, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0),
-            )
-            val rejectedPackets = native.rejectedPackets()
-            val noUnexpectedOutput = native.takePacket() == null && native.takeEvent() == null
-            val wrongOwnerResult = AtomicInteger(Int.MIN_VALUE)
-            val otherThread = Thread {
-                wrongOwnerResult.set(native.poll(SystemClock.elapsedRealtime(), 0))
-            }.apply { name = "firewalldns-diagnostic-owner-probe"; start() }
-            otherThread.join(2_000)
-            val checks = listOf(
-                "poll=$pollResult" to (pollResult >= 0),
-                "paquete vacío=$emptyPacket" to (emptyPacket == -1),
-                "paquete sobredimensionado=$oversizedPacket" to (oversizedPacket == -1),
-                "sesión inexistente=$missingSession" to (missingSession == -5),
-                "rechazos=$rejectedPackets" to (rejectedPackets == 2L),
-                "protección del hilo=${wrongOwnerResult.get()}" to (wrongOwnerResult.get() == -3),
-                "colas vacías=$noUnexpectedOutput" to noUnexpectedOutput,
-            )
-            if (otherThread.isAlive) {
-                otherThread.interrupt()
-                return@use "FALLO: la prueba de propietario de hilo no terminó."
-            }
-            val failures = checks.filterNot { it.second }.map { it.first }
-            if (failures.isEmpty()) "APROBADO: Rust/JNI smoltcp IPv4+IPv6; límites, contador de rechazos, sesión inexistente, colas y propietario del hilo verificados."
-            else "FALLO: ${failures.joinToString()}"
-        }
-    } catch (t: Throwable) {
-        "FALLO JNI: ${t.javaClass.simpleName}: ${t.message ?: "sin detalle"}"
     }
 }
