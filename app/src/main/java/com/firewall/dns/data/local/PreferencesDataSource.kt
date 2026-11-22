@@ -2,6 +2,10 @@ package com.firewall.dns.data.local
 
 import android.content.Context
 import com.firewall.dns.domain.model.DnsLogEntry
+import com.firewalldns.engine.core.FlowProtocol
+import com.firewalldns.engine.core.NetworkFlowRule
+import com.firewalldns.engine.core.PolicyAction
+import com.firewalldns.engine.core.RuleSource
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -30,6 +34,7 @@ class PreferencesDataSource(context: Context) {
         private const val KEY_ACTIVITY_LOGS = "activity_logs_v1"
         private const val KEY_TOTAL_ALLOWED = "activity_total_allowed"
         private const val KEY_TOTAL_BLOCKED = "activity_total_blocked"
+        private const val KEY_FLOW_RULES = "network_flow_rules_v1"
 
         const val DEFAULT_ADBLOCK_URL =
             "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/light.txt"
@@ -47,6 +52,48 @@ class PreferencesDataSource(context: Context) {
                 .putBoolean(KEY_ADBLOCK_MIGRATED, true)
                 .apply()
         }
+    }
+
+    fun getNetworkFlowRules(): List<NetworkFlowRule> {
+        val raw = prefs.getString(KEY_FLOW_RULES, null) ?: return emptyList()
+        return runCatching {
+            val array = JSONArray(raw)
+            buildList {
+                for (index in 0 until array.length()) {
+                    val item = array.optJSONObject(index) ?: continue
+                    val protocol = item.optString("protocol").takeIf { it.isNotBlank() }
+                        ?.let { FlowProtocol.valueOf(it) }
+                    val action = PolicyAction.valueOf(item.getString("action"))
+                    val packageName = item.optString("appPackage").takeIf { it.isNotBlank() }
+                    add(NetworkFlowRule(
+                        id = item.getString("id"),
+                        action = action,
+                        source = RuleSource.USER,
+                        reason = item.optString("reason", "user_flow_rule"),
+                        protocol = protocol,
+                        appPackage = packageName,
+                        destinationCidr = item.optString("destinationCidr").takeIf { it.isNotBlank() },
+                        destinationPort = item.optInt("destinationPort").takeIf { item.has("destinationPort") && !item.isNull("destinationPort") },
+                        priority = 100_000
+                    ))
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    fun saveNetworkFlowRules(rules: List<NetworkFlowRule>) {
+        val array = JSONArray()
+        rules.forEach { rule ->
+            array.put(JSONObject()
+                .put("id", rule.id)
+                .put("action", rule.action.name)
+                .put("reason", rule.reason)
+                .put("protocol", rule.protocol?.name ?: "")
+                .put("appPackage", rule.appPackage ?: "")
+                .put("destinationCidr", rule.destinationCidr ?: "")
+                .put("destinationPort", rule.destinationPort ?: JSONObject.NULL))
+        }
+        prefs.edit().putString(KEY_FLOW_RULES, array.toString()).apply()
     }
 
     fun getCustomBlockSet(): Set<String> =
