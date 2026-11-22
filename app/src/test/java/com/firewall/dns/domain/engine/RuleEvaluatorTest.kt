@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class RuleEvaluatorTest {
+    private val dollar = 36.toChar().toString()
 
     @Test
     fun manualAllowOverridesEveryBlockSource() {
@@ -59,6 +60,7 @@ class RuleEvaluatorTest {
         assertEquals(true, blocked.first)
         assertEquals(false, allowed.first)
     }
+
     @Test
     fun builtInThreatDomainsAreIncludedInTheSameRuleEvaluationSnapshot() {
         val result = RuleEvaluator.evaluate(
@@ -85,106 +87,64 @@ class RuleEvaluatorTest {
         assertEquals("Excepción @@||", result.second)
     }
 
-
     @Test
-    fun parsesDnsSafeDomainRulesWithoutContextualOptions() {
+    fun parsesDnsSafeDomainRulesAndImportantModifier() {
         assertEquals(
             RuleEvaluator.AdblockParseResult("tracker.example", false),
-            RuleEvaluator.parseAdblockLine("||tracker.example^"),
+            RuleEvaluator.parseAdblockLine("||tracker.example^")
         )
         assertEquals(
             RuleEvaluator.AdblockParseResult("tracker.example", true),
-            RuleEvaluator.parseAdblockLine("@@||tracker.example^"),
+            RuleEvaluator.parseAdblockLine("@@||tracker.example^")
         )
         assertEquals(
             RuleEvaluator.AdblockParseResult("tracker.example", false, isImportant = true),
-            RuleEvaluator.parseAdblockLine("||tracker.example^${'
-        assertEquals(
-            RuleEvaluator.AdblockParseResult("tracker.example", false),
-            RuleEvaluator.parseAdblockLine("tracker.example"),
-        )
-        assertEquals(
-            RuleEvaluator.AdblockParseResult("tracker.example", false),
-            RuleEvaluator.parseAdblockLine("0.0.0.0 tracker.example # local sinkhole"),
-        )
-        assertEquals(
-            listOf(
-                RuleEvaluator.AdblockParseResult("tracker.example", false),
-                RuleEvaluator.AdblockParseResult("www.tracker.example", false),
-                RuleEvaluator.AdblockParseResult("cdn.tracker.example", false),
-            ),
-            RuleEvaluator.parseAdblockLineEntries(
-                "0.0.0.0 tracker.example www.tracker.example cdn.tracker.example",
-            ),
-        )
-        assertEquals(
-            listOf(RuleEvaluator.AdblockParseResult("tracker.example", false)),
-            RuleEvaluator.parseAdblockLineEntries("::1 tracker.example"),
-        )
-    }
-
-    @Test
-    fun rejectsAdblockOptionsThatCannotBeEnforcedByDnsOnlyFiltering() {
-        listOf(
-            "||tracker.example^$third-party",
-            "||tracker.example^$domain=publisher.example",
-            "||tracker.example^$badfilter",
-            "||tracker.example^$dnsrewrite=NOERROR",
-            "@@||tracker.example^$important,domain=publisher.example",
-        ).forEach { rule ->
-            assertEquals("Must reject unsupported DNS semantics: $rule", null, RuleEvaluator.parseAdblockLine(rule))
-        }
-    }
-
-    @Test
-    fun rejectsUrlAndWildcardRulesInsteadOfOverblockingWholeDomains() {
-        assertEquals(null, RuleEvaluator.parseAdblockLine("||example.com/ads.js"))
-        assertEquals(null, RuleEvaluator.parseAdblockLine("||*.example.com^"))
-        assertEquals(null, RuleEvaluator.parseAdblockLine("example.com/path"))
-    }
-
-}
-}important"),
+            RuleEvaluator.parseAdblockLine("||tracker.example^" + dollar + "important")
         )
         assertEquals(
             RuleEvaluator.AdblockParseResult("tracker.example", true, isImportant = true),
-            RuleEvaluator.parseAdblockLine("@@||tracker.example^${'
-        assertEquals(
-            RuleEvaluator.AdblockParseResult("tracker.example", false),
-            RuleEvaluator.parseAdblockLine("tracker.example"),
+            RuleEvaluator.parseAdblockLine("@@||tracker.example^" + dollar + "important")
         )
         assertEquals(
             RuleEvaluator.AdblockParseResult("tracker.example", false),
-            RuleEvaluator.parseAdblockLine("0.0.0.0 tracker.example # local sinkhole"),
+            RuleEvaluator.parseAdblockLine("tracker.example")
         )
         assertEquals(
-            listOf(
-                RuleEvaluator.AdblockParseResult("tracker.example", false),
-                RuleEvaluator.AdblockParseResult("www.tracker.example", false),
-                RuleEvaluator.AdblockParseResult("cdn.tracker.example", false),
-            ),
-            RuleEvaluator.parseAdblockLineEntries(
-                "0.0.0.0 tracker.example www.tracker.example cdn.tracker.example",
-            ),
-        )
-        assertEquals(
-            listOf(RuleEvaluator.AdblockParseResult("tracker.example", false)),
-            RuleEvaluator.parseAdblockLineEntries("::1 tracker.example"),
+            RuleEvaluator.AdblockParseResult("tracker.example", false),
+            RuleEvaluator.parseAdblockLine("0.0.0.0 tracker.example # local sinkhole")
         )
     }
 
     @Test
-    fun rejectsAdblockOptionsThatCannotBeEnforcedByDnsOnlyFiltering() {
-        listOf(
-            "||tracker.example^$important",
-            "@@||tracker.example^$important",
-            "||tracker.example^$third-party",
-            "||tracker.example^$domain=publisher.example",
-            "||tracker.example^$badfilter",
-            "||tracker.example^$dnsrewrite=NOERROR",
-            "@@||tracker.example^$important,domain=publisher.example",
-        ).forEach { rule ->
-            assertEquals("Must reject unsupported DNS semantics: $rule", null, RuleEvaluator.parseAdblockLine(rule))
+    fun parsesEveryDomainFromMultiAliasHostsLines() {
+        assertEquals(
+            listOf(
+                RuleEvaluator.AdblockParseResult("tracker.example", false),
+                RuleEvaluator.AdblockParseResult("www.tracker.example", false),
+                RuleEvaluator.AdblockParseResult("cdn.tracker.example", false)
+            ),
+            RuleEvaluator.parseAdblockLineEntries(
+                "0.0.0.0 tracker.example www.tracker.example cdn.tracker.example"
+            )
+        )
+        assertEquals(
+            listOf(RuleEvaluator.AdblockParseResult("tracker.example", false)),
+            RuleEvaluator.parseAdblockLineEntries("::1 tracker.example")
+        )
+    }
+
+    @Test
+    fun rejectsAdblockOptionsWhoseSemanticsAreNotImplemented() {
+        val unsupported = listOf(
+            "third-party",
+            "domain=publisher.example",
+            "badfilter",
+            "dnsrewrite=NOERROR",
+            "important,domain=publisher.example"
+        )
+        unsupported.forEach { option ->
+            val rule = "||tracker.example^" + dollar + option
+            assertEquals("Unsupported option: " + option, null, RuleEvaluator.parseAdblockLine(rule))
         }
     }
 
@@ -194,56 +154,6 @@ class RuleEvaluatorTest {
         assertEquals(null, RuleEvaluator.parseAdblockLine("||*.example.com^"))
         assertEquals(null, RuleEvaluator.parseAdblockLine("example.com/path"))
     }
-
-}
-}important"),
-        )
-        assertEquals(
-            RuleEvaluator.AdblockParseResult("tracker.example", false),
-            RuleEvaluator.parseAdblockLine("tracker.example"),
-        )
-        assertEquals(
-            RuleEvaluator.AdblockParseResult("tracker.example", false),
-            RuleEvaluator.parseAdblockLine("0.0.0.0 tracker.example # local sinkhole"),
-        )
-        assertEquals(
-            listOf(
-                RuleEvaluator.AdblockParseResult("tracker.example", false),
-                RuleEvaluator.AdblockParseResult("www.tracker.example", false),
-                RuleEvaluator.AdblockParseResult("cdn.tracker.example", false),
-            ),
-            RuleEvaluator.parseAdblockLineEntries(
-                "0.0.0.0 tracker.example www.tracker.example cdn.tracker.example",
-            ),
-        )
-        assertEquals(
-            listOf(RuleEvaluator.AdblockParseResult("tracker.example", false)),
-            RuleEvaluator.parseAdblockLineEntries("::1 tracker.example"),
-        )
-    }
-
-    @Test
-    fun rejectsAdblockOptionsThatCannotBeEnforcedByDnsOnlyFiltering() {
-        listOf(
-            "||tracker.example^$important",
-            "@@||tracker.example^$important",
-            "||tracker.example^$third-party",
-            "||tracker.example^$domain=publisher.example",
-            "||tracker.example^$badfilter",
-            "||tracker.example^$dnsrewrite=NOERROR",
-            "@@||tracker.example^$important,domain=publisher.example",
-        ).forEach { rule ->
-            assertEquals("Must reject unsupported DNS semantics: $rule", null, RuleEvaluator.parseAdblockLine(rule))
-        }
-    }
-
-    @Test
-    fun rejectsUrlAndWildcardRulesInsteadOfOverblockingWholeDomains() {
-        assertEquals(null, RuleEvaluator.parseAdblockLine("||example.com/ads.js"))
-        assertEquals(null, RuleEvaluator.parseAdblockLine("||*.example.com^"))
-        assertEquals(null, RuleEvaluator.parseAdblockLine("example.com/path"))
-    }
-
 
     @Test
     fun importantBlockOverridesNormalExceptionButNotManualRules() {
@@ -253,7 +163,7 @@ class RuleEvaluatorTest {
             customBlock = emptySet(),
             hostExceptions = setOf("example.com"),
             hostBlock = emptySet(),
-            importantBlock = setOf("example.com"),
+            importantBlock = setOf("example.com")
         )
         assertEquals(true, importantBlock.first)
         assertEquals("Adblock importante ||^", importantBlock.second)
@@ -264,7 +174,7 @@ class RuleEvaluatorTest {
             customBlock = setOf("example.com"),
             hostExceptions = emptySet(),
             hostBlock = emptySet(),
-            importantExceptions = setOf("example.com"),
+            importantExceptions = setOf("example.com")
         )
         assertEquals(true, manualBlock.first)
         assertEquals("Regla propia", manualBlock.second)
@@ -275,7 +185,7 @@ class RuleEvaluatorTest {
             customBlock = emptySet(),
             hostExceptions = emptySet(),
             hostBlock = emptySet(),
-            importantBlock = setOf("example.com"),
+            importantBlock = setOf("example.com")
         )
         assertEquals(false, manualAllow.first)
         assertEquals("Lista blanca", manualAllow.second)
@@ -290,10 +200,9 @@ class RuleEvaluatorTest {
             hostExceptions = emptySet(),
             hostBlock = emptySet(),
             importantExceptions = setOf("example.com"),
-            importantBlock = setOf("example.com"),
+            importantBlock = setOf("example.com")
         )
         assertEquals(false, result.first)
         assertEquals("Excepción importante @@||", result.second)
     }
-
 }
