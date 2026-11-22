@@ -365,7 +365,7 @@ class DnsFirewallService : VpnService() {
         installSharedEngine()
         val engineRuntime = sharedEngine
         val flowAdapter = sharedFlowPolicyAdapter
-        val resolver = upstreamSnapshot?.resolvers?.firstOrNull() ?: NetworkDns.EMERGENCY_DNS
+        val resolver = upstreamSnapshot?.resolvers?.takeIf { it.isNotEmpty() }?.joinToString(",") ?: NetworkDns.EMERGENCY_DNS
         val firestack = if (engineRuntime != null && flowAdapter != null) {
             runCatching {
                 FirestackTunnelAdapter.connect(
@@ -891,7 +891,7 @@ class DnsFirewallService : VpnService() {
         // Rebind Firestack's default DNS transport to the resolver from this exact
         // physical-network generation without restarting the TUN/netstack.
         activeTunSession?.firestack?.let { stack ->
-            if (!stack.updatePhysicalNetworkResolver(discovered.first())) {
+            if (!stack.updatePhysicalNetworkResolver(discovered.joinToString(","))) {
                 FirewallDnsTrafficMetrics.upstreamFailure()
             }
         }
