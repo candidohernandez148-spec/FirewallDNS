@@ -555,13 +555,23 @@ object FirewallRepository {
         appContext.let(FirewallTileService::requestSync)
     }
 
-    fun addLog(domain: String, qType: String, isBlocked: Boolean, reason: String, appName: String) {
+    fun addLog(
+        domain: String,
+        qType: String,
+        isBlocked: Boolean,
+        reason: String,
+        appName: String,
+        uid: Int,
+        decisionAction: String
+    ) {
         recordDnsDecision(
             domain = domain,
             allowed = !isBlocked,
             appName = appName,
             reason = reason,
-            queryType = qType
+            queryType = qType,
+            uid = uid,
+            decisionAction = decisionAction
         )
     }
 
@@ -595,7 +605,15 @@ object FirewallRepository {
         _stats.update { it.copy(loadedRulesCount = externalRuleCount) }
     }
 
-    private fun recordDnsDecision(domain: String, allowed: Boolean, appName: String, reason: String, queryType: String) {
+    private fun recordDnsDecision(
+        domain: String,
+        allowed: Boolean,
+        appName: String,
+        reason: String,
+        queryType: String,
+        uid: Int = -1,
+        decisionAction: String = if (allowed) "ALLOW" else "BLOCK"
+    ) {
         val timestamp = timeFormatLocal.get()?.format(Date()) ?: ""
         val entry = DnsLogEntry(
             id = logCounter.incrementAndGet(),
@@ -604,7 +622,9 @@ object FirewallRepository {
             queryType = queryType,
             isBlocked = !allowed,
             reason = reason,
-            appName = appName
+            appName = appName,
+            uid = uid,
+            decisionAction = decisionAction
         )
         _logs.update { (listOf(entry) + it).take(MAX_LOGS) }
         (if (allowed) bucketAllowed else bucketBlocked).incrementAndGet()
