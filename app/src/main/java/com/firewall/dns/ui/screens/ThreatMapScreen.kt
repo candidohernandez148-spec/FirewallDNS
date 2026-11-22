@@ -212,8 +212,7 @@ fun ThreatMapScreen(
                         "Observadas" to tunMetrics.dnsObserved,
                         "Permitidas" to tunMetrics.dnsAllowed,
                         "Rechazadas" to tunMetrics.dnsRejected,
-                        "Consultas UDP" to tunMetrics.dnsUdpPackets,
-                        "Consultas TCP" to tunMetrics.dnsTcp
+                        // Transport-specific inbound DNS query counters are not wired in this build.
                     )) }
                     if (logs.isEmpty()) item { Text("Sin eventos DNS registrados.") }
                     items(logs.take(100)) { event ->
@@ -297,15 +296,15 @@ private fun LiveTrafficFlowMap(
                     Text(if (vpnRunning) "EN VIVO" else "DETENIDO", color = if (vpnRunning) Color(0xFF22C55E) else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    FlowStage("ENTRADA", "TUN", metrics.packetsRead.toString(), Modifier.weight(1f))
+                    FlowStage("ENTRADA", "TUN", "N/D", Modifier.weight(1f))
                     Text("›", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    FlowStage("INSPECCIÓN", "DNS", (metrics.dnsUdpPackets + metrics.dnsTcp).toString(), Modifier.weight(1f))
+                    FlowStage("INSPECCIÓN", "DNS", metrics.dnsPolicyDecisions.toString(), Modifier.weight(1f))
                     Text("›", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                     FlowStage("DECISIÓN", "B/O/P", "${metrics.dnsBlocked}/${metrics.dnsObserved}/${metrics.dnsAllowed}", Modifier.weight(1f))
                     Text("›", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                     FlowStage("SALIDA", "Flujos", metrics.flowsActive.toString(), Modifier.weight(1f))
                 }
-                Text("Contadores acumulados del servicio · B bloqueado · O observado · P permitido", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Decisiones DNS acumuladas · contadores nativos de paquetes TUN y transporte UDP/TCP no disponibles en esta API · B bloqueado · O observado · P permitido", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
@@ -772,7 +771,7 @@ private fun SocTunnelPath(
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             val stages = listOf(
                 Triple("ENTRADA TUN", "N/D", "Firestack no expone contador de paquetes TUN en esta API"),
-                Triple("CLASIFICACIÓN IP", "${metrics.ipv4Packets + metrics.ipv6Packets}", "Contadores del parser de paquetes disponibles"),
+                Triple("CLASIFICACIÓN IP", "N/D", "No hay callbacks de conteo IPv4/IPv6 conectados en esta compilación"),
                 Triple("POLÍTICA DNS", "${metrics.dnsBlocked + metrics.dnsObserved + metrics.dnsAllowed}", "Bloquear · observar · permitir"),
                 Triple("FLUJOS", "${metrics.flowsOpened}", "Conexiones abiertas por FlowMonitor"),
                 Triple("SALIDA TUN", "N/D", "Firestack no expone contador de paquetes TUN en esta API")
@@ -922,11 +921,13 @@ private fun LiveEngineOperations(
             "Rechazos por capacidad" to metrics.flowCapacityRejected,
             "Firestack activo (0/1)" to metrics.firestackActive,
         ), "Monitor FlowConnectionMonitor; el límite configurado es 4,096 flujos simultáneos.")
+        // Count a flow only when both endpoints agree on the address family.
+        // Mixed or unparsable endpoints remain unknown instead of being double-counted.
         val ipv4Flows = metrics.activeFlows.filter { flow ->
-            flow.identity.sourceAddress.contains('.') || flow.identity.destinationAddress.contains('.')
+            flow.identity.sourceAddress.contains('.') && flow.identity.destinationAddress.contains('.')
         }
         val ipv6Flows = metrics.activeFlows.filter { flow ->
-            flow.identity.sourceAddress.contains(':') || flow.identity.destinationAddress.contains(':')
+            flow.identity.sourceAddress.contains(':') && flow.identity.destinationAddress.contains(':')
         }
         val unknownFamilyFlows = metrics.activeFlows.size - ipv4Flows.size - ipv6Flows.size
         LiveMetricSection("FAMILIA IP · FLUJOS ACTIVOS OBSERVADOS", listOf(
@@ -937,7 +938,7 @@ private fun LiveEngineOperations(
             "Bytes TX IPv6 en flujos activos" to ipv6Flows.sumOf { it.bytesSent },
             "Bytes RX IPv6 en flujos activos" to ipv6Flows.sumOf { it.bytesReceived },
             "Flujos sin familia identificable" to unknownFamilyFlows.coerceAtLeast(0).toLong(),
-        ), "Clasificación por direcciones de los flujos vivos del monitor; no es un contador de todos los paquetes IP. Los totales nativos TUN/IP siguen agregados.")
+        ), "Clasificación orientativa de los extremos de cada flujo activo; no cuenta paquetes IP. Los paquetes con extremos mixtos o no reconocidos quedan como familia no identificable. Los contadores nativos TUN/IP no están disponibles.")
         LiveMetricSection("COLA DE EVENTOS DEL MOTOR", listOf(
             "Eventos actualmente pendientes" to metrics.engineQueuedEvents,
             "Eventos descartados por cola llena" to metrics.engineEventsDropped,
