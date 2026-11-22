@@ -162,6 +162,7 @@ fun ThreatMapScreen(
                     selectedNode = selectedNode,
                     lastDnsDecisionAtEpochMs = tunMetrics.lastDnsDecisionAtEpochMs,
                     lastFlowEventAtEpochMs = tunMetrics.lastFlowEventAtEpochMs,
+                    metrics = tunMetrics,
                     activeFlowCount = tunMetrics.flowsActive,
                     vpnRunning = vpnRunning
                 ) { id ->
@@ -425,6 +426,7 @@ private fun ThreeDimensionalMindMap(
     selectedNode: String,
     lastDnsDecisionAtEpochMs: Long,
     lastFlowEventAtEpochMs: Long,
+    metrics: FirewallDnsTrafficMetrics.Snapshot,
     activeFlowCount: Long,
     vpnRunning: Boolean,
     onSelectNode: (String) -> Unit
@@ -462,6 +464,7 @@ private fun ThreeDimensionalMindMap(
     val lineColor = MaterialTheme.colorScheme.outlineVariant
     val onSurface = MaterialTheme.colorScheme.onSurface
     val density = LocalDensity.current.density
+    fun recent(timestamp: Long): Boolean = timestamp > 0L && System.currentTimeMillis() - timestamp in 0L..5000L
     val dnsEventRecent = vpnRunning &&
         lastDnsDecisionAtEpochMs > 0L &&
         System.currentTimeMillis() - lastDnsDecisionAtEpochMs in 0L..2500L
@@ -572,10 +575,12 @@ private fun ThreeDimensionalMindMap(
                         val isSelected = node.id == selectedNode
                         val nodeActive = vpnRunning && when (node.id) {
                             "core", "tun" -> true
-                            "nic", "ip" -> activeFlowCount > 0L
-                            "tcp" -> tunMetrics.activeFlows.any { it.identity.protocol.name == "TCP" }
-                            "udp" -> tunMetrics.activeFlows.any { it.identity.protocol.name == "UDP" }
-                            "icmp" -> tunMetrics.activeFlows.any { it.identity.protocol.name == "ICMP" }
+                            "nic" -> activeFlowCount > 0L || recent(metrics.nicChangeObservedAtEpochMs)
+                            "ip" -> activeFlowCount > 0L || recent(metrics.ipChangeObservedAtEpochMs)
+                            "tcp" -> metrics.activeFlows.any { it.identity.protocol.name == "TCP" } || recent(metrics.tcpChangeObservedAtEpochMs)
+                            "udp" -> metrics.activeFlows.any { it.identity.protocol.name == "UDP" } || recent(metrics.udpChangeObservedAtEpochMs)
+                            "icmp" -> metrics.activeFlows.any { it.identity.protocol.name == "ICMP" } || recent(metrics.icmpChangeObservedAtEpochMs)
+                            "fwd" -> recent(metrics.forwardChangeObservedAtEpochMs)
                             "dns", "decisions" -> dnsEventRecent
                             "apps" -> activeFlowCount > 0L
                             else -> false
