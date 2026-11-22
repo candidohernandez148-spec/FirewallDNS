@@ -153,7 +153,7 @@ class NetworkFlowPolicyEngine(initialRules: Collection<NetworkFlowRule> = emptyL
                 Regex("[0-9A-Fa-f:.]+").matches(unscoped)
             } else {
                 Regex("[0-9]{1,3}(\\.[0-9]{1,3}){3}").matches(unscoped) &&
-                    unscoped.split('.').all { it.toIntOrNull() in 0..255 }
+                    unscoped.split('.').all { part -> part.toIntOrNull()?.let { it in 0..255 } == true }
             }
             if (!validLiteral) return null
             return runCatching { InetAddress.getByName(unscoped).address }.getOrNull()
