@@ -70,6 +70,7 @@ class FirestackTunnelAdapter private constructor(
             isUidBlocked: (Int) -> Boolean = { false },
             onDnsDecision: (String, Int, Int?, String, PolicyAction) -> Unit = { _, _, _, _, _ -> },
             onSocketProtectionResult: (Boolean) -> Unit = {},
+            onSocketBindingResult: (Boolean) -> Unit = {},
             onFlowSnapshot: (FlowMonitorSnapshot) -> Unit = {},
         ): FirestackTunnelAdapter {
             require(mtu in 576..9000) { "Invalid TUN MTU" }
@@ -86,6 +87,7 @@ class FirestackTunnelAdapter private constructor(
                     isUidBlocked = isUidBlocked,
                     onDnsDecision = onDnsDecision,
                     onSocketProtectionResult = onSocketProtectionResult,
+                    onSocketBindingResult = onSocketBindingResult,
                     onFlowSnapshot = onFlowSnapshot,
                 )
                 // Intercept every UDP/TCP DNS query on port 53, including apps with hard-coded resolvers.
@@ -138,6 +140,7 @@ private class FirewallDNSFirestackBridge(
     private val isUidBlocked: (Int) -> Boolean,
     private val onDnsDecision: (String, Int, Int?, String, PolicyAction) -> Unit,
     private val onSocketProtectionResult: (Boolean) -> Unit,
+    private val onSocketBindingResult: (Boolean) -> Unit,
     private val onFlowSnapshot: (FlowMonitorSnapshot) -> Unit,
 ) : Bridge, AutoCloseable {
 
@@ -156,7 +159,7 @@ private class FirewallDNSFirestackBridge(
                 network.bindSocket(duplicate.fileDescriptor)
             }
         }
-        if (result.isFailure) throw IllegalStateException("Unable to bind Firestack socket to physical network", result.exceptionOrNull())
+        runCatching { onSocketBindingResult(result.isSuccess) }
     }
 
     override fun protect(who: String?, fd: Long) {
@@ -165,9 +168,8 @@ private class FirewallDNSFirestackBridge(
     }
 
     private fun protectSocket(descriptor: Int) {
-        val protected = vpnService.protect(descriptor)
+        val protected = runCatching { vpnService.protect(descriptor) }.getOrDefault(false)
         runCatching { onSocketProtectionResult(protected) }
-        if (!protected) throw IllegalStateException("VpnService.protect failed for Firestack socket")
     }
 
     override fun preflow(protocol: Int, uid: Int, cid: String?, src: String?, dst: String?): PreMark =
