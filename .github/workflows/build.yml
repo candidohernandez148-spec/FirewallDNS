@@ -91,3 +91,47 @@ jobs:
           name: FirewallDNS-debug-apks
           path: |
             app/build/outputs/apk/debug/*.apk
+
+  firestack-aar:
+    name: Build pinned Firestack Android AAR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout Firestack source
+        uses: actions/checkout@v4
+        with:
+          repository: celzero/firestack
+          ref: c27887056230769ee897b7c7b92976b96d3c9a6d
+          path: third_party/firestack
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.27.3"
+          cache-dependency-path: third_party/firestack/go.sum
+
+      - name: Set up Android SDK and NDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Install Firestack NDK toolchain
+        run: |
+          sdkmanager --install "ndk;28.2.13676358"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+
+      - name: Build Firestack intra AAR
+        working-directory: third_party/firestack
+        env:
+          GOTOOLCHAIN: local
+        run: |
+          make intra
+          test -s build/intra/tun2socks.aar
+          unzip -l build/intra/tun2socks.aar | grep -q 'jni/arm64-v8a/libgojni.so'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firestack-intra-aar
+          path: third_party/firestack/build/intra/tun2socks.aar
+          if-no-files-found: error
+
