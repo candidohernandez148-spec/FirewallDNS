@@ -179,6 +179,7 @@ object NetworkDns {
         val resolvers: List<String>,
         val transport: String,
         val validated: Boolean,
+        val linkMtu: Int,
     )
 
     /** Resolver addresses and Network identity are read from one network generation. */
@@ -187,7 +188,8 @@ object NetworkDns {
         val cm = context.getSystemService(ConnectivityManager::class.java)
         val network = activeNetwork(context)
         val capabilities = network?.let { cm.getNetworkCapabilities(it) }
-        val resolvers = fromLink(network?.let { cm.getLinkProperties(it) }, allowIpv6)
+        val linkProperties = network?.let { cm.getLinkProperties(it) }
+        val resolvers = fromLink(linkProperties, allowIpv6)
             .split(',')
             .map(String::trim)
             .filter(String::isNotEmpty)
@@ -204,9 +206,10 @@ object NetworkDns {
             resolvers = resolvers,
             transport = transport,
             validated = capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true,
+            linkMtu = linkProperties?.mtu ?: 0,
         )
     } catch (_: Throwable) {
-        ActiveDnsSnapshot(null, emptyList(), "Sin red física", false)
+        ActiveDnsSnapshot(null, emptyList(), "Sin red física", false, 0)
     }
 
     fun activeServers(context: Context, allowIpv6: Boolean = true): List<String> =
