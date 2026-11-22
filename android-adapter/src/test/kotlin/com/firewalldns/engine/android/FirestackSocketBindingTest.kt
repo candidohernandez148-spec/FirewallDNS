@@ -72,6 +72,10 @@ class FirestackSocketBindingTest {
             parseFirestackDomainMetadata(" ads.example,, tracker.example "),
         )
         assertEquals(emptyList<String>(), parseFirestackDomainMetadata("x".repeat(254)))
+        assertEquals(
+            listOf("valid.example"),
+            parseFirestackDomainMetadata("valid.example," + "x".repeat(4090) + ",tail.example"),
+        )
     }
 
     @Test
