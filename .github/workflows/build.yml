@@ -2,6 +2,21 @@ name: Build Debug (FirewallDNS TUN + smoltcp)
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - "fix/physical-network-dns-handover"
+    paths:
+      - "rust-core/**"
+      - "android-adapter/**"
+      - "dns-engine/**"
+      - "engine-runtime/**"
+      - "engine-core/**"
+      - "engine-monitor/**"
+      - "threat-engine/**"
+      - "app/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - ".github/workflows/build.yml"
   pull_request:
     paths:
       - "rust-core/**"
