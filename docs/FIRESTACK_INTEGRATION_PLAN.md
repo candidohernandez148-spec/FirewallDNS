@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Completar FirewallDNS como un firewall virtual Android sobre un único `VpnService` y una única interfaz TUN. El motor propio debe poder recibir, clasificar, decidir y reenviar tráfico IPv4/IPv6 TCP y UDP, además de aplicar la política DNS y de amenazas ya existente.
+FirewallDNS se ha ampliado como firewall virtual Android sobre un único `VpnService` y una única interfaz TUN. Firestack/gVisor proporciona el plano TCP/UDP/ICMP IPv4/IPv6 y FirewallDNS conserva la autoridad de política DNS, dominios, aplicaciones y flujos.
 
 La integración debe conservar el filtrado DNS que ya funciona en Wi-Fi y datos móviles. Ningún componente nuevo sustituye al servicio VPN actual ni crea una segunda VPN.
 
@@ -18,7 +18,7 @@ La integración debe conservar el filtrado DNS que ya funciona en Wi-Fi y datos 
 ## Arquitectura objetivo
 
 1. **Android VPN host**: `DnsFirewallService` conserva la propiedad del descriptor TUN, el ciclo de vida, las rutas, la notificación y el permiso VPN.
-2. **Adaptador de pila**: una interfaz interna `PacketStack` permite iniciar, detener y consultar estadísticas del motor. Firestack/gVisor será el candidato principal para la pila TCP/UDP general.
+2. **Adaptador de pila**: `FirestackTunnelAdapter` inicia, detiene y consulta estadísticas de Firestack/gVisor sobre el descriptor TUN duplicado del servicio Android.
 3. **Política FirewallDNS**: una sola autoridad de decisión recibe protocolo, UID, IP/puerto, dominio conocido y estado de la conexión. Devuelve BLOQUEAR, OBSERVAR o PERMITIR. El bloqueo DNS existente se conserva.
 4. **Resolución de propietario**: usar `ConnectivityManager.getConnectionOwnerUid` cuando esté disponible; UID desconocido debe quedar explícito y no atribuirse a una aplicación inventada.
 5. **Salida protegida**: todo socket de salida debe pasar por el controlador Android, enlazarse a la red física seleccionada cuando sea necesario y llamar a `VpnService.protect(fd)` antes de conectar.
@@ -54,7 +54,7 @@ This does **not** decrypt DoH/DoT/DoQ or arbitrary encrypted DNS on ports 443/85
 - Preferir una dependencia/AAR reproducible y fijada por versión o una compilación propia reproducible; no depender de una rama móvil sin pin.
 - Añadir inventario de dependencias y fuentes de terceros.
 
-### Fase B — Adaptador Firestack aislado
+### Fase B — Adaptador Firestack aislado (completada)
 
 - Crear módulo `firestack-adapter` con interfaz `PacketStack`.
 - Implementar los callbacks Bridge y mapearlos a decisiones de FirewallDNS.
@@ -62,7 +62,7 @@ This does **not** decrypt DoH/DoT/DoQ or arbitrary encrypted DNS on ports 443/85
 - Proteger y enlazar todos los sockets de salida a la red física correcta.
 - Desconexión idempotente, gestión de errores, límites de memoria y cierre seguro.
 
-### Fase C — Activación progresiva del plano de datos
+### Fase C — Activación progresiva del plano de datos (completada para TCP/UDP/ICMP general)
 
 - Mantener DNS UDP actual como ruta de respaldo durante la migración.
 - Activar primero TCP/UDP general en modo de observación, con contadores reales.
@@ -70,7 +70,7 @@ This does **not** decrypt DoH/DoT/DoQ or arbitrary encrypted DNS on ports 443/85
 - Evitar doble procesamiento: cada paquete debe pertenecer a una única pila activa.
 - Retirar RST/descartes experimentales de DNS/TCP solo cuando la nueva pila gestione realmente esos flujos.
 
-### Fase D — Seguridad y resiliencia
+### Fase D — Seguridad y resiliencia (parcial; validación física pendiente)
 
 - IPv4 e IPv6, fragmentación/reensamblado, MTU y paquetes malformados.
 - DNS UDP/TCP, protección contra DNS rebinding y validación de respuestas.
@@ -79,7 +79,7 @@ This does **not** decrypt DoH/DoT/DoQ or arbitrary encrypted DNS on ports 443/85
 - Límites de sesiones, colas, buffers, timeouts y presión de memoria.
 - Pruebas de batería, CPU y estabilidad prolongada.
 
-### Fase E — Retirada de duplicados y consolidación
+### Fase E — Retirada de duplicados y consolidación (parcial)
 
 - Comparar smoltcp y Firestack con pruebas y benchmarks.
 - Mantener smoltcp solo donde aporte valor probado (por ejemplo, harness de pruebas o un protocolo especializado); no ejecutar dos pilas generales para el mismo TUN.
@@ -97,7 +97,7 @@ This does **not** decrypt DoH/DoT/DoQ or arbitrary encrypted DNS on ports 443/85
 - Pruebas automatizadas, pruebas en dispositivo y métricas de rendimiento.
 - Licencias, avisos y fuentes de terceros incluidos.
 
-## Estado de implementación de esta rama
+## Estado integrado en `main`
 
 - Firestack está fijado a `c27887056230769ee897b7c7b92976b96d3c9a6d` y se compila como AAR Android ARM64 desde fuente durante CI.
 - `FirestackTunnelAdapter` conecta `Intra.connect` al descriptor duplicado del TUN establecido por el único `DnsFirewallService`; el servicio no mantiene un segundo lector TUN cuando Firestack está activo.
@@ -110,10 +110,10 @@ This does **not** decrypt DoH/DoT/DoQ or arbitrary encrypted DNS on ports 443/85
 - `EncryptedDnsGuard` bloquea DoT TCP/853 y DoQ UDP/853, 784 y 8853; bloquea dominios DoH conocidos correlacionados con flujos y deja dominios probables en OBSERVAR. No descifra TLS ni garantiza detectar DoH por IP sin dominio correlacionado.
 - `FlowConnectionMonitor` mantiene límites estrictos, métricas de bytes, UID/aplicación, protocolo, regla y generación de red; serializa cierre, actividad y expiración para evitar carreras.
 - Inicio, Diagnóstico y métricas exponen el estado Firestack, flujos, protección/enlace de sockets y fallos de red.
-- CI incluye pruebas Go del parche Firestack, pruebas Kotlin/Rust y compilación APK. La compilación y el artefacto final de la revisión actual todavía deben terminar correctamente.
+- CI de la revisión integrada en PR #94 completó correctamente la compilación del AAR Firestack, las pruebas Go, las pruebas Kotlin/Rust, la compilación Release, la verificación de firma y el empaquetado de `libgojni.so` + `libfirewalldns_native.so`. También pasó la compilación Debug. La revalidación automática tras el merge en `main` está en curso.
 - La validación final en dispositivo sigue pendiente: Samsung A34 5G, Wi-Fi, Telcel LTE, cambios de red, TCP/UDP, DNS con IP fija, DoT/DoQ/DoH y estabilidad prolongada.
 
-## Línea base anterior a la integración
+## Línea base anterior a la integración (histórico)
 
 - El servicio productivo inicial era principalmente DNS y registraba bloqueos/permitidos UDP.
 - El código smoltcp/Rust/JNI existente demostraba límites y operaciones nativas en pruebas, pero no constituía por sí solo un plano TCP/UDP general productivo.
