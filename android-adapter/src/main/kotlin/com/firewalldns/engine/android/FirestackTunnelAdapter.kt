@@ -3,6 +3,7 @@ package com.firewalldns.engine.android
 import android.net.Network
 import android.net.VpnService
 import android.os.ParcelFileDescriptor
+import java.net.InetAddress
 import com.celzero.firestack.backend.Backend
 import com.celzero.firestack.backend.DNSOpts
 import com.celzero.firestack.backend.DNSSummary
