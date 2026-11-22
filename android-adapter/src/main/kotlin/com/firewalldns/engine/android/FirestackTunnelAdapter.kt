@@ -53,6 +53,21 @@ class FirestackTunnelAdapter private constructor(
     }
 
     /**
+     * Applies a resolver/network update atomically from the adapter's point of view.
+     * Existing sockets are retired only when Android reports a new physical Network.
+     */
+    @Synchronized
+    fun reconfigurePhysicalNetwork(
+        resolver: String,
+        linkMtu: Int,
+        networkChanged: Boolean,
+    ): Boolean = updateAndRestartFirestackNetwork(
+        updateResolver = { updatePhysicalNetworkResolver(resolver, linkMtu) },
+        networkChanged = networkChanged,
+        restartStack = { restartForPhysicalNetworkChange(linkMtu) },
+    )
+
+    /**
      * Recreates Firestack's userspace network stack on the same TUN descriptor
      * after an underlying Android Network handover. Existing sockets are pinned
      * to the old Network and cannot be rebound; restarting flushes those stale
@@ -170,6 +185,17 @@ class FirestackTunnelAdapter private constructor(
                 }
             }.joinToString(",")
     }
+}
+
+internal fun updateAndRestartFirestackNetwork(
+    updateResolver: () -> Boolean,
+    networkChanged: Boolean,
+    restartStack: () -> Boolean,
+): Boolean {
+    val resolverUpdated = runCatching(updateResolver).getOrDefault(false)
+    if (!resolverUpdated) return false
+    if (!networkChanged) return true
+    return runCatching(restartStack).getOrDefault(false)
 }
 
 private fun isNumericIpLiteral(value: String): Boolean {
