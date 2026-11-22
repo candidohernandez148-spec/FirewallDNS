@@ -47,3 +47,37 @@ index 0000000..2222222
 +		t.Fatalf("DNSMode = %d, want %d (port capture)", got, settings.DNSModePort)
 +	}
 +}
+
+diff --git a/intra/dnsx/firewalldns_test.go b/intra/dnsx/firewalldns_test.go
+new file mode 100644
+index 0000000..3333333
+--- /dev/null
++++ b/intra/dnsx/firewalldns_test.go
+@@ -0,0 +1,27 @@
++package dnsx
++
++import (
++	"net/netip"
++	"testing"
++
++	"github.com/celzero/firestack/intra/settings"
++)
++
++func TestFirewallDNSPortModeInterceptsAnyResolverAddress(t *testing.T) {
++	previous := settings.DNSMode.Load()
++	defer settings.DNSMode.Store(previous)
++	settings.DNSMode.Store(settings.DNSModePort)
++	r := &resolver{dnsaddrs: []netip.AddrPort{
++		netip.MustParseAddrPort("10.10.10.1:53"),
++		netip.MustParseAddrPort("[fd00:10:10::1]:53"),
++	}}
++	if !r.isDns(netip.MustParseAddrPort("8.8.8.8:53")) {
++		t.Fatal("IPv4 hard-coded resolver was not intercepted")
++	}
++	if !r.isDns(netip.MustParseAddrPort("[2001:db8::53]:53")) {
++		t.Fatal("IPv6 hard-coded resolver was not intercepted")
++	}
++	if r.isDns(netip.MustParseAddrPort("8.8.8.8:443")) {
++		t.Fatal("non-DNS port was intercepted")
++	}
++}
