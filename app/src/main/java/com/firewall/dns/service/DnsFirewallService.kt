@@ -35,7 +35,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.runBlocking
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
@@ -119,21 +118,14 @@ class DnsFirewallService : VpnService() {
             }
         }
         serviceScope.launch {
-            var lastNativeStatsAtNanos = 0L
             while (isActive) {
                 delay(1_000L)
                 val runtime = sharedEngine?.engine ?: continue
                 if (!isRunning || activeTunSession?.firestack == null) continue
                 runtime.evictIdleFlows()
-                // Detailed active-flow snapshots are sampled off packet callbacks for the topology UI.
+                // Active-flow and engine-queue snapshots are real runtime metrics.
                 FirewallDnsTrafficMetrics.flowSnapshot(runtime.flowMonitor.snapshot(includeFlows = true))
                 FirewallDnsTrafficMetrics.engineMonitorSnapshot(runtime.metrics())
-                // Firestack's native NetStat API caches its snapshot for up to 30 seconds.
-                val nowNanos = System.nanoTime()
-                if (nowNanos - lastNativeStatsAtNanos >= TimeUnit.SECONDS.toNanos(30)) {
-                    lastNativeStatsAtNanos = nowNanos
-                    activeTunSession?.firestack?.nativeStats()?.let(FirewallDnsTrafficMetrics::firestackNativeSnapshot)
-                }
             }
         }
     }
