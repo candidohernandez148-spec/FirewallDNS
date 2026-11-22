@@ -139,7 +139,13 @@ fun ThreatMapScreen(
         ) {
             item { SocHeader(vpnRunning = vpnRunning, metrics = tunMetrics) }
             item {
-                ThreeDimensionalMindMap(nodes = nodes, selectedNode = selectedNode) { id ->
+                ThreeDimensionalMindMap(
+                    nodes = nodes,
+                    selectedNode = selectedNode,
+                    lastDnsDecisionAtEpochMs = tunMetrics.lastDnsDecisionAtEpochMs,
+                    activeFlowCount = tunMetrics.flowsActive,
+                    vpnRunning = vpnRunning
+                ) { id ->
                     section = when (id) {
                         "tun" -> "red"
                         "dns" -> "dns"
@@ -389,40 +395,46 @@ private fun MindMapAction(label: String, destination: String, symbol: String, on
 private fun ThreeDimensionalMindMap(
     nodes: List<MindMapNode>,
     selectedNode: String,
+    lastDnsDecisionAtEpochMs: Long,
+    activeFlowCount: Long,
+    vpnRunning: Boolean,
     onSelectNode: (String) -> Unit
 ) {
-    val transition = rememberInfiniteTransition(label = "mind-map-3d")
-    val rotation by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = (Math.PI * 2.0).toFloat(),
-        animationSpec = infiniteRepeatable(tween(18000, easing = LinearEasing), RepeatMode.Restart),
-        label = "mind-map-rotation"
-    )
-    val latestRotation by rememberUpdatedState(rotation)
-    val pulse by transition.animateFloat(
-        initialValue = 0.72f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(1500), RepeatMode.Reverse),
-        label = "mind-map-pulse"
-    )
-    val flowPhase by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(2600, easing = LinearEasing), RepeatMode.Restart),
-        label = "mind-map-flow-particles"
-    )
+    // A moving marker is emitted only by a new DNS decision callback.
+    // Active flows remain visible as live state; they are not represented as packets.
+    val dnsEventProgress = remember { androidx.compose.animation.core.Animatable(1f) }
+    LaunchedEffect(lastDnsDecisionAtEpochMs, vpnRunning) {
+        if (vpnRunning && lastDnsDecisionAtEpochMs > 0L) {
+            dnsEventProgress.snapTo(0f)
+            dnsEventProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(900, easing = LinearEasing)
+            )
+        } else {
+            dnsEventProgress.snapTo(1f)
+        }
+    }
+    val latestRotation = 0f
     val background = MaterialTheme.colorScheme.surface
     val lineColor = MaterialTheme.colorScheme.outlineVariant
     val onSurface = MaterialTheme.colorScheme.onSurface
     val density = LocalDensity.current.density
+    val dnsEventRecent = vpnRunning &&
+        lastDnsDecisionAtEpochMs > 0L &&
+        System.currentTimeMillis() - lastDnsDecisionAtEpochMs in 0L..2500L
     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(containerColor = background)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("TOPOLOGÍA SOC · FIREWALLDNS", Modifier.weight(1f),
                     style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                Text("3D · EN MOVIMIENTO", style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary)
+                Text(
+                    if (!vpnRunning) "MOTOR DETENIDO"
+                    else if (dnsEventRecent || activeFlowCount > 0L) "ACTIVIDAD DETECTADA"
+                    else "EN ESPERA DE EVENTOS",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (vpnRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
             Canvas(
                 Modifier.fillMaxWidth().height(320.dp)
@@ -448,10 +460,10 @@ private fun ThreeDimensionalMindMap(
                     val radius = minOf(w * .43f, h * .43f)
                     val basePaint = Paint(Paint.ANTI_ALIAS_FLAG)
                     val projected = nodes.associateWith {
-                        projectNode(it, w, h, rotation)
+                        projectNode(it, w, h, latestRotation)
                     }
 
-                    // Layered orbital rings create depth without representing real network geography.
+                    // Stable 3D depth rings: spatial decoration only, never shown as traffic.
                     for (ring in 0..2) {
                         basePaint.style = Paint.Style.STROKE
                         basePaint.strokeWidth = if (ring == 1) 1.5f else 1f
@@ -465,48 +477,59 @@ private fun ThreeDimensionalMindMap(
                         canvas.drawOval(oval, basePaint)
                     }
 
-                    // Edges are the real code-path topology: TUN -> DNS -> policy,
-                    // with catalog, rules and app identity feeding policy decisions.
                     val byId = nodes.associateBy { it.id }
                     architectureEdges.forEach { edge ->
                         val from = byId[edge.from] ?: return@forEach
                         val to = byId[edge.to] ?: return@forEach
-                        val start = projected.getValue(from)
-                        val end = projected.getValue(to)
+                        val begin = projected.getValue(from)
+                        val finish = projected.getValue(to)
+                        val isDnsRoute = edge.from == "dns" && edge.to == "decisions"
+                        val routeActive = vpnRunning && (
+                            (isDnsRoute && dnsEventRecent) ||
+                            (edge.from == "tun" && activeFlowCount > 0L) ||
+                            (edge.from == "core" && activeFlowCount > 0L)
+                        )
                         basePaint.style = Paint.Style.STROKE
-                        basePaint.strokeWidth = 2.1f
-                        basePaint.color = to.tint.copy(alpha = .58f).toArgb()
-                        canvas.drawLine(start.x, start.y, end.x, end.y, basePaint)
+                        basePaint.strokeWidth = if (routeActive) 3f else 1.5f
+                        basePaint.color = to.tint.copy(alpha = if (routeActive) .9f else .24f).toArgb()
+                        canvas.drawLine(begin.x, begin.y, finish.x, finish.y, basePaint)
 
-                        // Animated route markers visualize the architecture only.
-                        // They are deliberately not presented as captured network packets.
-                        val particle = (flowPhase + edge.from.hashCode().mod(17) / 17f) % 1f
-                        val px = start.x + (end.x - start.x) * particle
-                        val py = start.y + (end.y - start.y) * particle
-                        basePaint.style = Paint.Style.FILL
-                        basePaint.color = to.tint.copy(alpha = .95f).toArgb()
-                        basePaint.setShadowLayer(10f, 0f, 0f, to.tint.toArgb())
-                        canvas.drawCircle(px, py, 3.2f * density, basePaint)
-                        basePaint.clearShadowLayer()
-                        canvas.drawCircle(px, py, 1.4f * density, android.graphics.Paint().apply {
-                            color = android.graphics.Color.WHITE
-                            isAntiAlias = true
-                        })
+                        // This short-lived marker corresponds to the timestamped DNS decision event.
+                        // It is not a packet and never loops when the engine is idle.
+                        if (isDnsRoute && dnsEventRecent && dnsEventProgress.value < 1f) {
+                            val progress = dnsEventProgress.value
+                            val px = begin.x + (finish.x - begin.x) * progress
+                            val py = begin.y + (finish.y - begin.y) * progress
+                            basePaint.style = Paint.Style.FILL
+                            basePaint.color = Color(0xFFFF667D).toArgb()
+                            basePaint.setShadowLayer(12f, 0f, 0f, Color(0xFFFF667D).toArgb())
+                            canvas.drawCircle(px, py, 4.2f * density, basePaint)
+                            basePaint.clearShadowLayer()
+                            canvas.drawCircle(px, py, 1.6f * density, android.graphics.Paint().apply {
+                                color = android.graphics.Color.WHITE
+                                isAntiAlias = true
+                            })
+                        }
                     }
 
-                    // Back-to-front sorting makes nearer nodes larger and visually layered.
                     nodes.sortedBy { projected.getValue(it).y }.forEach { node ->
                         val point = projected.getValue(node)
                         val depth = (point.zDepth + 1f) / 2f
                         val nodeRadius = (if (node.id == "core") 17f else 11f) * (.78f + depth * .38f)
                         val isSelected = node.id == selectedNode
+                        val nodeActive = vpnRunning && when (node.id) {
+                            "core", "tun" -> true
+                            "dns", "decisions" -> dnsEventRecent
+                            "apps" -> activeFlowCount > 0L
+                            else -> false
+                        }
                         basePaint.style = Paint.Style.FILL
-                        basePaint.color = node.tint.copy(alpha = .12f * pulse).toArgb()
-                        canvas.drawCircle(point.x, point.y, nodeRadius * 2.8f * pulse, basePaint)
-                        basePaint.color = node.tint.copy(alpha = .24f).toArgb()
+                        basePaint.color = node.tint.copy(alpha = if (nodeActive) .22f else .035f).toArgb()
+                        canvas.drawCircle(point.x, point.y, nodeRadius * if (nodeActive) 2.8f else 1.7f, basePaint)
+                        basePaint.color = node.tint.copy(alpha = if (nodeActive) .34f else .10f).toArgb()
                         canvas.drawCircle(point.x, point.y, nodeRadius * 1.65f, basePaint)
-                        basePaint.color = node.tint.toArgb()
-                        basePaint.setShadowLayer(12f, 0f, 4f, node.tint.copy(alpha = .75f).toArgb())
+                        basePaint.color = node.tint.copy(alpha = if (nodeActive) 1f else .42f).toArgb()
+                        if (nodeActive) basePaint.setShadowLayer(12f, 0f, 4f, node.tint.copy(alpha = .75f).toArgb())
                         canvas.drawCircle(point.x, point.y, nodeRadius * if (isSelected) 1.18f else 1f, basePaint)
                         basePaint.clearShadowLayer()
                         basePaint.color = android.graphics.Color.WHITE
@@ -524,8 +547,11 @@ private fun ThreeDimensionalMindMap(
                     }
                 }
             }
-            Text("Animación 3D de la arquitectura y sus rutas funcionales. Los puntos luminosos son un efecto visual, no paquetes capturados. Las cifras se alimentan de la telemetría real.",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                "El pulso móvil aparece únicamente al recibir una decisión DNS real. Los nodos de TUN y aplicaciones reflejan el estado del servicio y los flujos activos; no se inventan paquetes ni tráfico.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
