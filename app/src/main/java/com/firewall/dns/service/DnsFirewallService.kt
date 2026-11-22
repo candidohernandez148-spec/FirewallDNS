@@ -887,6 +887,13 @@ class DnsFirewallService : VpnService() {
         // In-flight exchanges keep the old client pinned to its original Network.
         upstreamSnapshot = UpstreamSnapshot(replacement, discovered.toList(), physicalNetwork)
         FirewallDnsTrafficMetrics.upstreamResolversChanged(discovered)
+        // Rebind Firestack's default DNS transport to the resolver from this exact
+        // physical-network generation without restarting the TUN/netstack.
+        activeTunSession?.firestack?.let { stack ->
+            if (!stack.updatePhysicalNetworkResolver(discovered.first())) {
+                FirewallDnsTrafficMetrics.upstreamFailure()
+            }
+        }
         dnsCache.clear()
     }
 
