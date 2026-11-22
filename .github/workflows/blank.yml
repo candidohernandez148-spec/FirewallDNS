@@ -75,6 +75,8 @@ jobs:
         env:
           GOTOOLCHAIN: local
         run: |
+          git apply ../patches/firestack-capture-dns-port.patch
+          go test ./intra/...
           make intra
           test -s build/intra/tun2socks.aar
           unzip -l build/intra/tun2socks.aar | grep -q 'jni/arm64-v8a/libgojni.so'
