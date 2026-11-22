@@ -13,7 +13,7 @@ La integración debe conservar el filtrado DNS que ya funciona en Wi-Fi y datos 
 - Firestack usa gVisor/netstack para TCP/UDP sobre TUN y expone `intra.Connect(fd, linkmtu, tunmtu, ifaddrs, fakedns, defaultDNS, bridge)`.
 - Rethink app: `https://github.com/celzero/rethink-app`, especialmente `GoVpnAdapter.kt` y `BraveVPNService.kt`, como referencia de integración Android.
 - gVisor networking guide: `https://gvisor.dev/docs/architecture_guide/networking/`
-- smoltcp/Rust de FirewallDNS: se conserva exclusivamente para pruebas nativas y diagnósticos aislados; no participa en el plano de datos de la VPN productiva.
+- Prototipo smoltcp/Rust de FirewallDNS: retirado del código activo, del APK y de CI; Firestack/gVisor permanece como única pila de paquetes.
 
 ## Arquitectura objetivo
 
@@ -81,8 +81,8 @@ This does **not** decrypt DoH/DoT/DoQ or arbitrary encrypted DNS on ports 443/85
 
 ### Fase E — Retirada de duplicados y consolidación (completada en código)
 
-- Comparar smoltcp y Firestack con pruebas y benchmarks.
-- Retirar smoltcp del camino productivo; conservarlo únicamente como harness de pruebas y diagnóstico, sin lector TUN ni fallback en ejecución.
+- (Histórico) Se compararon prototipos smoltcp y Firestack; el código smoltcp fue retirado posteriormente.
+- (Completado) Retirar smoltcp, su JNI y el banco de pruebas del proyecto activo.
 - Consolidar métricas, mapa, Monitor, Amenazas y Diagnóstico en el mismo origen de eventos.
 - Documentar capacidades reales y límites visibles en la aplicación.
 
@@ -100,7 +100,7 @@ This does **not** decrypt DoH/DoT/DoQ or arbitrary encrypted DNS on ports 443/85
 ## Estado integrado en `main`
 
 - Firestack está fijado a `c27887056230769ee897b7c7b92976b96d3c9a6d` y se compila como AAR Android ARM64 desde fuente durante CI.
-- `FirestackTunnelAdapter` conecta `Intra.connect` al descriptor duplicado del TUN establecido por el único `DnsFirewallService`; el servicio no mantiene lector TUN Kotlin, ruta smoltcp ni motor DNS alternativo.
+- `FirestackTunnelAdapter` conecta `Intra.connect` al descriptor duplicado del TUN establecido por el único `DnsFirewallService`; el servicio no mantiene lector TUN Kotlin, motor DNS alternativo.
 - Si Firestack no arranca, se cierra el descriptor TUN y el servicio no declara protección activa ni establece un túnel DNS alternativo. No hay motor de respaldo en producción.
 - El `Bridge` Android protege sockets y los enlaza a la instancia física `Network` seleccionada; cada resultado se contabiliza. No se cachean descriptores FD reutilizables.
 - La selección de red, lista de resolvers y MTU se toman de snapshots físicos; el cambio Wi-Fi/LTE actualiza DNS y MTU sin reiniciar TUN, y los fallos de rebind quedan pendientes para reintento.
@@ -123,6 +123,6 @@ This does **not** decrypt DoH/DoT/DoQ or arbitrary encrypted DNS on ports 443/85
 ## Línea base anterior a la integración (histórico)
 
 - El servicio productivo inicial era principalmente DNS y registraba bloqueos/permitidos UDP.
-- El código smoltcp/Rust/JNI se mantiene solo como banco de pruebas y diagnóstico; no constituye un plano de datos productivo.
+- El código smoltcp/Rust/JNI fue retirado del proyecto activo; no forma parte del motor ni del APK.
 - El fallo de DNS/TCP upstream observado en Telcel era un problema distinto del reenvío TCP general de la pila Firestack.
 - Esta sección es histórica; el estado vigente de integración está descrito arriba.
