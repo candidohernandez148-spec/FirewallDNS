@@ -99,19 +99,23 @@ This does **not** decrypt DoH/DoT/DoQ or arbitrary encrypted DNS on ports 443/85
 
 ## Estado de implementación de esta rama
 
-- Añadido `NetworkFlowPolicyEngine` al módulo `engine-core`: reglas TCP/UDP/ICMP por protocolo, UID, paquete, CIDR IPv4/IPv6 y puerto; snapshots atómicos; prioridad/origen; caducidad; evaluación sin I/O; las reglas HEURISTIC no pueden bloquear.
-- Expuesto `replaceFlowRules` y `evaluateFlow` desde `EngineRuntime` para que el futuro `FlowListener` de Firestack delegue en el motor único de FirewallDNS.
-- Añadido `AndroidFlowPolicyAdapter`: traduce protocolos TCP/UDP/ICMP de la pila a reglas del motor, conserva UID desconocido sin inferencias y registra flujos/bytes/cierres con su generación de red.
-- Añadidas pruebas del adaptador Android para reglas por UID, UID desconocido, bytes y flujos ICMP sin puertos ficticios.
-- Añadidas pruebas unitarias para CIDR IPv4/IPv6, UID desconocido, expiración y rechazo de reglas heurísticas de bloqueo.
-- Añadido `FlowConnectionMonitor` con límite estricto de flujos activos, contadores de bytes, UID/aplicación, protocolo, regla aplicada, generación de red, cierre y expiración segura ante concurrencia; expuesto desde `EngineRuntime`.
-- Añadidas pruebas de capacidad, bytes, expiración y decisiones de bloqueo para telemetría de flujos.
-- Actualizado el workflow para ejecutar pruebas de `engine-core`, `engine-monitor`, `threat-engine`, `dns-engine`, `engine-runtime`, `android-adapter` y `app`; ahora también se ejecuta en cada push a la rama de integración.
-- **Todavía no integrado** el AAR/Go runtime de Firestack ni conectado `intra.Connect` al descriptor TUN. El siguiente paso es implementar el adaptador `Bridge` y verificar sus callbacks y protección de sockets.
+- Firestack está fijado a `c27887056230769ee897b7c7b92976b96d3c9a6d` y se compila como AAR Android ARM64 desde fuente durante CI.
+- `FirestackTunnelAdapter` conecta `Intra.connect` al descriptor duplicado del TUN establecido por el único `DnsFirewallService`; el servicio no mantiene un segundo lector TUN cuando Firestack está activo.
+- Si Firestack no arranca, se cierra la ruta completa antes de establecer el TUN DNS selectivo de respaldo.
+- El `Bridge` Android protege sockets y los enlaza a la instancia física `Network` seleccionada; cada resultado se contabiliza. No se cachean descriptores FD reutilizables.
+- La selección de red, lista de resolvers y MTU se toman de snapshots físicos; el cambio Wi-Fi/LTE actualiza DNS y MTU sin reiniciar TUN, y los fallos de rebind quedan pendientes para reintento.
+- El parche MPL-2.0 `third_party/patches/firestack-capture-dns-port.patch` expone `Intra.captureDnsPort()` y cambia Firestack a `DNSModePort`: consultas UDP/TCP 53 hacia cualquier IP de resolver pasan por `onQuery` y la política de dominios. Hay pruebas Go para IPv4/IPv6.
+- `AndroidFlowPolicyAdapter` conecta los callbacks `Flow`/`Inflow` con la política de FirewallDNS, conserva UID desconocido sin inferencias, consulta bloqueos por aplicación y registra flujos/bytes/cierres.
+- `NetworkFlowPolicyEngine` evalúa TCP/UDP/ICMP por UID, paquete, protocolo, CIDR IPv4/IPv6 y puerto; usa snapshots atómicos, prioridad/origen y caducidad; las reglas HEURISTIC no pueden bloquear.
+- `EncryptedDnsGuard` bloquea DoT TCP/853 y DoQ UDP/853, 784 y 8853; bloquea dominios DoH conocidos correlacionados con flujos y deja dominios probables en OBSERVAR. No descifra TLS ni garantiza detectar DoH por IP sin dominio correlacionado.
+- `FlowConnectionMonitor` mantiene límites estrictos, métricas de bytes, UID/aplicación, protocolo, regla y generación de red; serializa cierre, actividad y expiración para evitar carreras.
+- Inicio, Diagnóstico y métricas exponen el estado Firestack, flujos, protección/enlace de sockets y fallos de red.
+- CI incluye pruebas Go del parche Firestack, pruebas Kotlin/Rust y compilación APK. La compilación y el artefacto final de la revisión actual todavía deben terminar correctamente.
+- La validación final en dispositivo sigue pendiente: Samsung A34 5G, Wi-Fi, Telcel LTE, cambios de red, TCP/UDP, DNS con IP fija, DoT/DoQ/DoH y estabilidad prolongada.
 
-## Estado al iniciar esta integración
+## Línea base anterior a la integración
 
-- El servicio productivo existente sigue siendo principalmente DNS y ya registra bloqueos/permitidos UDP en el dispositivo.
-- El código smoltcp/Rust/JNI existente demuestra límites y operaciones nativas en pruebas; eso no equivale todavía a un plano TCP/UDP general productivo.
-- La prueba DNS/TCP upstream fallida en Telcel no debe bloquear la integración de una pila TCP general: son caminos distintos.
-- Este documento define el trabajo; no afirma que Firestack esté ya enlazado al TUN ni que TCP/UDP general esté terminado.
+- El servicio productivo inicial era principalmente DNS y registraba bloqueos/permitidos UDP.
+- El código smoltcp/Rust/JNI existente demostraba límites y operaciones nativas en pruebas, pero no constituía por sí solo un plano TCP/UDP general productivo.
+- El fallo de DNS/TCP upstream observado en Telcel era un problema distinto del reenvío TCP general de la pila Firestack.
+- Esta sección es histórica; el estado vigente de integración está descrito arriba.
