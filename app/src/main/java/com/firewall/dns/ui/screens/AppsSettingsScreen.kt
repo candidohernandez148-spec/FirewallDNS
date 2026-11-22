@@ -160,7 +160,8 @@ fun AppsSettingsScreen(
                 }
                 val chipColor = when {
                     excluded -> MaterialTheme.colorScheme.tertiary
-                    internetBlocked -> MaterialTheme.colorScheme.error
+                    internetBlocked && firestackActive -> MaterialTheme.colorScheme.error
+                    internetBlocked -> MaterialTheme.colorScheme.tertiary
                     else -> MaterialTheme.colorScheme.secondary
                 }
 
