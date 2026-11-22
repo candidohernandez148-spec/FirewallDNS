@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import com.firewall.dns.domain.model.AppInfoItem
 import com.firewall.dns.domain.model.BlocklistDownloadProgress
 import com.firewall.dns.domain.model.FirewallStats
+import com.firewall.dns.domain.model.DnsLogEntry
 import com.firewalldns.engine.core.NetworkFlowRule
 
 @Composable
@@ -43,6 +44,7 @@ fun ProtectionHubScreen(
     onAddFlowRule: (String, com.firewalldns.engine.core.FlowProtocol?, Int?, String?, com.firewalldns.engine.core.PolicyAction) -> Boolean,
     onRemoveFlowRule: (String) -> Unit,
     apps: List<AppInfoItem>,
+    logs: List<DnsLogEntry>,
     excludedPackages: Set<String>,
     blockedApps: Set<String>,
     appSearch: String,
@@ -85,6 +87,7 @@ fun ProtectionHubScreen(
             AppsSettingsScreen(
                 stats = stats,
                 apps = apps,
+                logs = logs,
                 excludedPackages = excludedPackages,
                 blockedApps = blockedApps,
                 onToggleBlockedApp = onToggleBlockedApp,
