@@ -19,7 +19,6 @@ import com.firewalldns.engine.core.PolicyAction
 import com.firewalldns.engine.core.NetworkFlowDecision
 import com.firewalldns.engine.monitor.FlowMonitorSnapshot
 import com.firewalldns.engine.runtime.EngineRuntime
-import java.net.URI
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -221,8 +220,8 @@ private class FirewallDNSFirestackBridge(
         domainDecision: NetworkFlowDecision? = null,
     ) = runCatching {
         val portless = protocol == 1 || protocol == 58
-        val source = parseEndpoint(src, portless) ?: return null
-        val destination = parseEndpoint(dst, portless) ?: return null
+        val source = parseFirestackEndpoint(src, portless) ?: return null
+        val destination = parseFirestackEndpoint(dst, portless) ?: return null
         flowPolicyAdapter.evaluate(
             flowId = cid,
             protocolNumber = protocol,
@@ -300,22 +299,36 @@ private class FirewallDNSFirestackBridge(
         if (!closed.compareAndSet(false, true)) return
     }
 
-    private fun parseEndpoint(value: String, portless: Boolean): Pair<String, Int>? = runCatching {
-        if (portless) {
-            val host = when {
-                value.startsWith("[") && value.contains("]:") -> value.substring(1, value.indexOf("]:"))
-                value.startsWith("[") && value.endsWith("]") -> value.substring(1, value.length - 1)
-                value.contains(":") && value.count { it == ':' } == 1 -> value.substringBefore(':')
-                else -> value
-            }
-            require(host.isNotBlank())
-            host to 0
-        } else {
-            val uri = URI("tcp://$value")
-            val host = uri.host ?: return null
-            val port = uri.port
-            require(port in 1..65535)
-            host.removePrefix("[").removeSuffix("]") to port
-        }
-    }.getOrNull()
 }
+
+internal fun parseFirestackEndpoint(value: String, portless: Boolean): Pair<String, Int>? = runCatching {
+    val endpoint = value.trim()
+    require(endpoint.isNotEmpty())
+    if (portless) {
+        val host = when {
+            endpoint.startsWith("[") && endpoint.contains("]") ->
+                endpoint.substring(1, endpoint.indexOf(']'))
+            endpoint.count { it == ':' } == 1 -> endpoint.substringBeforeLast(':')
+            else -> endpoint
+        }
+        require(host.isNotBlank())
+        host to 0
+    } else {
+        val host: String
+        val portText: String
+        if (endpoint.startsWith("[")) {
+            val close = endpoint.indexOf(']')
+            require(close > 1 && endpoint.getOrNull(close + 1) == ':')
+            host = endpoint.substring(1, close)
+            portText = endpoint.substring(close + 2)
+        } else {
+            val separator = endpoint.lastIndexOf(':')
+            require(separator > 0)
+            host = endpoint.substring(0, separator)
+            portText = endpoint.substring(separator + 1)
+        }
+        val port = portText.toIntOrNull() ?: throw IllegalArgumentException("Invalid port")
+        require(port in 1..65535)
+        host to port
+    }
+}.getOrNull()
