@@ -57,7 +57,6 @@ fun AppsSettingsScreen(
     onOpenVpnSettings: () -> Unit
 ) {
     val firestackActive = stats.isRunning && stats.engine.contains("Firestack/gVisor", ignoreCase = true)
-    val dnsOnlyFallback = stats.isRunning && stats.engine.contains("DNS fallback", ignoreCase = true)
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 9.dp),
