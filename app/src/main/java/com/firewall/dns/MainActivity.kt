@@ -439,6 +439,7 @@ fun FirewallApp(
                     onAddFlowRule = viewModel::addNetworkFlowRule,
                     onRemoveFlowRule = viewModel::removeNetworkFlowRule,
                     apps = apps,
+                    logs = activityLogs,
                     excludedPackages = excludedPackages,
                     blockedApps = blockedApps,
                     appSearch = appSearch,
