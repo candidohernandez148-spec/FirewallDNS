@@ -320,16 +320,25 @@ private fun LiveTrafficFlowMap(
                     Text("RECORRIDO DEL TRÁFICO", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                     Text(if (vpnRunning) "EN VIVO" else "DETENIDO", color = if (vpnRunning) Color(0xFF22C55E) else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    FlowStage("ENTRADA", "TUN RX", metrics.tunRxBytes, Modifier.weight(1f))
-                    Text("›", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    FlowStage("CAPAS", "IP RX/TX", "${metrics.ipPacketsReceived}/${metrics.ipPacketsSent}", Modifier.weight(1f))
-                    Text("›", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    FlowStage("POLÍTICA", "DNS B/O/A", "${metrics.dnsBlocked}/${metrics.dnsObserved}/${metrics.dnsAllowed}", Modifier.weight(1f))
-                    Text("›", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    FlowStage("FLOWS", "ACTIVOS", metrics.flowsActive.toString(), Modifier.weight(1f))
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("PILA DE PAQUETES · NO DNS", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        FlowStage("ENTRADA", "TUN RX", metrics.tunRxBytes, Modifier.weight(1f))
+                        Text("›", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        FlowStage("INTERFAZ", "NIC RX/TX", "${metrics.nicRxPackets}/${metrics.nicTxPackets}", Modifier.weight(1f))
+                        Text("›", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        FlowStage("RED", "IP RX/TX", "${metrics.ipPacketsReceived}/${metrics.ipPacketsSent}", Modifier.weight(1f))
+                    }
+                    Text("DNS · RAMA DE RESOLUCIÓN", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        FlowStage("CONSULTAS", "DNS", metrics.dnsPolicyDecisions.toString(), Modifier.weight(1f))
+                        Text("›", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        FlowStage("DECISIÓN", "B/O/A", "${metrics.dnsBlocked}/${metrics.dnsObserved}/${metrics.dnsAllowed}", Modifier.weight(1f))
+                        Text("›", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        FlowStage("RESOLVER", "RESPUESTAS", metrics.dnsResponseCallbacks.toString(), Modifier.weight(1f))
+                    }
+                    Text("Los flujos TCP/UDP/ICMP siguen su propio procesamiento en gVisor; no todos los paquetes IP pasan por el filtro DNS.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Text("TUN y contadores IP proceden del snapshot nativo Firestack/gVisor; las decisiones B/O/A son métricas DNS separadas. Las capas no se suman entre sí.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
@@ -563,6 +572,10 @@ private fun ThreeDimensionalMindMap(
                         val isSelected = node.id == selectedNode
                         val nodeActive = vpnRunning && when (node.id) {
                             "core", "tun" -> true
+                            "nic", "ip" -> activeFlowCount > 0L
+                            "tcp" -> tunMetrics.activeFlows.any { it.identity.protocol.name == "TCP" }
+                            "udp" -> tunMetrics.activeFlows.any { it.identity.protocol.name == "UDP" }
+                            "icmp" -> tunMetrics.activeFlows.any { it.identity.protocol.name == "ICMP" }
                             "dns", "decisions" -> dnsEventRecent
                             "apps" -> activeFlowCount > 0L
                             else -> false
