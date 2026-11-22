@@ -39,6 +39,24 @@ class DnsPolicyAdapter(
                 monitor.recordRejected("dns_qname_invalid_hostname", nowEpochMillis)
                 return DnsEvaluation.Rejected("dns_qname_invalid_hostname")
             }
+        val decision = evaluateDomain(normalizedDomain, appPackage, nowEpochMillis)
+        return when (decision.action) {
+            PolicyAction.BLOCK -> DnsEvaluation.Blocked(question, decision, nxdomainResponse(question))
+            PolicyAction.OBSERVE, PolicyAction.ALLOW -> DnsEvaluation.Forward(question, decision)
+        }
+    }
+
+    /** Cached domain-only policy entry point for DNS stacks that expose decoded questions. */
+    fun evaluateDomain(
+        domain: String,
+        appPackage: String? = null,
+        nowEpochMillis: Long = System.currentTimeMillis(),
+    ): PolicyDecision {
+        val normalizedDomain = DomainNormalizer.normalize(domain)
+            ?: run {
+                monitor.recordRejected("dns_qname_invalid_hostname", nowEpochMillis)
+                return PolicyDecision(PolicyAction.ALLOW, "dns_qname_invalid_hostname", policyRevision = policyEngine.revision)
+            }
         val cacheKey = DnsDecisionCacheKey(normalizedDomain, appPackage, policyEngine.revision)
         val cachedDecision = decisionCache.get(cacheKey, nowEpochMillis)
         if (cachedDecision != null) monitor.recordCacheHit() else monitor.recordCacheMiss()
@@ -55,9 +73,7 @@ class DnsPolicyAdapter(
                     ruleId = assessment.indicatorId,
                     source = assessment.source,
                 )
-            } else {
-                policyDecision
-            }
+            } else policyDecision
             decisionCache.put(
                 DnsDecisionCacheKey(normalizedDomain, appPackage, effectiveDecision.policyRevision),
                 effectiveDecision,
@@ -66,10 +82,7 @@ class DnsPolicyAdapter(
             effectiveDecision
         }
         monitor.recordDecision(normalizedDomain, appPackage, decision, nowEpochMillis)
-        return when (decision.action) {
-            PolicyAction.BLOCK -> DnsEvaluation.Blocked(question, decision, nxdomainResponse(question))
-            PolicyAction.OBSERVE, PolicyAction.ALLOW -> DnsEvaluation.Forward(question, decision)
-        }
+        return decision
     }
 
     private fun nxdomainResponse(question: DnsQuestion): ByteArray {
