@@ -42,7 +42,9 @@ class BlocklistDataSource(context: Context) {
         private const val CATEGORY_PREFIX = "! FirewallDNS-CATEGORY\t"
         private const val MAX_SOURCE_BYTES = 8 * 1024 * 1024
         private const val MAX_SIGNATURE_BYTES = 16 * 1024
-        private const val MAX_SOURCE_LINES = 200_000
+        // Feeds grandes como filtros DNS agregados pueden superar 200,000 líneas.
+        // El límite de bytes (8 MiB) y de longitud por línea sigue acotando el consumo.
+        private const val MAX_SOURCE_LINES = 1_000_000
         private const val MAX_LINE_CHARS = 4_096
         private const val CONNECT_TIMEOUT_MS = 10_000
         private const val READ_TIMEOUT_MS = 25_000
@@ -219,7 +221,7 @@ class BlocklistDataSource(context: Context) {
                 var parsedRuleCount = 0
                 String(payload, StandardCharsets.UTF_8).lineSequence().forEach { line ->
                     lineCount++
-                    if (lineCount > MAX_SOURCE_LINES) throw IllegalStateException("La lista supera 200,000 líneas")
+                    if (lineCount > MAX_SOURCE_LINES) throw IllegalStateException("La lista supera 1,000,000 líneas")
                     if (line.length > MAX_LINE_CHARS) throw IllegalStateException("La lista contiene una línea demasiado larga")
                     RuleEvaluator.parseAdblockLineEntries(line).forEach { parsed ->
                         parsedRuleCount++
