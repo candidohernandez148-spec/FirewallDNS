@@ -6,6 +6,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.activity.compose.BackHandler
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -57,7 +60,19 @@ fun ProtectionHubScreen(
     onOpenVpnSettings: () -> Unit,
 ) {
     var section by remember { mutableIntStateOf(0) }
-    Column(Modifier.fillMaxSize()) {
+    BackHandler(enabled = section > 0) { section = (section - 1).coerceAtLeast(0) }
+    Column(Modifier.fillMaxSize().pointerInput(section) {
+        var horizontalDrag = 0f
+        detectHorizontalDragGestures(
+            onHorizontalDrag = { _, dragAmount -> horizontalDrag += dragAmount },
+            onDragEnd = {
+                if (horizontalDrag > 72f && section > 0) section = (section - 1).coerceAtLeast(0)
+                else if (horizontalDrag < -72f && section < 2) section = (section + 1).coerceAtMost(2)
+                horizontalDrag = 0f
+            },
+            onDragCancel = { horizontalDrag = 0f }
+        )
+    }) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Centro de protección", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Text("Reglas, listas y control de aplicaciones en un solo lugar.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
