@@ -28,6 +28,7 @@ on:
       - "engine-core/**"
       - "engine-monitor/**"
       - "threat-engine/**"
+      - "third_party/patches/**"
       - "app/**"
       - "build.gradle.kts"
       - "settings.gradle.kts"
