@@ -23,6 +23,10 @@ class AndroidFlowPolicyAdapter(
 ) {
     private val packageCache = ConcurrentHashMap<Int, String>()
 
+    private companion object {
+        const val MAX_ORIGINAL_DESTINATIONS = 8
+    }
+
     fun resolvePackageForUid(uid: Int): String? {
         if (uid < 0) return null
         if (packageCache.size > 4096) packageCache.clear()
@@ -60,11 +64,12 @@ class AndroidFlowPolicyAdapter(
             destinationAddress = destinationAddress,
             destinationPort = destinationPort,
         )
-        val evaluatedDestinations = destinationAddresses.distinct().mapNotNull { candidate ->
+        val evaluatedDestinations = destinationAddresses.asSequence().take(MAX_ORIGINAL_DESTINATIONS)
+            .distinct().mapNotNull { candidate ->
             runCatching {
                 candidate to engine.evaluateFlow(request.copy(destinationAddress = candidate), nowEpochMillis())
             }.getOrNull()
-        }.ifEmpty {
+        }.toList().ifEmpty {
             listOf(destinationAddress to engine.evaluateFlow(request, nowEpochMillis()))
         }
         // Firestack may expose a synthetic ALG destination plus one or more
