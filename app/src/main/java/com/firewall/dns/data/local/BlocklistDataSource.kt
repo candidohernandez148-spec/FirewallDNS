@@ -332,7 +332,7 @@ class BlocklistDataSource(context: Context) {
         val categorizedCount = categoryDomains.filterKeys { it != ThreatFeedCategory.GENERAL }.values.sumOf { it.size }
         val fingerprintInput = sourceDigests.sorted().joinToString("\\n").toByteArray(StandardCharsets.UTF_8)
         val fingerprint = ThreatFeedIntegrityPolicy.sha256(fingerprintInput).take(16)
-        val summary = "Listas HTTPS actualizadas: ${uniqueUrls.size} fuentes validadas ($verifiedSignedSources con firma verificada, $unsignedSources sin firma), $totalParsedRules reglas DNS válidas, ${blocked.size} reglas activas, $categorizedCount indicadores categorizados. Huella SHA-256: $fingerprint"
+        val summary = "Listas HTTPS actualizadas: ${uniqueUrls.size} fuentes validadas ($verifiedSignedSources con firma verificada, $unsignedSources sin firma), $totalParsedRules reglas DNS válidas, ${blocked.size + exactBlocked.size} reglas activas, $categorizedCount indicadores categorizados. Huella SHA-256: $fingerprint"
         Result.success(
             BlocklistSnapshot(
                 blocked = blocked,
