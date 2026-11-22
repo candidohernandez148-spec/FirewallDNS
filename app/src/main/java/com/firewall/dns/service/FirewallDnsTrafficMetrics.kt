@@ -1,6 +1,7 @@
 package com.firewall.dns.service
 
 import com.firewalldns.engine.android.DnsSocketProtectionProtocol
+import com.firewalldns.engine.android.FirestackNativeStats
 import com.firewalldns.engine.android.FragmentReassemblerMetrics
 import com.firewalldns.engine.monitor.ActiveFlowSnapshot
 import com.firewalldns.engine.monitor.FlowMonitorSnapshot
@@ -17,6 +18,37 @@ import java.util.concurrent.atomic.AtomicReference
 object FirewallDnsTrafficMetrics {
     data class Snapshot(
         val packetsRead: Long,
+        val packetsWritten: Long,
+
+        val tunRxBytes: String,
+        val tunTxBytes: String,
+        val tunInvalidPackets: Long,
+        val tunUnknownL3Packets: Long,
+        val tunUnknownL4Packets: Long,
+        val tunDrops: Long,
+        val ipPacketsReceived: Long,
+        val ipPacketsSent: Long,
+        val ipInvalidPackets: Long,
+        val ipReceiveErrors: Long,
+        val ipSendErrors: Long,
+        val ipForwardDrops: Long,
+        val ipForwardErrors: Long,
+        val tcpSegmentsReceived: Long,
+        val tcpSegmentsSent: Long,
+        val tcpEstablished: Long,
+        val tcpConnectFailures: Long,
+        val tcpRetransmits: Long,
+        val tcpTimeouts: Long,
+        val tcpDrops: Long,
+        val udpPacketsReceived: Long,
+        val udpPacketsSent: Long,
+        val udpReceiveErrors: Long,
+        val udpSendErrors: Long,
+        val udpDrops: Long,
+        val icmpV4Received: Long,
+        val icmpV4Sent: Long,
+        val icmpV6Received: Long,
+        val icmpV6Sent: Long,
         val queueRejected: Long,
         val parserRejected: Long,
         val ipv4Packets: Long,
@@ -93,6 +125,37 @@ object FirewallDnsTrafficMetrics {
     )
 
     private val packetsRead = AtomicLong()
+    private val packetsWritten = AtomicLong()
+
+    private val tunRxBytes = AtomicReference("—")
+    private val tunTxBytes = AtomicReference("—")
+    private val tunInvalidPackets = AtomicLong()
+    private val tunUnknownL3Packets = AtomicLong()
+    private val tunUnknownL4Packets = AtomicLong()
+    private val tunDrops = AtomicLong()
+    private val ipPacketsReceived = AtomicLong()
+    private val ipPacketsSent = AtomicLong()
+    private val ipInvalidPackets = AtomicLong()
+    private val ipReceiveErrors = AtomicLong()
+    private val ipSendErrors = AtomicLong()
+    private val ipForwardDrops = AtomicLong()
+    private val ipForwardErrors = AtomicLong()
+    private val tcpSegmentsReceived = AtomicLong()
+    private val tcpSegmentsSent = AtomicLong()
+    private val tcpEstablished = AtomicLong()
+    private val tcpConnectFailures = AtomicLong()
+    private val tcpRetransmits = AtomicLong()
+    private val tcpTimeouts = AtomicLong()
+    private val tcpDrops = AtomicLong()
+    private val udpPacketsReceived = AtomicLong()
+    private val udpPacketsSent = AtomicLong()
+    private val udpReceiveErrors = AtomicLong()
+    private val udpSendErrors = AtomicLong()
+    private val udpDrops = AtomicLong()
+    private val icmpV4Received = AtomicLong()
+    private val icmpV4Sent = AtomicLong()
+    private val icmpV6Received = AtomicLong()
+    private val icmpV6Sent = AtomicLong()
     private val queueRejected = AtomicLong()
     private val parserRejected = AtomicLong()
     private val ipv4Packets = AtomicLong()
@@ -186,6 +249,43 @@ object FirewallDnsTrafficMetrics {
     internal fun dnsAllowed() { dnsAllowed.incrementAndGet() }
     internal fun cacheHit() { cacheHits.incrementAndGet() }
     internal fun cacheMiss() { cacheMisses.incrementAndGet() }
+
+    internal fun firestackNativeSnapshot(stats: FirestackNativeStats) {
+        // These are native gVisor counters, not estimates from app callbacks.
+        packetsRead.set(stats.tunRxPackets)
+        packetsWritten.set(stats.tunTxPackets)
+        fragmentsDroppedInvalid.set(stats.ipInvalidFragments)
+        tunRxBytes.set(stats.tunRxBytes)
+        tunTxBytes.set(stats.tunTxBytes)
+        tunInvalidPackets.set(stats.tunInvalidPackets)
+        tunUnknownL3Packets.set(stats.tunUnknownL3Packets)
+        tunUnknownL4Packets.set(stats.tunUnknownL4Packets)
+        tunDrops.set(stats.tunDrops)
+        ipPacketsReceived.set(stats.ipPacketsReceived)
+        ipPacketsSent.set(stats.ipPacketsSent)
+        ipInvalidPackets.set(stats.ipInvalidPackets)
+        ipReceiveErrors.set(stats.ipReceiveErrors)
+        ipSendErrors.set(stats.ipSendErrors)
+        ipForwardDrops.set(stats.ipForwardDrops)
+        ipForwardErrors.set(stats.ipForwardErrors)
+        tcpSegmentsReceived.set(stats.tcpSegmentsReceived)
+        tcpSegmentsSent.set(stats.tcpSegmentsSent)
+        tcpEstablished.set(stats.tcpEstablished)
+        tcpConnectFailures.set(stats.tcpConnectFailures)
+        tcpRetransmits.set(stats.tcpRetransmits)
+        tcpTimeouts.set(stats.tcpTimeouts)
+        tcpDrops.set(stats.tcpDrops)
+        udpPacketsReceived.set(stats.udpPacketsReceived)
+        udpPacketsSent.set(stats.udpPacketsSent)
+        udpReceiveErrors.set(stats.udpReceiveErrors)
+        udpSendErrors.set(stats.udpSendErrors)
+        udpDrops.set(stats.udpDrops)
+        icmpV4Received.set(stats.icmpV4Received)
+        icmpV4Sent.set(stats.icmpV4Sent)
+        icmpV6Received.set(stats.icmpV6Received)
+        icmpV6Sent.set(stats.icmpV6Sent)
+    }
+
     internal fun engineMonitorSnapshot(snapshot: EngineMetricsSnapshot) {
         // These values come from the shared policy runtime, not inferred UI events.
         dnsRejected.set(snapshot.rejected)
@@ -291,6 +391,37 @@ object FirewallDnsTrafficMetrics {
     /** Returns a non-blocking point-in-time aggregate snapshot for UI/diagnostics. */
     fun snapshot(): Snapshot = Snapshot(
         packetsRead = packetsRead.get(),
+        packetsWritten = packetsWritten.get(),
+
+        tunRxBytes = tunRxBytes.get().get(),
+        tunTxBytes = tunRxBytes.get().get(),
+        tunInvalidPackets = 
+        tunUnknownL3Packets = 
+        tunUnknownL4Packets = 
+        tunDrops = 
+        ipPacketsReceived = 
+        ipPacketsSent = 
+        ipInvalidPackets = 
+        ipReceiveErrors = 
+        ipSendErrors = 
+        ipForwardDrops = 
+        ipForwardErrors = 
+        tcpSegmentsReceived = 
+        tcpSegmentsSent = 
+        tcpEstablished = 
+        tcpConnectFailures = 
+        tcpRetransmits = 
+        tcpTimeouts = 
+        tcpDrops = 
+        udpPacketsReceived = 
+        udpPacketsSent = 
+        udpReceiveErrors = 
+        udpSendErrors = 
+        udpDrops = 
+        icmpV4Received = 
+        icmpV4Sent = 
+        icmpV6Received = 
+        icmpV6Sent =
         queueRejected = queueRejected.get(),
         parserRejected = parserRejected.get(),
         ipv4Packets = ipv4Packets.get(),
