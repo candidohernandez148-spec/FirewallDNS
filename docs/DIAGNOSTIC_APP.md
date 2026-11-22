@@ -7,16 +7,16 @@ El diagnóstico se ejecuta dentro de la aplicación principal, en la pantalla **
 - Un solo `VpnService` (`DnsFirewallService`) y un único descriptor TUN.
 - En el modo principal, Firestack/gVisor recibe el TUN y procesa tráfico TCP, UDP e ICMP IPv4/IPv6.
 - El adaptador Kotlin implementa el contrato `Bridge` de Firestack y conecta decisiones de flujo/DNS con el motor único de FirewallDNS.
-- Rust/JNI con smoltcp permanece integrado para pruebas nativas y para el camino DNS/TCP de respaldo cuando Firestack no puede iniciarse. No compite con Firestack por el descriptor TUN.
+- Rust/JNI con smoltcp permanece únicamente como banco de pruebas nativo dentro de Diagnóstico. No se carga como motor productivo ni como respaldo cuando Firestack no puede iniciarse.
 - Los sockets de salida se protegen con `VpnService.protect()` y se enlazan a la red física activa cuando Android proporciona un `Network`.
 - Los cambios entre Wi-Fi, datos móviles y otras redes actualizan la selección de resolvers y el MTU sin reiniciar el servicio VPN.
 
 ## Qué mide la pantalla integrada
 
 - Estado del único servicio productivo `DnsFirewallService` y nombre del motor activo.
-- Contadores de paquetes y decisiones DNS: UDP/TCP, bloqueados, observados, permitidos, rechazados y respuestas.
-- Contadores del transporte Rust/JNI smoltcp: sesiones, paquetes aceptados, respuestas encoladas, rechazos y errores nativos. Estos contadores solo describen el camino smoltcp cuando está activo; no deben interpretarse como actividad de Firestack.
-- Estado de fragmentos IPv4/IPv6: aceptados, reensamblados, descartados y expirados.
+- Telemetría en vivo del motor único: flujos activos/abiertos/cerrados/bloqueados, bytes TX/RX, protección de sockets y enlaces a la red física.
+- Decisiones DNS comunicadas por Firestack: bloqueadas, observadas y permitidas.
+- Resultado aislado de las pruebas Rust/JNI smoltcp: sesiones, límites, colas y errores. Nunca debe interpretarse como tráfico de producción.
 - Estado de Firestack, conexiones observadas, bytes, protección de sockets y enlace a la red física.
 - Resultado de una prueba de límites Rust/JNI.
 - Prueba DNS/TCP upstream forzada a los resolvers activos, sin caché ni fallback UDP, usando el cliente de diagnóstico y sockets protegidos. La prueba requiere VPN activa y solo aprueba si recibe una respuesta DNS válida por TCP. Es una prueba de salida upstream; no demuestra por sí sola que una conexión TCP/53 entrante al TUN esté correctamente reenviada.
