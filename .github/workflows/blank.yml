@@ -49,17 +49,17 @@ jobs:
       - name: Aplicar parche FirewallDNS para capturar DNS en puerto 53
         run: git -C third_party/firestack apply "$GITHUB_WORKSPACE/third_party/patches/firestack-capture-dns-port.patch"
 
-      - name: Verificar parche de captura DNS de Firestack
-        working-directory: third_party/firestack
-        env:
-          GOTOOLCHAIN: local
-        run: go test ./intra -run TestCaptureDnsPortEnablesAllPort53Interception -count=1
-
       - name: Instalar Go para Firestack
         uses: actions/setup-go@v6
         with:
           go-version: "1.27.3"
           cache-dependency-path: third_party/firestack/go.sum
+
+      - name: Verificar parche de captura DNS de Firestack
+        working-directory: third_party/firestack
+        env:
+          GOTOOLCHAIN: local
+        run: go test ./intra -run TestCaptureDnsPortEnablesAllPort53Interception -count=1
 
       - name: Instalar NDK para Firestack
         run: |
