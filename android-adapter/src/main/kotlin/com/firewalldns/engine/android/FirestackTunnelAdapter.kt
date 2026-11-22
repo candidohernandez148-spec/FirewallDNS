@@ -141,8 +141,8 @@ private class FirewallDNSFirestackBridge(
 
     private val closed = AtomicBoolean(false)
 
-    override fun bind4(who: String, addrport: String, fd: Long) = bindToPhysicalNetwork(fd)
-    override fun bind6(who: String, addrport: String, fd: Long) = bindToPhysicalNetwork(fd)
+    override fun bind4(who: String?, addrport: String?, fd: Long) = bindToPhysicalNetwork(fd)
+    override fun bind6(who: String?, addrport: String?, fd: Long) = bindToPhysicalNetwork(fd)
 
     private fun bindToPhysicalNetwork(fd: Long) {
         if (closed.get()) return
@@ -156,7 +156,7 @@ private class FirewallDNSFirestackBridge(
         if (result.isFailure) throw IllegalStateException("Unable to bind Firestack socket to physical network", result.exceptionOrNull())
     }
 
-    override fun protect(who: String, fd: Long) {
+    override fun protect(who: String?, fd: Long) {
         if (closed.get()) throw IllegalStateException("FirewallDNS Firestack bridge is closed")
         protectSocket(fd.toInt())
     }
@@ -167,7 +167,7 @@ private class FirewallDNSFirestackBridge(
         if (!protected) throw IllegalStateException("VpnService.protect failed for Firestack socket")
     }
 
-    override fun preflow(protocol: Int, uid: Int, cid: String, src: String, dst: String): PreMark =
+    override fun preflow(protocol: Int, uid: Int, cid: String?, src: String?, dst: String?): PreMark =
         PreMark().apply {
             setUID(if (uid >= 0) uid.toString() else Intra.UNKNOWN_UID_STR)
             setIsUidSelf(false)
@@ -176,32 +176,34 @@ private class FirewallDNSFirestackBridge(
     override fun flow(
         protocol: Int,
         uid: Int,
-        cid: String,
-        src: String,
-        dst: String,
-        origdsts: String,
-        domains: String,
-        probableDomains: String,
-        blocklists: String,
+        cid: String?,
+        src: String?,
+        dst: String?,
+        origdsts: String?,
+        domains: String?,
+        probableDomains: String?,
+        blocklists: String?,
         dstIsAlg: Boolean,
     ): Mark {
         val appPackage = uid.takeIf { it >= 0 }?.let { runCatching { resolvePackage(it) }.getOrNull() }
-        val domainAssessment = domains.split(',').map(String::trim).filter(String::isNotEmpty)
-            .map { domain -> runCatching { engine.evaluateDomain(domain, appPackage) }.getOrNull() }
+        val domainAssessment = domains.orEmpty().split(',').map(String::trim).filter(String::isNotEmpty)
+            .map { domain -> runCatching { engine.evaluateDomain(domainValue, appPackage) }.getOrNull() }
             .filterNotNull()
         val selectedDomainDecision = (domainAssessment.firstOrNull { it.action == PolicyAction.BLOCK }
             ?: domainAssessment.firstOrNull { it.action == PolicyAction.OBSERVE })?.let {
             NetworkFlowDecision(it.action, it.reason, it.ruleId, it.source, it.policyRevision)
         }
-        val decision = evaluateFlowCallback(protocol, uid, cid, src, dst, selectedDomainDecision)
+        val safeCid = cid.orEmpty()
+        val decision = evaluateFlowCallback(protocol, uid, safeCid, src.orEmpty(), dst.orEmpty(), selectedDomainDecision)
         runCatching { onFlowSnapshot(engine.flowMonitor.snapshot()) }
-        return decisionMark(cid, uid, decision?.action != PolicyAction.ALLOW && decision?.action != PolicyAction.OBSERVE)
+        return decisionMark(safeCid, uid, decision?.action != PolicyAction.ALLOW && decision?.action != PolicyAction.OBSERVE)
     }
 
-    override fun inflow(protocol: Int, uid: Int, cid: String, src: String, dst: String): Mark {
-        val decision = evaluateFlowCallback(protocol, uid, cid, src, dst)
+    override fun inflow(protocol: Int, uid: Int, cid: String?, src: String?, dst: String?): Mark {
+        val safeCid = cid.orEmpty()
+        val decision = evaluateFlowCallback(protocol, uid, safeCid, src.orEmpty(), dst.orEmpty())
         runCatching { onFlowSnapshot(engine.flowMonitor.snapshot()) }
-        return decisionMark(cid, uid, decision?.action != PolicyAction.ALLOW && decision?.action != PolicyAction.OBSERVE)
+        return decisionMark(safeCid, uid, decision?.action != PolicyAction.ALLOW && decision?.action != PolicyAction.OBSERVE)
     }
 
     private fun evaluateFlowCallback(
@@ -236,26 +238,29 @@ private class FirewallDNSFirestackBridge(
 
     override fun flowing(mark: Mark) = Unit
 
-    override fun postflow(summary: FlowSummary) {
-        val id = summary.getID()
+    override fun postflow(summary: FlowSummary?) {
+        val flowSummary = summary ?: return
+        val id = flowSummary.getID()
         if (id.isBlank()) return
-        flowPolicyAdapter.recordBytes(id, summary.getTx().coerceAtLeast(0), summary.getRx().coerceAtLeast(0))
+        flowPolicyAdapter.recordBytes(id, flowSummary.getTx().coerceAtLeast(0), flowSummary.getRx().coerceAtLeast(0))
         flowPolicyAdapter.close(id)
         runCatching { onFlowSnapshot(engine.flowMonitor.snapshot()) }
     }
 
-    override fun onPrequery(who: String, fid: String, uid: String, domain: String, qtyp: Long): DomainOpts? = null
+    override fun onPrequery(who: String?, fid: String?, uid: String?, domain: String?, qtyp: Long): DomainOpts? = null
 
-    override fun onQuery(who: String, fid: String, uid: String, domain: String, qtyp: Long): DNSOpts {
-        val ownerUid = uid.toIntOrNull()
+    override fun onQuery(who: String?, fid: String?, uid: String?, domain: String?, qtyp: Long): DNSOpts {
+        val uidValue = uid.orEmpty()
+        val domainValue = domain.orEmpty()
+        val ownerUid = uidValue.toIntOrNull()
         val appPackage = ownerUid?.takeIf { it >= 0 }?.let { runCatching { resolvePackage(it) }.getOrNull() }
         val decision = engine.evaluateDomain(domain, appPackage)
         val appBlocked = ownerUid?.takeIf { it >= 0 }?.let { runCatching { isUidBlocked(it) }.getOrDefault(false) } == true
         val action = if (appBlocked) PolicyAction.BLOCK else decision.action
         val reason = if (appBlocked) "app_uid_blocked" else decision.reason
-        runCatching { onDnsDecision(domain, qtyp.toInt(), ownerUid, reason, action) }
+        runCatching { onDnsDecision(domainValue, qtyp.toInt(), ownerUid, reason, action) }
         return DNSOpts().apply {
-            setUID(uid)
+            setUID(uidValue)
             setTIDCSV(if (action == PolicyAction.BLOCK) Backend.Block else Backend.Default)
         }
     }
@@ -263,27 +268,27 @@ private class FirewallDNSFirestackBridge(
     override fun onUpstreamAnswer(
         who: String,
         fid: String,
-        summary: DNSSummary,
-        forPref: DNSOpts,
-        unmodifiedipcsv: String,
+        summary: DNSSummary?,
+        forPref: DNSOpts?,
+        unmodifiedipcsv: String?,
     ): DNSOpts? = null
 
-    override fun onResponse(summary: DNSSummary) = Unit
-    override fun onDNSAdded(id: String) = Unit
-    override fun onDNSRemoved(id: String) = Unit
+    override fun onResponse(summary: DNSSummary?) = Unit
+    override fun onDNSAdded(id: String?) = Unit
+    override fun onDNSRemoved(id: String?) = Unit
     override fun onDNSStopped() = Unit
-    override fun onSvcComplete(summary: ServerSummary) = Unit
-    override fun svcRoute(cid: String, src: String, dst: String, origdsts: String, domains: String): Tab =
+    override fun onSvcComplete(summary: ServerSummary?) = Unit
+    override fun svcRoute(cid: String?, src: String?, dst: String?, origdsts: String?, domains: String?): Tab =
         Tab().apply {
-            setCID(cid)
+            setCID(cid.orEmpty())
             setBlock(false)
         }
 
     override fun onProxiesStopped() = Unit
-    override fun onProxyAdded(id: String, addr: String) = Unit
-    override fun onProxyRemoved(id: String, addr: String) = Unit
-    override fun onProxyStopped(id: String, addr: String) = Unit
-    override fun onProxyUpdated(id: String, addr: String) = Unit
+    override fun onProxyAdded(id: String?, addr: String?) = Unit
+    override fun onProxyRemoved(id: String?, addr: String?) = Unit
+    override fun onProxyStopped(id: String?, addr: String?) = Unit
+    override fun onProxyUpdated(id: String?, addr: String?) = Unit
 
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
