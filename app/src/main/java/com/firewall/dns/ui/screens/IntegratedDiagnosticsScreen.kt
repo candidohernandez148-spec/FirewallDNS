@@ -61,6 +61,13 @@ fun IntegratedDiagnosticsScreen(
             put("dnsBlocked", metrics.dnsBlocked)
             put("dnsObserved", metrics.dnsObserved)
             put("dnsAllowed", metrics.dnsAllowed)
+            put("dnsResponseCallbacks", metrics.dnsResponseCallbacks)
+            put("dnsResponseComplete", metrics.dnsResponseComplete)
+            put("dnsResponseOtherStatus", metrics.dnsResponseOtherStatus)
+            put("dnsResponseCached", metrics.dnsResponseCached)
+            put("dnsResponseLatencySamples", metrics.dnsResponseLatencySamples)
+            put("dnsResponseLatencyMsTotal", metrics.dnsResponseLatencyMsTotal)
+            put("dnsResponseLastStatus", metrics.dnsResponseLastStatus)
             put("cacheHits", metrics.cacheHits)
             put("cacheMisses", metrics.cacheMisses)
             put("upstreamExchangeSuccess", "N/D")
@@ -165,6 +172,19 @@ fun IntegratedDiagnosticsScreen(
                 Metric("Bloqueadas", metrics.dnsBlocked)
                 Metric("Observadas", metrics.dnsObserved)
                 Metric("Permitidas", metrics.dnsAllowed)
+            }
+        }
+        Card {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Respuestas DNS Firestack", style = MaterialTheme.typography.titleMedium)
+                Metric("Callbacks de respuesta", metrics.dnsResponseCallbacks)
+                Metric("Estado Complete / otros", metrics.dnsResponseComplete, metrics.dnsResponseOtherStatus)
+                Metric("Respuestas desde caché", metrics.dnsResponseCached)
+                Metric("Muestras de latencia", metrics.dnsResponseLatencySamples)
+                if (metrics.dnsResponseLatencySamples > 0L) {
+                    Metric("Latencia media (ms)", metrics.dnsResponseLatencyMsTotal / metrics.dnsResponseLatencySamples)
+                }
+                Text("Son resúmenes del callback Firestack OnResponse; puede haber más de uno por consulta. No equivalen a consultas únicas ni a intentos individuales de socket upstream.")
             }
         }
         Card {
