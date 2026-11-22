@@ -105,6 +105,7 @@ class DnsFirewallService : VpnService() {
     @Volatile private var sharedEngine: AndroidEngineRuntime? = null
     @Volatile private var sharedFlowPolicyAdapter: AndroidFlowPolicyAdapter? = null
     private val physicalNetworkGeneration = AtomicLong(0L)
+    private val upstreamConfigGeneration = AtomicLong(0L)
     private val firestackResolverGeneration = AtomicLong(-1L)
     private data class UpstreamSnapshot(
         val client: DnsUpstreamFailoverClient,
@@ -377,7 +378,7 @@ class DnsFirewallService : VpnService() {
         val engineRuntime = sharedEngine
         val flowAdapter = sharedFlowPolicyAdapter
         val startNetworkState = synchronized(upstreamRefreshLock) {
-            upstreamSnapshot to physicalNetworkGeneration.get()
+            upstreamSnapshot to upstreamConfigGeneration.get()
         }
         val startingSnapshot = startNetworkState.first
         val startingNetworkGeneration = startNetworkState.second
@@ -902,7 +903,7 @@ class DnsFirewallService : VpnService() {
             physicalNetwork == current.physicalNetwork
         ) {
             val stack = activeTunSession?.firestack
-            val generation = physicalNetworkGeneration.get()
+            val generation = upstreamConfigGeneration.get()
             val needsResolverRebind = stack != null && firestackResolverGeneration.get() != generation
             val updateSucceeded = when {
                 stack == null -> true
@@ -927,15 +928,16 @@ class DnsFirewallService : VpnService() {
             )
         }.getOrNull() ?: return
 
-        // Publish client, resolver labels and physical Network as one generation.
+        // Publish client, resolver labels, physical Network and MTU as one generation.
         // In-flight exchanges keep the old client pinned to its original Network.
+        upstreamConfigGeneration.incrementAndGet()
         upstreamSnapshot = UpstreamSnapshot(replacement, discovered.toList(), physicalNetwork, linkMtu)
         FirewallDnsTrafficMetrics.upstreamResolversChanged(discovered)
         // Rebind Firestack's default DNS transport to the resolver from this exact
         // physical-network generation without restarting the TUN/netstack.
         activeTunSession?.firestack?.let { stack ->
             if (stack.updatePhysicalNetworkResolver(discovered.joinToString(","), linkMtu)) {
-                firestackResolverGeneration.set(physicalNetworkGeneration.get())
+                firestackResolverGeneration.set(upstreamConfigGeneration.get())
             } else {
                 FirewallDnsTrafficMetrics.upstreamFailure()
             }
@@ -1006,6 +1008,7 @@ class DnsFirewallService : VpnService() {
         upstreamSnapshot = null
         selectedPhysicalNetwork = null
         physicalNetworkGeneration.incrementAndGet()
+        upstreamConfigGeneration.incrementAndGet()
         firestackResolverGeneration.set(-1L)
         sharedFlowPolicyAdapter = null
         FirewallDnsTrafficMetrics.upstreamResolversChanged(emptyList())
