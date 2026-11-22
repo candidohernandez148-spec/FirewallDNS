@@ -137,6 +137,7 @@ fun IntegratedDiagnosticsScreen(
             put("firestackBindFailure", metrics.firestackBindFailure)
         })
         put("notVerified", listOf(
+            "Firestack TCP/UDP end-to-end traffic verification on physical Wi-Fi and mobile networks",
             "fragmented traffic injection through production TUN (counters are exposed, active injection is not yet automated)",
             "long-duration throughput, CPU and battery validation on physical devices",
             "DoH/DoT/DoQ inspection",
