@@ -255,7 +255,6 @@ class BlocklistDataSource(context: Context) {
                 val category = ThreatFeedCatalog.categoryForUrl(targetUrl)
                 if (category != ThreatFeedCategory.GENERAL) {
                     categoryDomains.getValue(category).addAll(sourceBlocked)
-                    categoryDomains.getValue(category).addAll(sourceExactBlocked)
                 }
                 completedSources.add(targetUrl)
             } catch (error: Exception) {
