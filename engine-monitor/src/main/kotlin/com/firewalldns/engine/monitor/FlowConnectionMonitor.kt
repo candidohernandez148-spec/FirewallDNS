@@ -127,8 +127,14 @@ class FlowConnectionMonitor(
     fun evictIdle(nowEpochMillis: Long): Int {
         var removed = 0
         active.entries.forEach { entry ->
-            val expired = nowEpochMillis - entry.value.lastActivity.get() >= idleTimeoutMillis
-            if (expired && active.remove(entry.key, entry.value)) {
+            val observedActivity = entry.value.lastActivity.get()
+            val expired = nowEpochMillis - observedActivity >= idleTimeoutMillis
+            // Do not evict a flow that received bytes after the stale timestamp
+            // was observed by this cleanup pass.
+            if (expired &&
+                entry.value.lastActivity.get() == observedActivity &&
+                active.remove(entry.key, entry.value)
+            ) {
                 closed.increment()
                 slots.release()
                 removed++
