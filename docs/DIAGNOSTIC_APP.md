@@ -1,17 +1,26 @@
 # Diagnóstico integrado de FirewallDNS
 
-El diagnóstico soportado se ejecuta dentro de la aplicación principal, en la pantalla **Diagnóstico**. No requiere instalar el APK companion ni crear una segunda VPN.
+El diagnóstico se ejecuta dentro de la aplicación principal, en la pantalla **Diagnóstico**. No requiere instalar una aplicación companion ni crear una segunda VPN.
+
+## Arquitectura productiva
+
+- Un solo `VpnService` (`DnsFirewallService`) y un único descriptor TUN.
+- En el modo principal, Firestack/gVisor recibe el TUN y procesa tráfico TCP, UDP e ICMP IPv4/IPv6.
+- El adaptador Kotlin implementa el contrato `Bridge` de Firestack y conecta decisiones de flujo/DNS con el motor único de FirewallDNS.
+- Rust/JNI con smoltcp permanece integrado para pruebas nativas y para el camino DNS/TCP de respaldo cuando Firestack no puede iniciarse. No compite con Firestack por el descriptor TUN.
+- Los sockets de salida se protegen con `VpnService.protect()` y se enlazan a la red física activa cuando Android proporciona un `Network`.
+- Los cambios entre Wi-Fi, datos móviles y otras redes actualizan la selección de resolvers y el MTU sin reiniciar el servicio VPN.
 
 ## Qué mide la pantalla integrada
 
-- Estado del único servicio productivo `DnsFirewallService`.
-- Contadores en vivo del recorrido TUN: paquetes IPv4/IPv6, DNS UDP/TCP, decisiones, respuestas, errores y colas.
-- Contadores del transporte Rust/JNI smoltcp: sesiones, paquetes aceptados, respuestas encoladas, rechazos y errores nativos.
+- Estado del único servicio productivo `DnsFirewallService` y nombre del motor activo.
+- Contadores de paquetes y decisiones DNS: UDP/TCP, bloqueados, observados, permitidos, rechazados y respuestas.
+- Contadores del transporte Rust/JNI smoltcp: sesiones, paquetes aceptados, respuestas encoladas, rechazos y errores nativos. Estos contadores solo describen el camino smoltcp cuando está activo; no deben interpretarse como actividad de Firestack.
 - Estado de fragmentos IPv4/IPv6: aceptados, reensamblados, descartados y expirados.
+- Estado de Firestack, conexiones observadas, bytes, protección de sockets y enlace a la red física.
 - Resultado de una prueba de límites Rust/JNI.
-- Prueba DNS/TCP upstream forzada a los resolvers activos, sin caché ni fallback UDP, usando el socket protegido de producción. La prueba requiere VPN activa y solo aprueba si recibe una respuesta DNS válida por TCP. Esta es una prueba de salida upstream; no inyecta una conexión TCP/53 entrante al TUN ni acredita por sí sola el funcionamiento de smoltcp.
-- Identidad de la red física seleccionada (Wi-Fi/celular/Ethernet), validación y resolvers obtenidos de un único snapshot de Android.
-- Los sockets upstream UDP/TCP se enlazan a esa misma instancia de `Network` antes de `VpnService.protect()` y de conectar. Cuando se enlaza explícitamente, el servicio publica la red subyacente mediante `setUnderlyingNetworks()`.
+- Prueba DNS/TCP upstream forzada a los resolvers activos, sin caché ni fallback UDP, usando el cliente de diagnóstico y sockets protegidos. La prueba requiere VPN activa y solo aprueba si recibe una respuesta DNS válida por TCP. Es una prueba de salida upstream; no demuestra por sí sola que una conexión TCP/53 entrante al TUN esté correctamente reenviada.
+- Identidad de la red física seleccionada (Wi-Fi/celular/Ethernet), validación, MTU y resolvers obtenidos de un único snapshot de Android.
 
 ## Interpretación
 
@@ -21,20 +30,21 @@ El diagnóstico soportado se ejecuta dentro de la aplicación principal, en la p
 
 Un resultado positivo de `Network.bindSocket()` solo acredita que el socket quedó asociado a esa red; un resultado positivo de `VpnService.protect()` solo acredita que Android aceptó excluirlo del túnel. Ninguno acredita que el resolver responda ni que TCP/53 esté permitido en la red.
 
-## Límites conocidos
+## Cobertura y límites
 
-- El motor inspecciona DNS tradicional en puerto 53. No afirma inspeccionar DoH, DoT ni DoQ.
+- Firestack/gVisor procesa tráfico general TCP, UDP e ICMP que atraviesa el TUN. FirewallDNS puede decidir por UID, paquete, protocolo, IP/CIDR y puerto.
+- El filtrado de dominios se aplica a consultas DNS tradicionales en puerto 53, tanto UDP como TCP, incluyendo consultas dirigidas a resolvers codificados gracias al parche de captura por puerto 53.
+- Las decisiones de dominio se pueden correlacionar con flujos posteriores cuando Firestack proporciona dominios asociados al destino.
+- DoT y DoQ se bloquean en los puertos estándar configurados. DoH solo se identifica mediante correlación con nombres de endpoints conocidos; **no se descifra TLS ni se inspecciona universalmente DoH, DoT o DoQ**.
+- El tráfico de protocolos IP distintos de TCP, UDP e ICMP puede no ser reenviado por la pila de usuario.
 - Los contadores TUN son métricas agregadas; no equivalen a una captura completa de paquetes.
-- La pantalla expone métricas de fragmentación, pero una prueba de inyección de fragmentos a través del TUN productivo sigue pendiente.
-- La prueba nativa de límites no sustituye una prueba de tráfico TCP real a través del TUN.
-- La estabilidad prolongada, consumo de batería y CPU deben validarse en el dispositivo durante sesiones extendidas.
+- La prueba nativa de límites no sustituye una prueba de ida y vuelta TCP/UDP real a través del TUN.
+- La compilación y las pruebas automatizadas no sustituyen la validación física en el teléfono: Wi-Fi, datos móviles, cambios de red, IPv4/IPv6, UID, batería y CPU durante sesiones prolongadas.
 
-## Alcance real de captura DNS
+## Red física y cambios de conectividad
 
-El TUN configura las direcciones DNS virtuales de FirewallDNS y rutas explícitas para los resolvers públicos IPv4/IPv6 conocidos en el servicio. No instala una ruta predeterminada para todo el tráfico IP. Por tanto, una aplicación que ignore el DNS del sistema y envíe consultas a una IP DNS arbitraria que no esté entre las rutas configuradas puede quedar fuera de la captura actual. No debe afirmarse protección contra fugas DNS universal hasta cubrir y probar ese escenario.
-
-El tráfico general TCP/UDP tampoco se reenvía a través de este motor; la inspección de esta etapa se limita a DNS/53. DoH, DoT y DoQ permanecen fuera de cobertura.
+La selección de red se basa en `ConnectivityManager` y `LinkProperties`, excluyendo la propia VPN. Los resolvers y el objeto `Network` se publican como una generación coherente. Al cambiar de red, FirewallDNS renueva el transporte DNS y actualiza Firestack sin cerrar el TUN. Las conexiones ya abiertas pueden terminar sobre la red a la que fueron enlazadas originalmente; las nuevas utilizan la generación más reciente.
 
 ## Privacidad
 
-El informe compartido contiene estado y métricas agregadas. No debe incluir payloads DNS, historial de navegación, direcciones IP consultadas ni identificadores de aplicaciones.
+El informe compartido contiene estado y métricas agregadas. No debe incluir payloads DNS, historial de navegación, direcciones IP consultadas ni identificadores sensibles de aplicaciones.
