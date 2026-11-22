@@ -119,10 +119,16 @@ class FirestackTunnelAdapter private constructor(
             }
         }
 
-        private fun formatHostPort(address: String): String =
-            if (address.startsWith("[") && address.contains("]:")) address
-            else if (address.contains(":")) "[$address]:53"
-            else "$address:53"
+        private fun formatHostPort(addresses: String): String =
+            addresses.split(',').map { address ->
+                val value = address.trim()
+                when {
+                    value.isEmpty() -> error("DNS resolver address must not be empty")
+                    value.startsWith("[") && value.contains("]:") -> value
+                    value.contains(":") -> "[$value]:53"
+                    else -> "$value:53"
+                }
+            }.joinToString(",")
     }
 }
 
