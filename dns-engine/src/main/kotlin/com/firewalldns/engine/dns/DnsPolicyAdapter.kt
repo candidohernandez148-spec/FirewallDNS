@@ -22,11 +22,12 @@ class DnsPolicyAdapter(
     threatAnalyzer: ThreatAnalyzer = ThreatAnalyzer(),
     val monitor: EngineMonitor = EngineMonitor(),
 ) {
-    private val threatAnalyzer = AtomicReference(threatAnalyzer)
+    private data class ThreatSnapshot(val revision: Long, val analyzer: ThreatAnalyzer)
+    private val threatAnalyzer = AtomicReference(ThreatSnapshot(0L, threatAnalyzer))
 
     /** Replace threat intelligence without replacing the live packet-stack runtime. */
     fun replaceThreatAnalyzer(analyzer: ThreatAnalyzer) {
-        threatAnalyzer.set(analyzer)
+        threatAnalyzer.updateAndGet { current -> ThreatSnapshot(current.revision + 1L, analyzer) }
         decisionCache.clear()
     }
 
@@ -66,7 +67,8 @@ class DnsPolicyAdapter(
                 monitor.recordRejected("dns_qname_invalid_hostname", nowEpochMillis)
                 return PolicyDecision(PolicyAction.ALLOW, "dns_qname_invalid_hostname", policyRevision = policyEngine.revision)
             }
-        val cacheKey = DnsDecisionCacheKey(normalizedDomain, appPackage, policyEngine.revision)
+        val threatSnapshot = threatAnalyzer.get()
+        val cacheKey = DnsDecisionCacheKey(normalizedDomain, appPackage, policyEngine.revision, threatSnapshot.revision)
         val cachedDecision = decisionCache.get(cacheKey, nowEpochMillis)
         if (cachedDecision != null) monitor.recordCacheHit() else monitor.recordCacheMiss()
         val decision = cachedDecision ?: run {
@@ -75,7 +77,7 @@ class DnsPolicyAdapter(
                 nowEpochMillis,
             )
             val effectiveDecision = if (policyDecision.reason == "no_matching_rule") {
-                val assessment = threatAnalyzer.get().analyze(normalizedDomain)
+                val assessment = threatSnapshot.analyzer.analyze(normalizedDomain)
                 policyDecision.copy(
                     action = assessment.action,
                     reason = assessment.reason,
@@ -84,7 +86,7 @@ class DnsPolicyAdapter(
                 )
             } else policyDecision
             decisionCache.put(
-                DnsDecisionCacheKey(normalizedDomain, appPackage, effectiveDecision.policyRevision),
+                DnsDecisionCacheKey(normalizedDomain, appPackage, effectiveDecision.policyRevision, threatSnapshot.revision),
                 effectiveDecision,
                 nowEpochMillis,
             )
