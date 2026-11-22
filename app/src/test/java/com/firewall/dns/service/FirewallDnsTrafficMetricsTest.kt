@@ -8,6 +8,22 @@ import org.junit.Test
 
 class FirewallDnsTrafficMetricsTest {
     @Test
+    fun firestackSocketBindingAndProtectionFailuresAreSeparated() {
+        val before = FirewallDnsTrafficMetrics.snapshot()
+        FirewallDnsTrafficMetrics.firestackSocketProtectionResult(true)
+        FirewallDnsTrafficMetrics.firestackSocketProtectionResult(false)
+        FirewallDnsTrafficMetrics.firestackSocketBindingResult(true)
+        FirewallDnsTrafficMetrics.firestackSocketBindingResult(false)
+        val after = FirewallDnsTrafficMetrics.snapshot()
+        assertEquals(2L, after.firestackProtectAttempts - before.firestackProtectAttempts)
+        assertEquals(1L, after.firestackProtectSuccess - before.firestackProtectSuccess)
+        assertEquals(1L, after.firestackProtectFailure - before.firestackProtectFailure)
+        assertEquals(2L, after.firestackBindAttempts - before.firestackBindAttempts)
+        assertEquals(1L, after.firestackBindSuccess - before.firestackBindSuccess)
+        assertEquals(1L, after.firestackBindFailure - before.firestackBindFailure)
+    }
+
+    @Test
     fun firestackAndFlowTelemetryAreExposedInSnapshots() {
         val before = FirewallDnsTrafficMetrics.snapshot()
         FirewallDnsTrafficMetrics.firestackStarted()
