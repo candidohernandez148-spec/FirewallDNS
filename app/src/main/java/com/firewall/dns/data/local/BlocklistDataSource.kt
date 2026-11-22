@@ -24,6 +24,8 @@ data class BlocklistSnapshot(
     val blocked: Set<String>,
     val exceptions: Set<String>,
     val threatDomainsByCategory: Map<ThreatFeedCategory, Set<String>>,
+    val importantBlocked: Set<String> = emptySet(),
+    val importantExceptions: Set<String> = emptySet(),
     val summary: String = ""
 )
 
@@ -52,6 +54,8 @@ class BlocklistDataSource(context: Context) {
     fun loadFromDisk(defaultDomains: List<String>): BlocklistSnapshot {
         val blocked = HashSet<String>(defaultDomains)
         val exceptions = HashSet<String>()
+        val importantBlocked = HashSet<String>()
+        val importantExceptions = HashSet<String>()
         val categories = ThreatFeedCategory.values().associateWith { HashSet<String>() }.toMutableMap()
         val file = File(filesDir, ADBLOCK_FILE_NAME)
         if (file.exists()) {
@@ -68,7 +72,13 @@ class BlocklistDataSource(context: Context) {
                         }
                     } else {
                         RuleEvaluator.parseAdblockLineEntries(line).forEach { parsed ->
-                            if (parsed.isException) exceptions.add(parsed.domain) else blocked.add(parsed.domain)
+                            if (parsed.isException) {
+                                exceptions.add(parsed.domain)
+                                if (parsed.isImportant) importantExceptions.add(parsed.domain)
+                            } else {
+                                blocked.add(parsed.domain)
+                                if (parsed.isImportant) importantBlocked.add(parsed.domain)
+                            }
                         }
                     }
                 }
@@ -77,7 +87,9 @@ class BlocklistDataSource(context: Context) {
         return BlocklistSnapshot(
             blocked = blocked,
             exceptions = exceptions,
-            threatDomainsByCategory = categories.mapValues { it.value.toSet() }
+            threatDomainsByCategory = categories.mapValues { it.value.toSet() },
+            importantBlocked = importantBlocked,
+            importantExceptions = importantExceptions
         )
     }
 
