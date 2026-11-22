@@ -22,3 +22,24 @@ index 0000000..1111111
 +func CaptureDnsPort() {
 +	settings.SetTunMode(settings.DNSModePort, settings.BlockModeNone, settings.PtModeNone)
 +}
+
+diff --git a/intra/firewalldns_test.go b/intra/firewalldns_test.go
+new file mode 100644
+index 0000000..2222222
+--- /dev/null
++++ b/intra/firewalldns_test.go
+@@ -0,0 +1,17 @@
++package intra
++
++import (
++	"testing"
++
++	"github.com/celzero/firestack/intra/settings"
++)
++
++func TestCaptureDnsPortEnablesAllPort53Interception(t *testing.T) {
++	CaptureDnsPort()
++	if got := settings.DNSMode.Load(); got != settings.DNSModePort {
++		t.Fatalf("DNSMode = %d, want %d (port capture)", got, settings.DNSModePort)
++	}
++}
