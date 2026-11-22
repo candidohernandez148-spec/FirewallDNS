@@ -55,12 +55,14 @@ import androidx.compose.ui.unit.sp
 import com.firewall.dns.domain.model.DnsLogEntry
 import com.firewall.dns.domain.model.FirewallStats
 import com.firewall.dns.domain.model.TrafficPoint
+import com.firewall.dns.service.FirewallDnsTrafficMetrics
 
 @Composable
 fun LogsScreen(
     stats: FirewallStats,
     logs: List<DnsLogEntry>,
     traffic: List<TrafficPoint>,
+    tunMetrics: FirewallDnsTrafficMetrics.Snapshot,
     otherVpnActive: Boolean,
     searchQuery: String,
     onlyBlocked: Boolean,
@@ -152,6 +154,32 @@ fun LogsScreen(
                         Legend("Bloqueados", BLOCKED_COLOR)
                     }
                     TrafficChart(traffic, Modifier.fillMaxWidth().height(96.dp))
+                }
+            }
+        }
+
+        item {
+            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+                Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Telemetría del túnel", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Text(if (tunMetrics.nativeStatsUpdatedAtEpochMs <= 0L) "SIN MUESTRA" else "SNAPSHOT",
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        ActivityMetric("IP RX/TX", "${tunMetrics.ipPacketsReceived}/${tunMetrics.ipPacketsSent}", MaterialTheme.colorScheme.primary, Modifier.weight(1f))
+                        ActivityMetric("TCP RX/TX", "${tunMetrics.tcpSegmentsReceived}/${tunMetrics.tcpSegmentsSent}", MaterialTheme.colorScheme.primary, Modifier.weight(1f))
+                        ActivityMetric("UDP RX/TX", "${tunMetrics.udpPacketsReceived}/${tunMetrics.udpPacketsSent}", MaterialTheme.colorScheme.primary, Modifier.weight(1f))
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        ActivityMetric("ICMPv4 RX/TX", "${tunMetrics.icmpV4Received}/${tunMetrics.icmpV4Sent}", MaterialTheme.colorScheme.tertiary, Modifier.weight(1f))
+                        ActivityMetric("ICMPv6 RX/TX", "${tunMetrics.icmpV6Received}/${tunMetrics.icmpV6Sent}", MaterialTheme.colorScheme.tertiary, Modifier.weight(1f))
+                        ActivityMetric("Flujos activos", tunMetrics.flowsActive.toString(), MaterialTheme.colorScheme.primary, Modifier.weight(1f))
+                    }
+                    Text("TUN ${tunMetrics.tunRxBytes} RX / ${tunMetrics.tunTxBytes} TX bytes · NIC ${tunMetrics.nicRxPackets}/${tunMetrics.nicTxPackets} paquetes · TCP drops ${tunMetrics.tcpDrops} · UDP drops ${tunMetrics.udpDrops}",
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Snapshots nativos acumulados; no equivalen a eventos DNS ni a paquetes individuales en pantalla.",
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
