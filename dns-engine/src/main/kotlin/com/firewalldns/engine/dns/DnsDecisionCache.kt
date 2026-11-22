@@ -8,6 +8,7 @@ data class DnsDecisionCacheKey(
     val domain: String,
     val appPackage: String?,
     val policyRevision: Long,
+    val threatRevision: Long = 0,
 )
 
 /**
