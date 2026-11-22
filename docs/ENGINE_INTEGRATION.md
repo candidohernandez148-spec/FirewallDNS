@@ -1,6 +1,6 @@
 > **Estado histórico:** este documento describe la integración inicial del motor DNS compartido y conserva decisiones/validaciones de aquella etapa. Sus frases que limitan el servicio a DNS-only y las referencias a smoltcp como transporte productivo general ya no describen el estado actual de `main`.
 >
-> **Arquitectura vigente:** un solo `VpnService`, una sola interfaz TUN y Firestack/gVisor como única pila de tráfico productiva para TCP/UDP/ICMP IPv4/IPv6. FirewallDNS conserva una única autoridad de políticas, amenazas, reglas por aplicación/IP/puerto, DNS y telemetría. smoltcp permanece aislado en el camino de respaldo DNS/TCP y en pruebas; no compite por el TUN cuando Firestack está activo. DoH no se descifra; DoT/DoQ se filtran por puertos estándar y los endpoints DoH se identifican solo cuando existe correlación conocida.
+> **Arquitectura vigente:** un solo `VpnService`, una sola interfaz TUN y Firestack/gVisor como única pila de tráfico productiva para TCP/UDP/ICMP IPv4/IPv6. FirewallDNS conserva una única autoridad de políticas, amenazas, reglas por aplicación/IP/puerto, DNS y telemetría. smoltcp/Rust permanece aislado en pruebas y diagnósticos; no participa en el tráfico de producción ni ofrece fallback. DoH no se descifra; DoT/DoQ se filtran por puertos estándar y los endpoints DoH se identifican solo cuando existe correlación conocida.
 >
 > Consulta [FIRESTACK_INTEGRATION_PLAN.md](FIRESTACK_INTEGRATION_PLAN.md) para el diseño vigente, las capacidades integradas, las licencias y la matriz de validación pendiente en el Samsung A34 5G.
 >
@@ -29,7 +29,7 @@ La operación upstream es síncrona; por ello se invoca desde los workers existe
 
 ## Compatibilidad y rollback
 
-El campo `USE_SHARED_ENGINE` de `app/build.gradle.kts` funciona como interruptor de integración. Está habilitado en esta rama. Para volver temporalmente al evaluador y forwarding Kotlin anteriores, cambiarlo a `false` y reconstruir. Si no se puede inicializar el adaptador o el upstream compartido, el servicio conserva el camino anterior como fallback.
+La integración del motor FirewallDNS es obligatoria. Se eliminó el interruptor `USE_SHARED_ENGINE` y no existe fallback DNS-only: si Firestack/gVisor no puede adjuntarse al TUN, el servicio se detiene y no muestra protección activa. smoltcp se conserva solo para pruebas/diagnósticos fuera del tráfico productivo.
 
 ## Semántica
 
@@ -47,7 +47,7 @@ El campo `USE_SHARED_ENGINE` de `app/build.gradle.kts` funciona como interruptor
 3. Probar en Samsung A34 5G con Wi-Fi, datos móviles, IPv4 e IPv6.
 4. Verificar que `VpnService.protect()` evita el bucle upstream en hardware real.
 5. Medir P50/P95/P99, CPU, memoria, batería, pérdida, timeouts y reconexiones.
-6. Confirmar reglas por aplicación, excepciones, OBSERVE y fallback.
+6. Confirmar reglas por aplicación, excepciones y OBSERVE.
 7. No retirar el código anterior hasta superar la matriz de validación.
 
 La integración de código no equivale a validación en el dispositivo ni demuestra ausencia de fugas DNS.
@@ -100,6 +100,6 @@ El servicio productivo reensambla fragmentos antes de clasificar. DNS UDP/53 se 
 
 `DnsTcpFrameCodec` y `DnsTcpSessionProcessor` manejan el framing incremental, las decisiones `BLOCK / OBSERVE / ALLOW` y el upstream. `DnsUpstreamClient` protege sockets UDP/TCP con `VpnService.protect()` antes de conectarlos y reintenta por TCP cuando la respuesta UDP upstream trae TC=1.
 
-En `main` de FirewallDNS (`5080526`, después del PR #80), el `DnsFirewallService` ya conecta su lector TUN al `NativeTcpDnsTransport` JNI y al `SmoltcpDnsTcpCoordinator` para TCP/53 IPv4/IPv6. El lector conserva el orden de paquetes; un único hilo propietario ejecuta `poll`, consume eventos y escribe respuestas al mismo TUN. No se crea otro `VpnService`.
+Histórico: el antiguo `DnsFirewallService` conectaba el lector TUN a `NativeTcpDnsTransport`/`SmoltcpDnsTcpCoordinator` para DNS/TCP. Ese camino fue retirado del servicio productivo; las clases nativas permanecen disponibles únicamente para diagnósticos aislados y pruebas.
 
 La integración de código y CI no equivalen a una prueba física completa. Falta verificar en Samsung A34 5G handshake, retransmisión, FIN/RST, concurrencia, límites de cola, expiración, cambios Wi-Fi/móvil, `protect()` upstream, pérdidas y latencia. No se habilita TCP/UDP general ni se afirma inspección de DoH/DoT/DoQ.
