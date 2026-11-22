@@ -72,7 +72,7 @@ data class FirestackNativeStatsSnapshot(
     val icmpV4Sent: Long,
     val icmpV6Received: Long,
     val icmpV6Sent: Long,
-    val capturedAtEpochMs: Long,
+    val sampledAtEpochMs: Long,
 )
 
 class FirestackTunnelAdapter private constructor(
@@ -200,7 +200,7 @@ class FirestackTunnelAdapter private constructor(
             icmpV4Sent = icmp.snd4,
             icmpV6Received = icmp.rcv6,
             icmpV6Sent = icmp.snd6,
-            capturedAtEpochMs = System.currentTimeMillis(),
+            sampledAtEpochMs = System.currentTimeMillis(),
         )
     }.getOrNull()
 
