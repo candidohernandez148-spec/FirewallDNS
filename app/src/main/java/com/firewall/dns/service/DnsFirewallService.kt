@@ -24,10 +24,8 @@ import com.firewalldns.engine.android.AndroidEngineRuntime
 import com.firewalldns.engine.android.AndroidFlowPolicyAdapter
 import com.firewalldns.engine.android.FirestackTunnelAdapter
 import com.firewalldns.engine.core.PolicyAction
-import com.firewalldns.engine.dns.DnsExchangeCancellation
 import com.firewalldns.engine.dns.DnsUpstreamConfig
 import com.firewalldns.engine.dns.DnsUpstreamFailoverClient
-import com.firewalldns.engine.dns.DnsUpstreamResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
