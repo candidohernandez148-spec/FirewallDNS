@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import com.firewall.dns.domain.model.AppInfoItem
 import com.firewall.dns.domain.model.BlocklistDownloadProgress
 import com.firewall.dns.domain.model.FirewallStats
+import com.firewalldns.engine.core.NetworkFlowRule
 
 @Composable
 fun ProtectionHubScreen(
@@ -38,6 +39,9 @@ fun ProtectionHubScreen(
     onDownloadBlocklist: () -> Unit,
     onAddCustomRule: (String, Boolean) -> Unit,
     onRemoveCustomRule: (String) -> Unit,
+    flowRules: List<NetworkFlowRule>,
+    onAddFlowRule: (String, com.firewalldns.engine.core.FlowProtocol?, Int?, String?, com.firewalldns.engine.core.PolicyAction) -> Unit,
+    onRemoveFlowRule: (String) -> Unit,
     apps: List<AppInfoItem>,
     excludedPackages: Set<String>,
     blockedApps: Set<String>,
@@ -56,6 +60,7 @@ fun ProtectionHubScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(selected = section == 0, onClick = { section = 0 }, label = { Text("DNS y listas") })
                 FilterChip(selected = section == 1, onClick = { section = 1 }, label = { Text("Aplicaciones") })
+                FilterChip(selected = section == 2, onClick = { section = 2 }, label = { Text("Flujos TUN") })
             }
         }
         if (section == 0) {
@@ -76,7 +81,7 @@ fun ProtectionHubScreen(
                 onAddCustomRule = onAddCustomRule,
                 onRemoveCustomRule = onRemoveCustomRule
             )
-        } else {
+        } else if (section == 1) {
             AppsSettingsScreen(
                 stats = stats,
                 apps = apps,
@@ -89,6 +94,8 @@ fun ProtectionHubScreen(
                 onOpenBatteryOpt = onOpenBatteryOpt,
                 onOpenVpnSettings = onOpenVpnSettings
             )
+        } else {
+            FlowRulesScreen(rules = flowRules, onAdd = onAddFlowRule, onRemove = onRemoveFlowRule)
         }
     }
 }
