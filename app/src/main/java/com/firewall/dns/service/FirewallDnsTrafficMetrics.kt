@@ -195,7 +195,6 @@ object FirewallDnsTrafficMetrics {
     private val upstreamProtectTcpFailure = AtomicLong()
     private val noDnsResponse = AtomicLong()
     private val dnsResponsesBuilt = AtomicLong()
-    private val packetsWritten = AtomicLong()
     private val writeErrors = AtomicLong()
     private val workerErrors = AtomicLong()
     private val fragmentsAccepted = AtomicLong()
