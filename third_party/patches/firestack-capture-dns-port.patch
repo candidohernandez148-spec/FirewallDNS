@@ -53,7 +53,11 @@ new file mode 100644
 index 0000000..3333333
 --- /dev/null
 +++ b/intra/dnsx/firewalldns_test.go
-@@ -0,0 +1,27 @@
+@@ -0,0 +1,31 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at http://mozilla.org/MPL/2.0/.
++
 +package dnsx
 +
 +import (
