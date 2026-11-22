@@ -246,7 +246,7 @@ private class FirewallDNSFirestackBridge(
         val safeCid = cid.orEmpty()
         val decision = evaluateFlowCallback(protocol, uid, safeCid, src.orEmpty(), dst.orEmpty())
         runCatching { onFlowSnapshot(engine.flowMonitor.snapshot()) }
-        return decisionMark(safeCid, uid, decision?.action != PolicyAction.ALLOW && decision?.action != PolicyAction.OBSERVE)
+        return decisionMark(safeCid, uid, decision.action != PolicyAction.ALLOW && decision.action != PolicyAction.OBSERVE)
     }
 
     private fun evaluateFlowCallback(
