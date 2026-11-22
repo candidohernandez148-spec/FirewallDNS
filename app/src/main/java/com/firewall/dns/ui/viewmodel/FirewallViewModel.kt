@@ -132,10 +132,11 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
 
     fun removeCustomRule(domain: String) { FirewallRepository.removeCustomRule(domain) }
 
-    fun addNetworkFlowRule(cidr: String, protocol: FlowProtocol?, port: Int?, appPackage: String?, action: PolicyAction) {
-        FirewallRepository.addNetworkFlowRule(cidr, protocol, port, appPackage, action)
-            .onFailure { error -> _toastMessage.tryEmit(error.message ?: "No se pudo guardar la regla") }
+    fun addNetworkFlowRule(cidr: String, protocol: FlowProtocol?, port: Int?, appPackage: String?, action: PolicyAction): Boolean {
+        val result = FirewallRepository.addNetworkFlowRule(cidr, protocol, port, appPackage, action)
+        result.onFailure { error -> _toastMessage.tryEmit(error.message ?: "No se pudo guardar la regla") }
             .onSuccess { _toastMessage.tryEmit("Regla de flujo guardada y aplicada") }
+        return result.isSuccess
     }
 
     fun removeNetworkFlowRule(id: String) {
