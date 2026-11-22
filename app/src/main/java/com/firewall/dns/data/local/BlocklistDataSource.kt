@@ -67,7 +67,7 @@ class BlocklistDataSource(context: Context) {
                             }
                         }
                     } else {
-                        RuleEvaluator.parseAdblockLine(line)?.let { parsed ->
+                        RuleEvaluator.parseAdblockLineEntries(line).forEach { parsed ->
                             if (parsed.isException) exceptions.add(parsed.domain) else blocked.add(parsed.domain)
                         }
                     }
@@ -177,7 +177,7 @@ class BlocklistDataSource(context: Context) {
                     lineCount++
                     if (lineCount > MAX_SOURCE_LINES) throw IllegalStateException("La lista supera 200,000 líneas")
                     if (line.length > MAX_LINE_CHARS) throw IllegalStateException("La lista contiene una línea demasiado larga")
-                    RuleEvaluator.parseAdblockLine(line)?.let { parsed ->
+                    RuleEvaluator.parseAdblockLineEntries(line).forEach { parsed ->
                         parsedRuleCount++
                         if (parsed.isException) sourceExceptions.add(parsed.domain) else sourceBlocked.add(parsed.domain)
                     }
