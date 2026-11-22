@@ -29,7 +29,7 @@ data class NetworkFlowRequest(
 ) {
     init {
         require(appUid == null || appUid >= 0) { "UID must be non-negative or unknown" }
-        require(destinationPort in 1..65535) { "Destination port must be between 1 and 65535" }
+        require(if (protocol == FlowProtocol.ICMP) destinationPort in 0..65535 else destinationPort in 1..65535) { "Destination port is invalid for the flow protocol" }
         require(parseIpAddress(destinationAddress) != null) { "Destination address must be a numeric IPv4 or IPv6 address" }
     }
 }
