@@ -39,18 +39,18 @@ jobs:
       - name: Instalar cargo-ndk
         run: cargo install cargo-ndk --locked
 
-      - name: Instalar Go para Firestack
-        uses: actions/setup-go@v6
-        with:
-          go-version: "1.27.3"
-          cache-dependency-path: third_party/firestack/go.sum
-
       - name: Checkout Firestack fijado
         uses: actions/checkout@v7
         with:
           repository: celzero/firestack
           ref: c27887056230769ee897b7c7b92976b96d3c9a6d
           path: third_party/firestack
+
+      - name: Instalar Go para Firestack
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.27.3"
+          cache-dependency-path: third_party/firestack/go.sum
 
       - name: Instalar NDK para Firestack
         run: |
