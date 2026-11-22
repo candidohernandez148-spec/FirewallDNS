@@ -40,7 +40,7 @@ fun ProtectionHubScreen(
     onAddCustomRule: (String, Boolean) -> Unit,
     onRemoveCustomRule: (String) -> Unit,
     flowRules: List<NetworkFlowRule>,
-    onAddFlowRule: (String, com.firewalldns.engine.core.FlowProtocol?, Int?, String?, com.firewalldns.engine.core.PolicyAction) -> Unit,
+    onAddFlowRule: (String, com.firewalldns.engine.core.FlowProtocol?, Int?, String?, com.firewalldns.engine.core.PolicyAction) -> Boolean,
     onRemoveFlowRule: (String) -> Unit,
     apps: List<AppInfoItem>,
     excludedPackages: Set<String>,
