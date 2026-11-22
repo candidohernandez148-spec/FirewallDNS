@@ -265,11 +265,26 @@ private fun AppActivityDetailScreen(
 
     Column(
         modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 10.dp).pointerInput(app.uid) {
+            val backEdgePx = 32.dp.toPx()
+            var startedAtBackEdge = false
             var horizontalDrag = 0f
             detectHorizontalDragGestures(
-                onHorizontalDrag = { _, dragAmount -> horizontalDrag += dragAmount },
-                onDragEnd = { if (horizontalDrag > 72f) onBack(); horizontalDrag = 0f },
-                onDragCancel = { horizontalDrag = 0f }
+                onDragStart = { start -> startedAtBackEdge = start.x <= backEdgePx },
+                onHorizontalDrag = { change, dragAmount ->
+                    if (startedAtBackEdge) {
+                        change.consume()
+                        horizontalDrag += dragAmount
+                    }
+                },
+                onDragEnd = {
+                    if (startedAtBackEdge && horizontalDrag > 72f) onBack()
+                    startedAtBackEdge = false
+                    horizontalDrag = 0f
+                },
+                onDragCancel = {
+                    startedAtBackEdge = false
+                    horizontalDrag = 0f
+                }
             )
         },
         verticalArrangement = Arrangement.spacedBy(12.dp)
