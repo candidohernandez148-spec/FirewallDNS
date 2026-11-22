@@ -951,12 +951,9 @@ private fun LiveEngineOperations(
             "TCP · intentos de protección" to metrics.upstreamProtectTcpAttempts,
             "TCP · sockets protegidos" to metrics.upstreamProtectTcpSuccess,
             "TCP · fallos de protección" to metrics.upstreamProtectTcpFailure,
-            "Fallos de intercambio upstream" to metrics.upstreamAttemptFailures,
-            "Timeouts" to metrics.upstreamFailureTimeouts,
-            "Errores de socket / I/O" to metrics.upstreamFailureIo,
-            "Fallos de validación DNS" to metrics.upstreamFailureValidation,
-            "Consultas canceladas" to metrics.upstreamCancelled,
-        ), "Son resultados reales de sockets y del cliente DNS upstream. No equivalen al número de consultas DNS entrantes por UDP/TCP.")
+        ), "Estos contadores miden llamadas reales a VpnService.protect() para sockets upstream. No representan consultas DNS entrantes ni el resultado de cada intercambio.")
+        LiveMetricSection("RESULTADO DE INTERCAMBIOS DNS UPSTREAM", emptyList(),
+            "N/D: el cliente DNS dispone de observador por intento, pero el host Android aún no conecta ese callback. No se muestran ceros ficticios.")
         LiveActiveFlows(metrics.activeFlows)
         LiveMetricSection("PROTECCIÓN DE SOCKETS FIRESTACK", listOf(
             "Protección socket correcta" to metrics.firestackProtectSuccess,
