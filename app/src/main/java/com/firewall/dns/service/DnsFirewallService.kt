@@ -325,6 +325,12 @@ class DnsFirewallService : VpnService() {
         getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification())
     }
 
+    private fun currentPhysicalLinkMtu(network: android.net.Network? = selectedPhysicalNetwork): Int {
+        val connectivity = getSystemService(android.net.ConnectivityManager::class.java)
+        val reported = network?.let { connectivity?.getLinkProperties(it)?.mtu } ?: 0
+        return reported.takeIf { it in 576..9000 } ?: 1500
+    }
+
     private fun buildVpnBuilder(fullTunnel: Boolean): Builder {
         val upstream = FirewallRepository.getUpstreamDns()
         val builder = Builder()
@@ -372,6 +378,7 @@ class DnsFirewallService : VpnService() {
                     vpnService = this,
                     tunDescriptor = fullTunnelDescriptor,
                     mtu = 1500,
+                    linkMtu = currentPhysicalLinkMtu(),
                     resolver = resolver,
                     engine = engineRuntime.engine,
                     flowPolicyAdapter = flowAdapter,
@@ -894,7 +901,7 @@ class DnsFirewallService : VpnService() {
         // Rebind Firestack's default DNS transport to the resolver from this exact
         // physical-network generation without restarting the TUN/netstack.
         activeTunSession?.firestack?.let { stack ->
-            if (!stack.updatePhysicalNetworkResolver(discovered.joinToString(","))) {
+            if (!stack.updatePhysicalNetworkResolver(discovered.joinToString(","), currentPhysicalLinkMtu(physicalNetwork))) {
                 FirewallDnsTrafficMetrics.upstreamFailure()
             }
         }
