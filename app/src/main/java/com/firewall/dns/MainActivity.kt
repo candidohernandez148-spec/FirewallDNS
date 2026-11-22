@@ -22,6 +22,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
@@ -272,7 +274,9 @@ fun FirewallApp(
     val blockedApps by viewModel.blockedApps.collectAsState()
     val appSearch by viewModel.appSearch.collectAsState()
 
-    var selectedDestination by remember { mutableIntStateOf(0) }
+    val pagerState = rememberPagerState(pageCount = { 5 })
+    val navigationScope = rememberCoroutineScope()
+    val selectedDestination = pagerState.currentPage
     var otherVpnActive by remember { mutableStateOf(false) }
 
     LaunchedEffect(stats.isRunning) {
@@ -360,7 +364,7 @@ fun FirewallApp(
                 destinations.forEachIndexed { index, destination ->
                     NavigationBarItem(
                         selected = selectedDestination == index,
-                        onClick = { selectedDestination = index },
+                        onClick = { navigationScope.launch { pagerState.animateScrollToPage(index) } },
                         icon = { Icon(destination.second, contentDescription = destination.first) },
                         label = { Text(destination.first, maxLines = 1) },
                         alwaysShowLabel = true
@@ -369,21 +373,24 @@ fun FirewallApp(
             }
         }
     ) { padding ->
-        Box(
+        HorizontalPager(
+            state = pagerState,
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
-        ) {
-            when (selectedDestination) {
+                .padding(padding),
+            key = { page -> page },
+            beyondViewportPageCount = 1
+        ) { page ->
+            when (page) {
                 0 -> SocDashboardScreen(
                     stats = stats,
                     logs = activityLogs,
                     otherVpnActive = otherVpnActive,
                     blocklistsDownloaded = blocklistsDownloaded,
                     tunMetrics = tunMetrics,
-                    onOpenMonitor = { selectedDestination = 1 },
-                    onOpenThreats = { selectedDestination = 2 },
-                    onOpenProtection = { selectedDestination = 3 }
+                    onOpenMonitor = { navigationScope.launch { pagerState.animateScrollToPage(1) } },
+                    onOpenThreats = { navigationScope.launch { pagerState.animateScrollToPage(2) } },
+                    onOpenProtection = { navigationScope.launch { pagerState.animateScrollToPage(3) } }
                 )
                 1 -> LogsScreen(
                     stats = stats,
@@ -403,7 +410,7 @@ fun FirewallApp(
                     stats = stats,
                     logs = activityLogs,
                     otherVpnActive = otherVpnActive,
-                    onOpenActivity = { selectedDestination = 1 }
+                    onOpenActivity = { navigationScope.launch { pagerState.animateScrollToPage(1) } }
                 )
                 3 -> ProtectionHubScreen(
                     stats = stats,
