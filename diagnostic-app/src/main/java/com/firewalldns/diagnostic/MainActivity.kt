@@ -269,7 +269,7 @@ listOf("Contador TUN DNS UDP", "Contador TUN DNS TCP", "Protect UDP upstream", "
         val query = buildDnsQuery("probe-${SystemClock.elapsedRealtimeNanos()}.example.com")
         return try {
             // Intentionally do not protect this client socket: it must enter the
-            // active VPN TUN so the production smoltcp path is exercised.
+            // active VPN TUN so the production Firestack/gVisor path is exercised.
             Socket().use { socket ->
                 socket.connect(InetSocketAddress(InetAddress.getByName(host), 53), 3500)
                 socket.soTimeout = 3500
