@@ -2,7 +2,7 @@
 
 ## Principio de diseño
 
-FirewallDNS tiene **un solo motor productivo**, una sola autoridad de políticas, un solo `VpnService` y una sola interfaz TUN. Firestack/gVisor está integrado como el plano de paquetes del motor FirewallDNS; no es una segunda VPN ni una aplicación paralela. smoltcp/Rust permanece únicamente como banco de pruebas y diagnóstico aislado.
+FirewallDNS tiene **un solo motor productivo**, una sola autoridad de políticas, un solo `VpnService` y una sola interfaz TUN. Firestack/gVisor está integrado como el plano de paquetes del motor FirewallDNS; no es una segunda VPN ni una aplicación paralela. El prototipo Rust/smoltcp fue retirado del APK y del flujo de compilación; Firestack/gVisor es la única pila de paquetes.
 
 ## Camino de producción
 
@@ -30,7 +30,6 @@ FirewallDNS tiene **un solo motor productivo**, una sola autoridad de políticas
 - **RethinkDNS**: referencia para el ciclo de vida del único VPN Android, el adaptador Firestack, la atribución de conexiones y el seguimiento de actividad.
 - **NetGuard**: referencia para el modelo de firewall local sin root, los límites de Android VPN y el control por aplicación/red.
 - **gVisor**: referencia para los contratos y el comportamiento de la pila de red.
-- **smoltcp/Rust**: pruebas de límites IPv4/IPv6 y JNI aisladas; no está conectado al TUN productivo.
 
 Se aprovechan patrones y pruebas de proyectos maduros, respetando sus licencias. La política, el motor de decisiones y la integración final pertenecen a FirewallDNS.
 
