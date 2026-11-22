@@ -931,10 +931,10 @@ private fun LiveEngineOperations(
             "Descartes UDP" to metrics.udpDrops,
         ))
         LiveMetricSection("PROTOCOLO ICMP · NATIVO", listOf(
-            "Echo reply ICMPv4 RX" to metrics.icmpV4Received,
-            "Echo request ICMPv4 TX" to metrics.icmpV4Sent,
-            "Echo reply ICMPv6 RX" to metrics.icmpV6Received,
-            "Echo request ICMPv6 TX" to metrics.icmpV6Sent,
+            "Mensajes ICMPv4 recibidos" to metrics.icmpV4Received,
+            "Mensajes ICMPv4 enviados" to metrics.icmpV4Sent,
+            "Mensajes ICMPv6 recibidos" to metrics.icmpV6Received,
+            "Mensajes ICMPv6 enviados" to metrics.icmpV6Sent,
         ))
         LiveMetricSection("INSPECCIÓN DNS Y DECISIONES", listOf(
             "Evaluaciones DNS" to metrics.dnsPolicyDecisions,
@@ -959,7 +959,41 @@ private fun LiveEngineOperations(
             "Bytes recibidos" to metrics.flowBytesReceived,
             "Rechazos por capacidad" to metrics.flowCapacityRejected,
             "Firestack activo (0/1)" to metrics.firestackActive,
-        ))
+        ), "Monitor FlowConnectionMonitor; el límite configurado es 4,096 flujos simultáneos.")
+        val ipv4Flows = metrics.activeFlows.filter { flow ->
+            flow.identity.sourceAddress.contains('.') || flow.identity.destinationAddress.contains('.')
+        }
+        val ipv6Flows = metrics.activeFlows.filter { flow ->
+            flow.identity.sourceAddress.contains(':') || flow.identity.destinationAddress.contains(':')
+        }
+        val unknownFamilyFlows = metrics.activeFlows.size - ipv4Flows.size - ipv6Flows.size
+        LiveMetricSection("FAMILIA IP · FLUJOS ACTIVOS OBSERVADOS", listOf(
+            "Flujos IPv4 activos" to ipv4Flows.size.toLong(),
+            "Bytes TX IPv4 en flujos activos" to ipv4Flows.sumOf { it.bytesSent },
+            "Bytes RX IPv4 en flujos activos" to ipv4Flows.sumOf { it.bytesReceived },
+            "Flujos IPv6 activos" to ipv6Flows.size.toLong(),
+            "Bytes TX IPv6 en flujos activos" to ipv6Flows.sumOf { it.bytesSent },
+            "Bytes RX IPv6 en flujos activos" to ipv6Flows.sumOf { it.bytesReceived },
+            "Flujos sin familia identificable" to unknownFamilyFlows.coerceAtLeast(0).toLong(),
+        ), "Clasificación por direcciones de los flujos vivos del monitor; no es un contador de todos los paquetes IP. Los totales nativos TUN/IP siguen agregados.")
+        LiveMetricSection("COLA DE EVENTOS DEL MOTOR", listOf(
+            "Eventos actualmente pendientes" to metrics.engineQueuedEvents,
+            "Eventos descartados por cola llena" to metrics.engineEventsDropped,
+            "Capacidad configurada de la cola" to 512L,
+        ), "Cola acotada de telemetría EngineMonitor (capacidad 512); no es una cola de paquetes TUN. El contador de ocupación es una instantánea.")
+        LiveMetricSection("TRANSPORTE DNS UPSTREAM · SOCKETS", listOf(
+            "UDP · intentos de protección" to metrics.upstreamProtectUdpAttempts,
+            "UDP · sockets protegidos" to metrics.upstreamProtectUdpSuccess,
+            "UDP · fallos de protección" to metrics.upstreamProtectUdpFailure,
+            "TCP · intentos de protección" to metrics.upstreamProtectTcpAttempts,
+            "TCP · sockets protegidos" to metrics.upstreamProtectTcpSuccess,
+            "TCP · fallos de protección" to metrics.upstreamProtectTcpFailure,
+            "Fallos de intercambio upstream" to metrics.upstreamAttemptFailures,
+            "Timeouts" to metrics.upstreamFailureTimeouts,
+            "Errores de socket / I/O" to metrics.upstreamFailureIo,
+            "Fallos de validación DNS" to metrics.upstreamFailureValidation,
+            "Consultas canceladas" to metrics.upstreamCancelled,
+        ), "Son resultados reales de sockets y del cliente DNS upstream. No equivalen al número de consultas DNS entrantes por UDP/TCP.")
         LiveActiveFlows(metrics.activeFlows)
         LiveMetricSection("PROTECCIÓN DE SOCKETS FIRESTACK", listOf(
             "Protección socket correcta" to metrics.firestackProtectSuccess,
