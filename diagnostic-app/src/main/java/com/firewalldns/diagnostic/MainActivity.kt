@@ -15,7 +15,6 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.content.FileProvider
-import com.firewalldns.engine.android.NativeTcpDnsTransport
 import com.firewalldns.engine.core.PolicyAction
 import com.firewalldns.engine.core.PolicyRule
 import com.firewalldns.engine.core.RuleSource
@@ -33,7 +32,6 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -74,7 +72,7 @@ class MainActivity : Activity() {
             setTypeface(null, android.graphics.Typeface.BOLD)
         }
         val subtitle = TextView(this).apply {
-            text = "Motor local Kotlin + Rust/JNI · smoltcp · red real · integración VPN"
+            text = "Motor local Kotlin · red real · integración VPN"
             textSize = 13f
             setPadding(0, 6, 0, 18)
             setTextColor(0xFF526174.toInt())
@@ -155,8 +153,6 @@ class MainActivity : Activity() {
                 if (result is DnsEvaluation.Rejected) TestResult("", TestStatus.APPROVED, "El motor rechazó un paquete DNS truncado.")
                 else TestResult("", TestStatus.FAILED, "El paquete DNS truncado no fue rechazado.")
             }
-            collected += timed("smoltcp nativo IPv4/IPv6") { testNativeTransport() }
-            collected += timed("JNI: límites, cola y propiedad del hilo") { testNativeTransportGuards() }
             collected += TestResult("Reensamblado de fragmentos IPv4/IPv6", TestStatus.NOT_VERIFIED,
                 "El APK no inyecta fragmentos en el TUN productivo; requiere una prueba instrumentada del servicio.")
             collected += TestResult("Aprendizaje inteligente persistente", TestStatus.NOT_VERIFIED,
@@ -174,29 +170,23 @@ class MainActivity : Activity() {
             } else {
                 TestResult("Puente de métricas FirewallDNS", TestStatus.NOT_VERIFIED, "No se pudo leer el proveedor protegido. Reinstala ambos APK del mismo paquete de compilación.")
             }
-            collected += when {
-                !firewallDnsActive -> TestResult("Transporte smoltcp productivo", TestStatus.NOT_VERIFIED, "Activa FirewallDNS para verificar la instancia del transporte en el servicio real.")
-                beforeMetrics["smoltcpTransportAvailable"] == 1L -> TestResult("Transporte smoltcp productivo", TestStatus.APPROVED, "El servicio productivo informa que el transporte nativo está inicializado.")
-                else -> TestResult("Transporte smoltcp productivo", TestStatus.FAILED, "FirewallDNS informa VPN activa, pero el transporte smoltcp no está disponible.")
-            }
-
             if (firewallDnsActive && bridgeAvailable) {
                 val ipv4ProbeDns = chooseIpv4ProbeDns()
                 collected += timed("DNS UDP IPv4 por VPN") { probeUdp(ipv4ProbeDns, "IPv4 UDP") }
-                collected += timed("DNS TCP IPv4 por VPN (smoltcp)") { probeTcp(ipv4ProbeDns, "IPv4 TCP") }
+                collected += timed("DNS TCP IPv4 por VPN") { probeTcp(ipv4ProbeDns, "IPv4 TCP") }
                 val hasIpv6 = hasGlobalIpv6()
                 if (hasIpv6) {
                     collected += timed("DNS UDP IPv6 por VPN") { probeUdp("2606:4700:4700::1111", "IPv6 UDP") }
-                    collected += timed("DNS TCP IPv6 por VPN (smoltcp)") { probeTcp("2606:4700:4700::1111", "IPv6 TCP") }
+                    collected += timed("DNS TCP IPv6 por VPN") { probeTcp("2606:4700:4700::1111", "IPv6 TCP") }
                 } else {
                     collected += TestResult("DNS UDP IPv6 por VPN", TestStatus.NOT_VERIFIED, "La red activa no anuncia una dirección IPv6 global.")
-                    collected += TestResult("DNS TCP IPv6 por VPN (smoltcp)", TestStatus.NOT_VERIFIED, "La red activa no anuncia una dirección IPv6 global.")
+                    collected += TestResult("DNS TCP IPv6 por VPN", TestStatus.NOT_VERIFIED, "La red activa no anuncia una dirección IPv6 global.")
                 }
             } else {
                 collected += TestResult("DNS UDP IPv4 por VPN", TestStatus.NOT_VERIFIED, "Requiere FirewallDNS activo y métricas accesibles.")
-                collected += TestResult("DNS TCP IPv4 por VPN (smoltcp)", TestStatus.NOT_VERIFIED, "Requiere FirewallDNS activo y métricas accesibles.")
+                collected += TestResult("DNS TCP IPv4 por VPN", TestStatus.NOT_VERIFIED, "Requiere FirewallDNS activo y métricas accesibles.")
                 collected += TestResult("DNS UDP IPv6 por VPN", TestStatus.NOT_VERIFIED, "Requiere FirewallDNS activo, métricas y conectividad IPv6.")
-                collected += TestResult("DNS TCP IPv6 por VPN (smoltcp)", TestStatus.NOT_VERIFIED, "Requiere FirewallDNS activo, métricas y conectividad IPv6.")
+                collected += TestResult("DNS TCP IPv6 por VPN", TestStatus.NOT_VERIFIED, "Requiere FirewallDNS activo, métricas y conectividad IPv6.")
             }
 
             if (firewallDnsActive && bridgeAvailable) {
@@ -210,22 +200,13 @@ class MainActivity : Activity() {
             if (firewallDnsActive && bridgeAvailable) {
                 collected += metricDeltaResult("Contador TUN DNS UDP", "dnsUdpPackets")
                 collected += metricDeltaResult("Contador TUN DNS TCP", "dnsTcp")
-                collected += metricDeltaResult("Sesiones smoltcp abiertas", "smoltcpSessionsOpened")
                 collected += protectUdpResult()
                 collected += protectTcpResult()
                 collected += upstreamFailureBreakdownResult()
-                collected += metricDeltaResult("Paquetes TCP aceptados por JNI", "smoltcpPacketsAccepted")
-                collected += metricDeltaResult("Eventos DNS TCP recibidos", "smoltcpDataEvents")
-                collected += metricDeltaResult("Respuestas DNS TCP encoladas", "smoltcpResponsesQueued")
-                collected += metricDeltaResult("Rechazos internos smoltcp", "smoltcpIngressRejected", expectIncrease = false)
-                collected += metricDeltaResult("Errores nativos smoltcp", "smoltcpNativeErrors", expectIncrease = false)
                 collected += metricDeltaResult("Paquetes rechazados por cola", "queueRejected", expectIncrease = false)
                 collected += metricDeltaResult("Errores de escritura TUN", "writeErrors", expectIncrease = false)
             } else {
-                listOf("Contador TUN DNS UDP", "Contador TUN DNS TCP", "Sesiones smoltcp abiertas",
-                    "Protect UDP upstream", "Protect TCP upstream", "Paquetes TCP aceptados por JNI",
-                    "Eventos DNS TCP recibidos", "Respuestas DNS TCP encoladas",
-                    "Rechazos internos smoltcp", "Errores nativos smoltcp", "Paquetes rechazados por cola", "Errores de escritura TUN")
+listOf("Contador TUN DNS UDP", "Contador TUN DNS TCP", "Protect UDP upstream", "Protect TCP upstream", "Paquetes rechazados por cola", "Errores de escritura TUN")
                     .forEach { collected += TestResult(it, TestStatus.NOT_VERIFIED, "No hubo una sesión VPN verificable durante la prueba.") }
             }
 
@@ -262,123 +243,6 @@ class MainActivity : Activity() {
         }
         if (passed) TestResult("", TestStatus.APPROVED, "El motor aplicó $action correctamente.")
         else TestResult("", TestStatus.FAILED, "Resultado inesperado para $action: ${result::class.simpleName}.")
-    }
-
-    private fun testNativeTransport(): TestResult {
-        val v4Dns = byteArrayOf(10, 77, 0, 1)
-        val v4Client = byteArrayOf(10, 77, 0, 2)
-        val v6Dns = ByteArray(16).apply {
-            this[0] = 0x20.toByte(); this[1] = 0x01.toByte()
-            this[2] = 0x0d.toByte(); this[3] = 0xb8.toByte(); this[15] = 1
-        }
-        val v6Client = v6Dns.copyOf().apply { this[15] = 2 }
-        return try {
-            val transport = NativeTcpDnsTransport.create(1500, v4Dns, v4Client, v6Dns, v6Client, 16)
-                ?: return TestResult("", TestStatus.FAILED, "JNI no pudo crear la instancia smoltcp.")
-            transport.use { native ->
-                // These calls exercise the packaged Rust .so, not a Kotlin mock.
-                val emptyPacket = native.enqueuePacket(byteArrayOf())
-                val oversizedPacket = native.enqueuePacket(ByteArray(1501))
-                val pollResult = native.poll(SystemClock.elapsedRealtime(), 0)
-                val missingSession = native.queueResponse(
-                    Long.MAX_VALUE,
-                    byteArrayOf(0, 12, 0x12, 0x34, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0),
-                )
-                val noUnexpectedOutput = native.takePacket() == null && native.takeEvent() == null
-
-                val wrongOwnerResult = AtomicInteger(Int.MIN_VALUE)
-                val otherThread = Thread {
-                    wrongOwnerResult.set(native.poll(SystemClock.elapsedRealtime(), 0))
-                }.apply { name = "diagnostic-wrong-owner-probe"; start() }
-                otherThread.join(2_000)
-
-                val checks = listOf(
-                    "poll=$pollResult" to (pollResult >= 0),
-                    "empty=$emptyPacket" to (emptyPacket == -1),
-                    "oversized=$oversizedPacket" to (oversizedPacket == -1),
-                    "missingSession=$missingSession" to (missingSession == -5),
-                    "ownerGuard=${wrongOwnerResult.get()}" to (wrongOwnerResult.get() == -3),
-                    "emptyQueues=$noUnexpectedOutput" to noUnexpectedOutput,
-                )
-                val failures = checks.filterNot { it.second }.map { it.first }
-                if (otherThread.isAlive) {
-                    otherThread.interrupt()
-                    return@use TestResult("", TestStatus.FAILED, "La prueba de exclusividad del hilo no terminó.")
-                }
-                if (failures.isEmpty()) {
-                    TestResult("", TestStatus.APPROVED,
-                        "Rust/JNI smoltcp IPv4+IPv6 inicializado; validación de paquetes, sesión inexistente, colas vacías y protección del hilo propietario correctas.")
-                } else {
-                    TestResult("", TestStatus.FAILED,
-                        "Fallaron comprobaciones nativas: ${failures.joinToString()}.")
-                }
-            }
-        } catch (t: Throwable) {
-            TestResult("", TestStatus.FAILED, "Error JNI: ${t.javaClass.simpleName}: ${t.message ?: "sin detalle"}")
-        }
-    }
-
-    /** Exercises the packaged JNI boundary, not merely native library loading. */
-    private fun testNativeTransportGuards(): TestResult {
-        val v4Dns = byteArrayOf(10, 77, 0, 1)
-        val v4Client = byteArrayOf(10, 77, 0, 2)
-        val v6Dns = ByteArray(16).apply {
-            this[0] = 0x20.toByte()
-            this[1] = 0x01.toByte()
-            this[2] = 0x0d.toByte()
-            this[3] = 0xb8.toByte()
-            this[15] = 1
-        }
-        val v6Client = v6Dns.copyOf().apply { this[15] = 2 }
-        return try {
-            val transport = NativeTcpDnsTransport.create(1500, v4Dns, v4Client, v6Dns, v6Client, 16)
-                ?: return TestResult("", TestStatus.FAILED, "JNI no pudo crear el transporte.")
-            transport.use {
-                val firstPoll = it.poll(SystemClock.elapsedRealtime(), 0)
-                val emptyPacket = it.enqueuePacket(byteArrayOf())
-                val oversizedPacket = it.enqueuePacket(ByteArray(1501))
-                val missingSession = it.queueResponse(
-                    9_999_999L,
-                    byteArrayOf(0, 12) + ByteArray(12),
-                )
-                val rejectedPackets = it.rejectedPackets()
-                val crossThreadResult = AtomicInteger(Int.MIN_VALUE)
-                val worker = Thread {
-                    crossThreadResult.set(it.poll(SystemClock.elapsedRealtime(), 0))
-                }
-                worker.start()
-                worker.join(2_000)
-                val threadFinished = !worker.isAlive
-                if (!threadFinished) worker.interrupt()
-
-                val checks = listOf(
-                    firstPoll >= 0,
-                    emptyPacket == -1,
-                    oversizedPacket == -1,
-                    missingSession == -5,
-                    rejectedPackets == 2L,
-                    threadFinished && crossThreadResult.get() == -3,
-                )
-                if (checks.all { passed -> passed }) {
-                    TestResult(
-                        "",
-                        TestStatus.APPROVED,
-                        "JNI operativo: cuenta ambos rechazos (paquete vacío y mayor al MTU), rechaza sesiones inexistentes y protege smoltcp contra acceso desde otro hilo.",
-                    )
-                } else {
-                    TestResult(
-                        "",
-                        TestStatus.FAILED,
-                        "Falló una guarda JNI: poll=" + firstPoll + ", vacío=" + emptyPacket +
-                            ", MTU=" + oversizedPacket + ", sesión=" + missingSession +
-                            ", rechazos=" + rejectedPackets + ", hilo=" + crossThreadResult.get() +
-                            ", finalizó=" + threadFinished + ".",
-                    )
-                }
-            }
-        } catch (t: Throwable) {
-            TestResult("", TestStatus.FAILED, "Error en pruebas JNI: " + t.javaClass.simpleName + ": " + (t.message ?: "sin detalle"))
-        }
     }
 
     private fun probeUdp(host: String, label: String): TestResult {
