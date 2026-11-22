@@ -30,7 +30,7 @@ import com.firewalldns.engine.core.PolicyAction
 @Composable
 fun FlowRulesScreen(
     rules: List<NetworkFlowRule>,
-    onAdd: (String, FlowProtocol?, Int?, String?, PolicyAction) -> Unit,
+    onAdd: (String, FlowProtocol?, Int?, String?, PolicyAction) -> Boolean,
     onRemove: (String) -> Unit
 ) {
     var cidr by remember { mutableStateOf("") }
@@ -99,13 +99,13 @@ fun FlowRulesScreen(
                             } else if (cidr.isBlank()) {
                                 error = "Indica una IP o red CIDR."
                             } else {
-                                onAdd(cidr, when (protocol) {
+                                val saved = onAdd(cidr, when (protocol) {
                                     "TCP" -> FlowProtocol.TCP
                                     "UDP" -> FlowProtocol.UDP
                                     "ICMP" -> FlowProtocol.ICMP
                                     else -> null
                                 }, parsedPort, appPackage.takeIf { it.isNotBlank() }, action)
-                                cidr = ""; port = ""; appPackage = ""; error = ""
+                                if (saved) { cidr = ""; port = ""; appPackage = ""; error = "" }
                             }
                         },
                         modifier = Modifier.fillMaxWidth()
