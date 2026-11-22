@@ -16,6 +16,7 @@ import com.celzero.firestack.intra.Mark
 import com.celzero.firestack.intra.PreMark
 import com.celzero.firestack.intra.Tunnel
 import com.firewalldns.engine.core.PolicyAction
+import com.firewalldns.engine.core.RuleSource
 import com.firewalldns.engine.core.NetworkFlowDecision
 import com.firewalldns.engine.monitor.FlowMonitorSnapshot
 import com.firewalldns.engine.runtime.EngineRuntime
@@ -206,8 +207,19 @@ private class FirewallDNSFirestackBridge(
             ?: domainAssessment.firstOrNull { it.action == PolicyAction.OBSERVE })?.let {
             NetworkFlowDecision(it.action, it.reason, it.ruleId, it.source, it.policyRevision)
         }
+        val destination = parseEndpoint(dst.orEmpty(), portless = false)
+        val dnsBypass = destination?.let { DnsPortGuard.shouldBlock(protocol, it.first, it.second) } == true
+        val effectiveDomainDecision = if (dnsBypass) {
+            NetworkFlowDecision(
+                action = PolicyAction.BLOCK,
+                reason = "direct_dns_bypass_blocked",
+                ruleId = "dns-port-53-guard",
+                source = RuleSource.MANAGED,
+                policyRevision = engine.flowPolicyRevision,
+            )
+        } else selectedDomainDecision
         val safeCid = cid.orEmpty()
-        val decision = evaluateFlowCallback(protocol, uid, safeCid, src.orEmpty(), dst.orEmpty(), selectedDomainDecision)
+        val decision = evaluateFlowCallback(protocol, uid, safeCid, src.orEmpty(), dst.orEmpty(), effectiveDomainDecision)
         runCatching { onFlowSnapshot(engine.flowMonitor.snapshot()) }
         return decisionMark(safeCid, uid, decision?.action != PolicyAction.ALLOW && decision?.action != PolicyAction.OBSERVE)
     }
