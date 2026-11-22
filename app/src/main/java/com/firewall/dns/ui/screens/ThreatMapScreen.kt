@@ -403,7 +403,7 @@ private fun ThreeDimensionalMindMap(
     // A moving marker is emitted only by a new DNS decision callback.
     // Active flows remain visible as live state; they are not represented as packets.
     val dnsEventProgress = remember { androidx.compose.animation.core.Animatable(1f) }
-    LaunchedEffect(lastDnsDecisionAtEpochMs, vpnRunning) {
+    androidx.compose.runtime.LaunchedEffect(lastDnsDecisionAtEpochMs, vpnRunning) {
         if (vpnRunning && lastDnsDecisionAtEpochMs > 0L) {
             dnsEventProgress.snapTo(0f)
             dnsEventProgress.animateTo(
