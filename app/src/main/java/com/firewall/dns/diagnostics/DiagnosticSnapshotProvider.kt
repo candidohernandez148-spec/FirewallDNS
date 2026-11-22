@@ -28,6 +28,7 @@ class DiagnosticSnapshotProvider : ContentProvider() {
         val snapshot = FirewallDnsTrafficMetrics.snapshot()
         val values = linkedMapOf(
             "firewallDnsRunning" to if (FirewallRepository.stats.value.isRunning) 1L else 0L,
+            "productionEngine" to FirewallRepository.stats.value.engine,
             "packetsRead" to snapshot.packetsRead,
             "queueRejected" to snapshot.queueRejected,
             "parserRejected" to snapshot.parserRejected,
@@ -99,9 +100,6 @@ class DiagnosticSnapshotProvider : ContentProvider() {
             "firestackBindAttempts" to snapshot.firestackBindAttempts,
             "firestackBindSuccess" to snapshot.firestackBindSuccess,
             "firestackBindFailure" to snapshot.firestackBindFailure,
-            "serviceQueueRejected" to DnsFirewallService.queueRejectedPackets.get(),
-            "serviceProcessingErrors" to DnsFirewallService.packetProcessingErrors.get(),
-            "serviceWriteErrors" to DnsFirewallService.packetWriteErrors.get(),
         )
         return MatrixCursor(arrayOf("metric", "value")).apply {
             values.forEach { (key, value) -> addRow(arrayOf(key, value.toString())) }
