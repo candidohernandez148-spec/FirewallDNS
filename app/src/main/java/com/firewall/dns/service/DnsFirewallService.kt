@@ -312,6 +312,7 @@ class DnsFirewallService : VpnService() {
         val existing = sharedEngine
         if (existing != null) {
             existing.engine.replaceRules(FirewallRepository.enginePolicyRules())
+            existing.engine.replaceFlowRules(FirewallRepository.engineFlowPolicyRules())
             existing.engine.replaceThreatAnalyzer(
                 if (FirewallRepository.isSmartModeEnabled()) {
                     com.firewalldns.engine.threat.ThreatAnalyzer()
@@ -332,6 +333,7 @@ class DnsFirewallService : VpnService() {
                 physicalNetworkProvider = { selectedPhysicalNetwork },
             ).also {
                 it.engine.replaceRules(FirewallRepository.enginePolicyRules())
+                it.engine.replaceFlowRules(FirewallRepository.engineFlowPolicyRules())
             }
         }.getOrNull()
         sharedEngine = runtime
