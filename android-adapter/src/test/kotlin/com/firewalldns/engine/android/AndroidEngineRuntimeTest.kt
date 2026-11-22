@@ -1,5 +1,6 @@
 package com.firewalldns.engine.android
 
+import android.net.Network
 import android.net.VpnService
 import com.firewalldns.engine.dns.DnsExchangeCancellation
 import com.firewalldns.engine.dns.DnsUpstreamConfig
@@ -55,6 +56,46 @@ class AndroidEngineRuntimeTest {
             responder.join(3_000)
 
             assertTrue("Expected a validated upstream response, got $result", result is DnsUpstreamResult.Success)
+            Mockito.verify(vpnService).protect(Mockito.any(DatagramSocket::class.java))
+        }
+    }
+
+    @Test
+    fun failoverClientKeepsThePhysicalNetworkCapturedAtCreation() {
+        val vpnService = Mockito.mock(VpnService::class.java)
+        Mockito.`when`(vpnService.protect(Mockito.any(DatagramSocket::class.java))).thenReturn(true)
+        val firstNetwork = Mockito.mock(Network::class.java)
+        val nextNetwork = Mockito.mock(Network::class.java)
+        var currentNetwork: Network? = firstNetwork
+        Mockito.doNothing().`when`(firstNetwork).bindSocket(Mockito.any(DatagramSocket::class.java))
+        Mockito.doNothing().`when`(nextNetwork).bindSocket(Mockito.any(DatagramSocket::class.java))
+
+        DatagramSocket(0, InetAddress.getByName("127.0.0.1")).use { server ->
+            server.soTimeout = 3_000
+            val responder = thread(name = "android-engine-network-generation-test") {
+                val incoming = DatagramPacket(ByteArray(512), 512)
+                server.receive(incoming)
+                val response = incoming.data.copyOf(incoming.length).apply {
+                    this[2] = 0x81.toByte()
+                    this[3] = 0x80.toByte()
+                }
+                server.send(DatagramPacket(response, response.size, incoming.socketAddress))
+            }
+
+            val host = AndroidEngineRuntime(
+                vpnService = vpnService,
+                physicalNetworkProvider = { currentNetwork },
+            )
+            val client = host.createDnsFailover(
+                listOf(DnsUpstreamConfig("127.0.0.1", server.localPort, timeoutMillis = 2_000))
+            )
+            currentNetwork = nextNetwork
+            val result = client.exchange(query("network-generation.example"))
+            responder.join(3_000)
+
+            assertTrue("Expected validated upstream response, got $result", result is DnsUpstreamResult.Success)
+            Mockito.verify(firstNetwork).bindSocket(Mockito.any(DatagramSocket::class.java))
+            Mockito.verify(nextNetwork, Mockito.never()).bindSocket(Mockito.any(DatagramSocket::class.java))
             Mockito.verify(vpnService).protect(Mockito.any(DatagramSocket::class.java))
         }
     }
