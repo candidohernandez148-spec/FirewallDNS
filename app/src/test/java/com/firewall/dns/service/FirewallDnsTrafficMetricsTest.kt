@@ -24,6 +24,22 @@ class FirewallDnsTrafficMetricsTest {
     }
 
     @Test
+    fun firestackDnsResponseSummariesTrackStatusCacheAndValidLatency() {
+        val before = FirewallDnsTrafficMetrics.snapshot()
+        FirewallDnsTrafficMetrics.dnsResponse(status = 1, cached = true, latencySeconds = 0.025)
+        FirewallDnsTrafficMetrics.dnsResponse(status = 2, cached = false, latencySeconds = Double.NaN)
+
+        val after = FirewallDnsTrafficMetrics.snapshot()
+        assertEquals(2L, after.dnsResponseCallbacks - before.dnsResponseCallbacks)
+        assertEquals(1L, after.dnsResponseComplete - before.dnsResponseComplete)
+        assertEquals(1L, after.dnsResponseOtherStatus - before.dnsResponseOtherStatus)
+        assertEquals(1L, after.dnsResponseCached - before.dnsResponseCached)
+        assertEquals(1L, after.dnsResponseLatencySamples - before.dnsResponseLatencySamples)
+        assertEquals(25L, after.dnsResponseLatencyMsTotal - before.dnsResponseLatencyMsTotal)
+        assertEquals(2L, after.dnsResponseLastStatus)
+    }
+
+    @Test
     fun firestackAndFlowTelemetryAreExposedInSnapshots() {
         val before = FirewallDnsTrafficMetrics.snapshot()
         FirewallDnsTrafficMetrics.firestackStarted()
