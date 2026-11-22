@@ -239,7 +239,7 @@ private class FirewallDNSFirestackBridge(
         val safeCid = cid.orEmpty()
         val decision = evaluateFlowCallback(protocol, uid, safeCid, src.orEmpty(), dst.orEmpty(), effectiveDomainDecision)
         runCatching { onFlowSnapshot(engine.flowMonitor.snapshot()) }
-        return decisionMark(safeCid, uid, decision?.action != PolicyAction.ALLOW && decision?.action != PolicyAction.OBSERVE)
+        return decisionMark(safeCid, uid, decision.action != PolicyAction.ALLOW && decision.action != PolicyAction.OBSERVE)
     }
 
     override fun inflow(protocol: Int, uid: Int, cid: String?, src: String?, dst: String?): Mark {
@@ -256,10 +256,10 @@ private class FirewallDNSFirestackBridge(
         src: String,
         dst: String,
         domainDecision: NetworkFlowDecision? = null,
-    ) = runCatching {
+    ): NetworkFlowDecision = runCatching {
         val portless = protocol == 1 || protocol == 58
-        val source = parseFirestackEndpoint(src, portless) ?: return null
-        val destination = parseFirestackEndpoint(dst, portless) ?: return null
+        val source = requireNotNull(parseFirestackEndpoint(src, portless)) { "Invalid Firestack source endpoint" }
+        val destination = requireNotNull(parseFirestackEndpoint(dst, portless)) { "Invalid Firestack destination endpoint" }
         flowPolicyAdapter.evaluate(
             flowId = cid,
             protocolNumber = protocol,
@@ -270,7 +270,16 @@ private class FirewallDNSFirestackBridge(
             destinationPort = destination.second,
             domainDecision = domainDecision,
         )
-    }.getOrNull()
+    }.getOrElse {
+        engine.flowMonitor.recordBlocked()
+        NetworkFlowDecision(
+            PolicyAction.BLOCK,
+            "flow_policy_evaluation_failed",
+            "flow-policy-evaluation-error",
+            RuleSource.MANAGED,
+            engine.flowPolicyRevision,
+        )
+    }
 
     private fun decisionMark(cid: String, uid: Int, blocked: Boolean): Mark =
         Mark().apply {
