@@ -113,6 +113,12 @@ This does **not** decrypt DoH/DoT/DoQ or arbitrary encrypted DNS on ports 443/85
 - CI de la revisión integrada en PR #94 completó correctamente la compilación del AAR Firestack, las pruebas Go, las pruebas Kotlin/Rust, la compilación Release, la verificación de firma y el empaquetado de `libgojni.so` + `libfirewalldns_native.so`. También pasó la compilación Debug. La revalidación automática tras el merge en `main` está en curso.
 - La validación final en dispositivo sigue pendiente: Samsung A34 5G, Wi-Fi, Telcel LTE, cambios de red, TCP/UDP, DNS con IP fija, DoT/DoQ/DoH y estabilidad prolongada.
 
+## Validación y límites actuales
+
+- La compilación reproducible y las pruebas automatizadas pasan en CI; el APK Release incluye los dos motores nativos ARM64.
+- No se declara todavía completada la validación física: falta comprobar en Samsung A34 5G el tráfico TCP/UDP de ida y retorno, atribución UID, Wi-Fi↔Telcel, consumo de batería, estabilidad prolongada y comportamiento de DNS con resolvers de terceros.
+- La captura de DNS UDP/TCP 53 sí está integrada; DoH/DoT/DoQ no se descifran. DoT/DoQ por puertos estándar se bloquean y los endpoints DoH solo se correlacionan por dominio/IP conocida.
+
 ## Línea base anterior a la integración (histórico)
 
 - El servicio productivo inicial era principalmente DNS y registraba bloqueos/permitidos UDP.
