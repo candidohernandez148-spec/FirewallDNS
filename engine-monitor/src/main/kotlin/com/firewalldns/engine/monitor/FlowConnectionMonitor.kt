@@ -2,6 +2,7 @@ package com.firewalldns.engine.monitor
 
 import com.firewalldns.engine.core.FlowProtocol
 import com.firewalldns.engine.core.NetworkFlowDecision
+import com.firewalldns.engine.core.PolicyAction
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Semaphore
 import java.util.concurrent.atomic.AtomicLong
@@ -83,7 +84,7 @@ class FlowConnectionMonitor(
         require(identity.id.isNotBlank())
         require(identity.appUid == null || identity.appUid >= 0)
         require(identity.sourcePort in 0..65535 && identity.destinationPort in 1..65535)
-        if (decision.action.name == "BLOCK") {
+        if (decision.action == PolicyAction.BLOCK) {
             blocked.increment()
             return true
         }
@@ -124,14 +125,13 @@ class FlowConnectionMonitor(
 
     fun evictIdle(nowEpochMillis: Long): Int {
         var removed = 0
-        active.entries.removeIf { entry ->
+        active.entries.forEach { entry ->
             val expired = nowEpochMillis - entry.value.lastActivity.get() >= idleTimeoutMillis
-            if (expired) {
+            if (expired && active.remove(entry.key, entry.value)) {
                 closed.increment()
                 slots.release()
                 removed++
             }
-            expired
         }
         return removed
     }
