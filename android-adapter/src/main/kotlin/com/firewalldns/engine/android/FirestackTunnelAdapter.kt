@@ -296,7 +296,24 @@ private class FirewallDNSFirestackBridge(
             )
             else -> null
         }
+        // Firestack marks destinations rewritten by an RDNS blocklist with
+        // an unspecified original address (0.0.0.0 or ::). Preserve that signal
+        // as an explicit flow block even though DNS resolution itself succeeded.
+        val rdnsBlocklistBlocked = origdsts.orEmpty().take(1024).split(',').take(8)
+            .any(::isFirestackRdnsBlocklistAddress)
+        val rdnsBlocklistDecision = if (rdnsBlocklistBlocked) {
+            NetworkFlowDecision(
+                PolicyAction.BLOCK,
+                "firestack_rdns_blocklist_match",
+                "firestack-rdns-blocklist",
+                RuleSource.MANAGED,
+                engine.flowPolicyRevision,
+            )
+        } else {
+            null
+        }
         val effectiveDomainDecision = when {
+            rdnsBlocklistDecision != null -> rdnsBlocklistDecision
             encryptedDnsDecision?.action == PolicyAction.BLOCK -> encryptedDnsDecision
             selectedDomainDecision?.action == PolicyAction.BLOCK -> selectedDomainDecision
             selectedDomainDecision?.action == PolicyAction.OBSERVE -> selectedDomainDecision
@@ -432,6 +449,11 @@ private class FirewallDNSFirestackBridge(
         if (!closed.compareAndSet(false, true)) return
     }
 
+}
+
+internal fun isFirestackRdnsBlocklistAddress(value: String): Boolean {
+    val address = parseFirestackEndpoint(value, portless = true)?.first ?: return false
+    return address == "0.0.0.0" || address == "::"
 }
 
 internal fun parseFirestackEndpoint(value: String, portless: Boolean): Pair<String, Int>? = runCatching {
