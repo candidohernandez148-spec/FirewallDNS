@@ -376,14 +376,20 @@ class DnsFirewallService : VpnService() {
         installSharedEngine()
         val engineRuntime = sharedEngine
         val flowAdapter = sharedFlowPolicyAdapter
-        val resolver = upstreamSnapshot?.resolvers?.takeIf { it.isNotEmpty() }?.joinToString(",") ?: NetworkDns.EMERGENCY_DNS
+        val startNetworkState = synchronized(upstreamRefreshLock) {
+            upstreamSnapshot to physicalNetworkGeneration.get()
+        }
+        val startingSnapshot = startNetworkState.first
+        val startingNetworkGeneration = startNetworkState.second
+        val resolver = startingSnapshot?.resolvers?.takeIf { it.isNotEmpty() }?.joinToString(",") ?: NetworkDns.EMERGENCY_DNS
+        val linkMtu = startingSnapshot?.linkMtu ?: currentPhysicalLinkMtu()
         val firestack = if (engineRuntime != null && flowAdapter != null) {
             runCatching {
                 FirestackTunnelAdapter.connect(
                     vpnService = this,
                     tunDescriptor = fullTunnelDescriptor,
                     mtu = 1500,
-                    linkMtu = upstreamSnapshot?.linkMtu ?: currentPhysicalLinkMtu(),
+                    linkMtu = linkMtu,
                     resolver = resolver,
                     engine = engineRuntime.engine,
                     flowPolicyAdapter = flowAdapter,
@@ -409,6 +415,8 @@ class DnsFirewallService : VpnService() {
                 )
             }.getOrNull()
         } else null
+
+        if (firestack != null) firestackResolverGeneration.set(startingNetworkGeneration)
 
         val established = if (firestack != null) {
             fullTunnelDescriptor
@@ -437,6 +445,8 @@ class DnsFirewallService : VpnService() {
         )
         activeTunSession = session
         if (firestack != null) FirewallDnsTrafficMetrics.firestackStarted()
+        // Reconcile any network change that occurred while the stack was starting.
+        refreshSharedUpstream()
 
         if (firestack != null) {
             // Firestack owns packet ingress/egress on the duplicated TUN descriptor.
@@ -837,7 +847,7 @@ class DnsFirewallService : VpnService() {
         val callback = object : ConnectivityManager.NetworkCallback() {
             private fun refresh() {
                 serviceScope.launch(Dispatchers.IO) {
-                    if (isRunning) refreshSharedUpstream()
+                    if (sharedEngine != null) refreshSharedUpstream()
                 }
             }
 
