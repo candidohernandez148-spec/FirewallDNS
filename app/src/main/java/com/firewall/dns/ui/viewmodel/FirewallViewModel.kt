@@ -4,6 +4,9 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.firewall.dns.data.repository.FirewallRepository
+import com.firewalldns.engine.core.FlowProtocol
+import com.firewalldns.engine.core.NetworkFlowRule
+import com.firewalldns.engine.core.PolicyAction
 import com.firewall.dns.domain.model.AppInfoItem
 import com.firewall.dns.domain.model.BlocklistDownloadProgress
 import com.firewall.dns.domain.model.DnsLogEntry
@@ -33,6 +36,7 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
     val traffic: StateFlow<List<TrafficPoint>> = FirewallRepository.traffic
     val customBlockList: StateFlow<List<String>> = FirewallRepository.customBlockList
     val customAllowList: StateFlow<List<String>> = FirewallRepository.customAllowList
+    val networkFlowRules: StateFlow<List<NetworkFlowRule>> = FirewallRepository.networkFlowRules
     val excludedPackages: StateFlow<Set<String>> = FirewallRepository.excludedPackages
     val blocklistUrls: StateFlow<List<String>> = FirewallRepository.blocklistUrls
     val blocklistsDownloaded: StateFlow<Boolean> = FirewallRepository.blocklistsDownloaded
@@ -127,6 +131,17 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun removeCustomRule(domain: String) { FirewallRepository.removeCustomRule(domain) }
+
+    fun addNetworkFlowRule(cidr: String, protocol: FlowProtocol?, port: Int?, appPackage: String?, action: PolicyAction) {
+        FirewallRepository.addNetworkFlowRule(cidr, protocol, port, appPackage, action)
+            .onFailure { error -> _toastMessage.tryEmit(error.message ?: "No se pudo guardar la regla") }
+            .onSuccess { _toastMessage.tryEmit("Regla de flujo guardada y aplicada") }
+    }
+
+    fun removeNetworkFlowRule(id: String) {
+        FirewallRepository.removeNetworkFlowRule(id)
+        _toastMessage.tryEmit("Regla de flujo eliminada")
+    }
 
     fun clearLogs() { FirewallRepository.clearLogs() }
 
