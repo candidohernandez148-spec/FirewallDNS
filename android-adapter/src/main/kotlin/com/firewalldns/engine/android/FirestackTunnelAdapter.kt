@@ -149,7 +149,6 @@ private class FirewallDNSFirestackBridge(
     private fun bindToPhysicalNetwork(fd: Long) {
         if (closed.get()) return
         val descriptor = fd.toInt()
-        protectSocket(descriptor)
         val network = physicalNetworkProvider() ?: run {
             runCatching { onSocketBindingResult(false) }
             return
@@ -160,6 +159,9 @@ private class FirewallDNSFirestackBridge(
             }
         }
         runCatching { onSocketBindingResult(result.isSuccess) }
+        if (result.isFailure) {
+            throw IllegalStateException("Unable to bind Firestack socket to the active physical network", result.exceptionOrNull())
+        }
     }
 
     override fun protect(who: String?, fd: Long) {
@@ -170,6 +172,7 @@ private class FirewallDNSFirestackBridge(
     private fun protectSocket(descriptor: Int) {
         val protected = runCatching { vpnService.protect(descriptor) }.getOrDefault(false)
         runCatching { onSocketProtectionResult(protected) }
+        if (!protected) throw IllegalStateException("VpnService.protect failed for Firestack socket $descriptor")
     }
 
     override fun preflow(protocol: Int, uid: Int, cid: String?, src: String?, dst: String?): PreMark =
