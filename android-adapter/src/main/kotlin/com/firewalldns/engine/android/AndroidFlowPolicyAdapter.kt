@@ -3,6 +3,8 @@ package com.firewalldns.engine.android
 import com.firewalldns.engine.core.FlowProtocol
 import com.firewalldns.engine.core.NetworkFlowDecision
 import com.firewalldns.engine.core.NetworkFlowRequest
+import com.firewalldns.engine.core.PolicyAction
+import com.firewalldns.engine.core.RuleSource
 import com.firewalldns.engine.monitor.FlowIdentity
 import com.firewalldns.engine.runtime.EngineRuntime
 
@@ -15,6 +17,7 @@ class AndroidFlowPolicyAdapter(
     private val engine: EngineRuntime,
     private val resolvePackage: (Int) -> String? = { null },
     private val networkGeneration: () -> Long = { 0L },
+    private val isUidBlocked: (Int) -> Boolean = { false },
     private val nowEpochMillis: () -> Long = System::currentTimeMillis,
 ) {
     fun evaluate(
@@ -46,7 +49,17 @@ class AndroidFlowPolicyAdapter(
             destinationAddress = destinationAddress,
             destinationPort = destinationPort,
         )
-        val decision = engine.evaluateFlow(request, nowEpochMillis())
+        val decision = if (uid != null && runCatching { isUidBlocked(uid) }.getOrDefault(false)) {
+            NetworkFlowDecision(
+                action = PolicyAction.BLOCK,
+                reason = "app_uid_blocked",
+                ruleId = "app-uid-$uid",
+                source = RuleSource.USER,
+                policyRevision = engine.flowPolicyRevision,
+            )
+        } else {
+            engine.evaluateFlow(request, nowEpochMillis())
+        }
         engine.flowMonitor.open(
             FlowIdentity(
                 id = flowId,
