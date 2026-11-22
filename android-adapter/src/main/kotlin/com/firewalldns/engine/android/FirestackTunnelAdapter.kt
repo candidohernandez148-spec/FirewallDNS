@@ -161,7 +161,7 @@ private class FirewallDNSFirestackBridge(
 
     override fun preflow(protocol: Int, uid: Int, cid: String, src: String, dst: String): PreMark =
         PreMark().apply {
-            setUID(if (uid >= 0) uid.toString() else Backend.UNKNOWN_UID_STR)
+            setUID(if (uid >= 0) uid.toString() else Intra.UNKNOWN_UID_STR)
             setIsUidSelf(false)
         }
 
@@ -264,6 +264,6 @@ private class FirewallDNSFirestackBridge(
         val host = uri.host ?: return null
         val port = uri.port
         require(port in 1..65535)
-        host to port
+        host.removePrefix("[").removeSuffix("]") to port
     }.getOrNull()
 }
