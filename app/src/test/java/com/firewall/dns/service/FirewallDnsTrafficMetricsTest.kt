@@ -2,6 +2,7 @@ package com.firewall.dns.service
 
 import com.firewalldns.engine.android.DnsSocketProtectionProtocol
 import com.firewalldns.engine.monitor.FlowMonitorSnapshot
+import com.firewalldns.engine.monitor.EngineMetricsSnapshot
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -86,6 +87,30 @@ class FirewallDnsTrafficMetricsTest {
         assertEquals(1L, after.upstreamFailureOther - before.upstreamFailureOther)
         assertEquals(1L, after.upstreamCancelled - before.upstreamCancelled)
         assertEquals(0L, after.upstreamFailure - before.upstreamFailure)
+    }
+
+    @Test
+    fun engineMonitorSnapshotFeedsDnsCacheRejectionAndQueueCounters() {
+        FirewallDnsTrafficMetrics.engineMonitorSnapshot(
+            EngineMetricsSnapshot(
+                decisions = 21,
+                blocked = 5,
+                observed = 3,
+                allowed = 13,
+                rejected = 2,
+                cacheHits = 8,
+                cacheMisses = 13,
+                eventsDropped = 4,
+                queuedEvents = 7,
+            ),
+        )
+
+        val snapshot = FirewallDnsTrafficMetrics.snapshot()
+        assertEquals(2L, snapshot.dnsRejected)
+        assertEquals(8L, snapshot.cacheHits)
+        assertEquals(13L, snapshot.cacheMisses)
+        assertEquals(4L, snapshot.engineEventsDropped)
+        assertEquals(7L, snapshot.engineQueuedEvents)
     }
 
     @Test
