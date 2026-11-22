@@ -122,6 +122,7 @@ class FirestackTunnelAdapter private constructor(
             physicalNetworkProvider: () -> Network?,
             isUidBlocked: (Int) -> Boolean = { false },
             onDnsDecision: (String, Int, Int?, String, PolicyAction) -> Unit = { _, _, _, _, _ -> },
+            onDnsResponse: (DNSSummary) -> Unit = {},
             onSocketProtectionResult: (Boolean) -> Unit = {},
             onSocketBindingResult: (Boolean) -> Unit = {},
             onFlowSnapshot: (FlowMonitorSnapshot) -> Unit = {},
@@ -139,6 +140,7 @@ class FirestackTunnelAdapter private constructor(
                     physicalNetworkProvider = physicalNetworkProvider,
                     isUidBlocked = isUidBlocked,
                     onDnsDecision = onDnsDecision,
+                    onDnsResponse = onDnsResponse,
                     onSocketProtectionResult = onSocketProtectionResult,
                     onSocketBindingResult = onSocketBindingResult,
                     onFlowSnapshot = onFlowSnapshot,
@@ -230,6 +232,7 @@ private class FirewallDNSFirestackBridge(
     private val physicalNetworkProvider: () -> Network?,
     private val isUidBlocked: (Int) -> Boolean,
     private val onDnsDecision: (String, Int, Int?, String, PolicyAction) -> Unit,
+    private val onDnsResponse: (DNSSummary) -> Unit,
     private val onSocketProtectionResult: (Boolean) -> Unit,
     private val onSocketBindingResult: (Boolean) -> Unit,
     private val onFlowSnapshot: (FlowMonitorSnapshot) -> Unit,
@@ -475,7 +478,9 @@ private class FirewallDNSFirestackBridge(
         unmodifiedipcsv: String?,
     ): DNSOpts? = null
 
-    override fun onResponse(summary: DNSSummary?) = Unit
+    override fun onResponse(summary: DNSSummary?) {
+        if (summary != null) runCatching { onDnsResponse(summary) }
+    }
     override fun onDNSAdded(id: String?) = Unit
     override fun onDNSRemoved(id: String?) = Unit
     override fun onDNSStopped() = Unit
