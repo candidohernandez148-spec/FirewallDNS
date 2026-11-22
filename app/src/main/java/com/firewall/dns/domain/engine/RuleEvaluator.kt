@@ -38,6 +38,11 @@ object RuleEvaluator {
         return cleaned
     }
 
+    /**
+     * Parses only rules whose semantics can be enforced by a DNS-only policy.
+     * URL-, resource-, client-, and request-context-dependent options are
+     * deliberately rejected rather than silently widened into global domain blocks.
+     */
     fun parseAdblockLine(raw: String): AdblockParseResult? {
         val trimmed = raw.trim()
         if (trimmed.isEmpty() || trimmed.startsWith("!") || trimmed.startsWith("#")) return null
@@ -47,23 +52,38 @@ object RuleEvaluator {
 
         val isException = noComment.startsWith("@@")
         val body = if (isException) noComment.removePrefix("@@") else noComment
+
+        // A DNS policy cannot enforce URL-, app-, client-, or record-type-specific
+        // Adblock options. Accept only $important, whose meaning remains global.
+        fun hasOnlyDnsSafeOptions(value: String): Boolean {
+            val marker = value.indexOf('$')
+            if (marker < 0) return true
+            val options = value.substring(marker + 1).split(',')
+            return options.isNotEmpty() && options.all { it.trim().equals("important", ignoreCase = true) }
+        }
+
         val candidate = when {
             body.startsWith("||") -> {
+                if (!hasOnlyDnsSafeOptions(body)) return null
                 val rawTarget = body.removePrefix("||")
-                    .substringBefore('^')
                     .substringBefore('$')
-                // Si trae ruta web ("||sitio.com/ads.js"), no es una regla DNS de dominio completo.
-                if (rawTarget.contains('/') || rawTarget.contains('*')) return null
+                    .removeSuffix("^")
+                if (rawTarget.isEmpty() || rawTarget.contains('/') || rawTarget.contains('*') ||
+                    rawTarget.contains('^') || rawTarget.contains(':')
+                ) return null
                 rawTarget
             }
             body.startsWith("0.0.0.0") || body.startsWith("127.0.0.1") || body.startsWith("::") -> {
-                val parts = body.split(Regex("\\s+"))
+                val parts = body.split(Regex("\\s+")).filter(String::isNotBlank)
                 if (parts.size < 2) return null
                 parts[1]
             }
             else -> {
-                val rawTarget = body.substringBefore('^').substringBefore('$')
-                if (rawTarget.contains('/') || rawTarget.contains('*')) return null
+                if (!hasOnlyDnsSafeOptions(body)) return null
+                val rawTarget = body.substringBefore('$').removeSuffix("^")
+                if (rawTarget.isEmpty() || rawTarget.contains('/') || rawTarget.contains('*') ||
+                    rawTarget.contains('^') || rawTarget.contains(':')
+                ) return null
                 rawTarget
             }
         }
