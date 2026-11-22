@@ -51,7 +51,12 @@ class FirestackTunnelAdapter private constructor(
     fun updateLinkMtu(linkMtu: Int): Boolean {
         if (closed.get() || linkMtu !in 576..9000) return false
         if (linkMtu == currentLinkMtu) return true
-        val updated = runCatching { tunnel.setLinkMtu(linkMtu.toLong()) }.getOrDefault(false)
+        // Firestack returns false when the MTU was already equal; that is
+        // a successful no-op, not a failed network reconfiguration.
+        val updated = runCatching {
+            tunnel.setLinkMtu(linkMtu.toLong())
+            true
+        }.getOrDefault(false)
         if (updated) currentLinkMtu = linkMtu
         return updated
     }
