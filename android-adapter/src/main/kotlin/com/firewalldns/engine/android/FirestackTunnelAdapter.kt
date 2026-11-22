@@ -66,7 +66,6 @@ class FirestackTunnelAdapter private constructor(
             engine: EngineRuntime,
             flowPolicyAdapter: AndroidFlowPolicyAdapter,
             physicalNetworkProvider: () -> Network?,
-            resolvePackage: (Int) -> String?,
             isUidBlocked: (Int) -> Boolean = { false },
             onDnsDecision: (String, Int, Int?, String, PolicyAction) -> Unit = { _, _, _, _, _ -> },
             onSocketProtectionResult: (Boolean) -> Unit = {},
@@ -83,7 +82,6 @@ class FirestackTunnelAdapter private constructor(
                     engine = engine,
                     flowPolicyAdapter = flowPolicyAdapter,
                     physicalNetworkProvider = physicalNetworkProvider,
-                    resolvePackage = resolvePackage,
                     isUidBlocked = isUidBlocked,
                     onDnsDecision = onDnsDecision,
                     onSocketProtectionResult = onSocketProtectionResult,
@@ -136,7 +134,6 @@ private class FirewallDNSFirestackBridge(
     private val engine: EngineRuntime,
     private val flowPolicyAdapter: AndroidFlowPolicyAdapter,
     private val physicalNetworkProvider: () -> Network?,
-    private val resolvePackage: (Int) -> String?,
     private val isUidBlocked: (Int) -> Boolean,
     private val onDnsDecision: (String, Int, Int?, String, PolicyAction) -> Unit,
     private val onSocketProtectionResult: (Boolean) -> Unit,
@@ -199,7 +196,7 @@ private class FirewallDNSFirestackBridge(
         blocklists: String?,
         dstIsAlg: Boolean,
     ): Mark {
-        val appPackage = uid.takeIf { it >= 0 }?.let { runCatching { resolvePackage(it) }.getOrNull() }
+        val appPackage = flowPolicyAdapter.resolvePackageForUid(uid)
         val domainAssessment = domains.orEmpty().split(',').map(String::trim).filter(String::isNotEmpty)
             .map { domain -> runCatching { engine.evaluateDomain(domain, appPackage) }.getOrNull() }
             .filterNotNull()
@@ -305,7 +302,7 @@ private class FirewallDNSFirestackBridge(
         val uidValue = uid.orEmpty()
         val domainValue = domain.orEmpty()
         val ownerUid = uidValue.toIntOrNull()
-        val appPackage = ownerUid?.takeIf { it >= 0 }?.let { runCatching { resolvePackage(it) }.getOrNull() }
+        val appPackage = ownerUid?.let(flowPolicyAdapter::resolvePackageForUid)
         val decision = runCatching { engine.evaluateDomain(domainValue, appPackage) }.getOrNull()
         val appBlocked = ownerUid?.takeIf { it >= 0 }?.let { runCatching { isUidBlocked(it) }.getOrDefault(false) } == true
         val action = when {
