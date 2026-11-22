@@ -381,7 +381,7 @@ class DnsFirewallService : VpnService() {
             upstreamSnapshot to upstreamConfigGeneration.get()
         }
         val startingSnapshot = startNetworkState.first
-        val startingNetworkGeneration = startNetworkState.second
+        val startingUpstreamGeneration = startNetworkState.second
         val resolver = startingSnapshot?.resolvers?.takeIf { it.isNotEmpty() }?.joinToString(",") ?: NetworkDns.EMERGENCY_DNS
         val linkMtu = startingSnapshot?.linkMtu ?: currentPhysicalLinkMtu()
         val firestack = if (engineRuntime != null && flowAdapter != null) {
@@ -417,7 +417,7 @@ class DnsFirewallService : VpnService() {
             }.getOrNull()
         } else null
 
-        if (firestack != null) firestackResolverGeneration.set(startingNetworkGeneration)
+        if (firestack != null) firestackResolverGeneration.set(startingUpstreamGeneration)
 
         val established = if (firestack != null) {
             fullTunnelDescriptor
