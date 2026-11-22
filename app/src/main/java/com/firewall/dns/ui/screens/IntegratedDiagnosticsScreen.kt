@@ -121,9 +121,18 @@ fun IntegratedDiagnosticsScreen(
             put("fragmentAssembliesExpired", metrics.fragmentAssembliesExpired)
             put("fragmentPendingAssemblies", metrics.fragmentPendingAssemblies)
             put("fragmentBufferedBytes", metrics.fragmentBufferedBytes)
+            put("firestackActive", metrics.firestackActive)
+            put("flowsActive", metrics.flowsActive)
+            put("flowsOpened", metrics.flowsOpened)
+            put("flowsClosed", metrics.flowsClosed)
+            put("flowsBlocked", metrics.flowsBlocked)
+            put("flowBytesSent", metrics.flowBytesSent)
+            put("flowBytesReceived", metrics.flowBytesReceived)
+            put("flowCapacityRejected", metrics.flowCapacityRejected)
         })
         put("notVerified", listOf(
             "fragmented traffic injection through production TUN (counters are exposed, active injection is not yet automated)",
+            "long-duration throughput, CPU and battery validation on physical devices",
             "DoH/DoT/DoQ inspection",
             "long-duration CPU and battery behavior on device"
         ))
@@ -237,7 +246,19 @@ fun IntegratedDiagnosticsScreen(
         }
         Card {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Transporte TCP DNS · smoltcp", style = MaterialTheme.typography.titleMedium)
+                Text("Pila de red Firestack / gVisor · producción", style = MaterialTheme.typography.titleMedium)
+                Text(if (metrics.firestackActive == 1L) "CONECTADA AL TUN" else "NO CONECTADA")
+                Metric("Flujos activos", metrics.flowsActive)
+                Metric("Flujos abiertos / cerrados", metrics.flowsOpened, metrics.flowsClosed)
+                Metric("Flujos bloqueados", metrics.flowsBlocked)
+                Metric("Bytes enviados / recibidos", metrics.flowBytesSent, metrics.flowBytesReceived)
+                Metric("Rechazos por límite de telemetría", metrics.flowCapacityRejected)
+            }
+        }
+        Card {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("smoltcp · banco nativo de pruebas", style = MaterialTheme.typography.titleMedium)
+                Text("No compite con Firestack por el descriptor TUN en el modo de producción.")
                 Metric("Transporte smoltcp disponible (1=sí)", metrics.smoltcpTransportAvailable)
                 Metric("Sesiones activas", metrics.smoltcpSessionsActive)
                 Metric("Sesiones abiertas / cerradas", metrics.smoltcpSessionsOpened, metrics.smoltcpSessionsClosed)
@@ -275,9 +296,9 @@ fun IntegratedDiagnosticsScreen(
         Card {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Cobertura y límites", style = MaterialTheme.typography.titleMedium)
-                Text("MEDIDO: contadores del recorrido TUN real mientras FirewallDNS está activo. “Aceptados en cola JNI” no significa que el paquete ya haya sido procesado por smoltcp.")
+                Text("MEDIDO: Firestack/gVisor procesa los flujos TCP y UDP generales que Android enruta al TUN; sus decisiones se aplican mediante la política central de FirewallDNS. Los contadores de flujos y bytes proceden de sus callbacks reales.")
                 Text("MEDIDO: intentos y resultado booleano de VpnService.protect() para sockets upstream UDP/TCP. También se exponen fragmentos aceptados, paquetes reensamblados, descartes por límite/validez y ensamblajes expirados. La prueba de tráfico fragmentado a través del TUN productivo aún requiere instrumentación en dispositivo.")
-                Text("Fuera del alcance de inspección DNS/53: DoH, DoT y DoQ. No se presentan como tráfico inspeccionado.")
+                Text("DoH, DoT y DoQ pueden atravesar la pila como tráfico cifrado, pero sus consultas internas no se inspeccionan ni se presentan como bloqueadas por dominio. La inspección DNS por dominio se aplica a consultas DNS visibles que pasan por el callback del motor.")
                 Button(onClick = {
                     val send = Intent(Intent.ACTION_SEND).apply {
                         type = "application/json"
