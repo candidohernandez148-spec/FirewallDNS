@@ -326,10 +326,13 @@ class DnsFirewallService : VpnService() {
         getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification())
     }
 
+    private fun normalizePhysicalLinkMtu(reported: Int): Int =
+        reported.takeIf { it in 576..9000 }?.coerceAtLeast(1280) ?: 1500
+
     private fun currentPhysicalLinkMtu(network: android.net.Network? = selectedPhysicalNetwork): Int {
         val connectivity = getSystemService(android.net.ConnectivityManager::class.java)
         val reported = network?.let { connectivity?.getLinkProperties(it)?.mtu } ?: 0
-        return reported.takeIf { it in 576..9000 }?.coerceAtLeast(1280) ?: 1500
+        return normalizePhysicalLinkMtu(reported)
     }
 
     private fun buildVpnBuilder(fullTunnel: Boolean): Builder {
@@ -379,7 +382,7 @@ class DnsFirewallService : VpnService() {
                     vpnService = this,
                     tunDescriptor = fullTunnelDescriptor,
                     mtu = 1500,
-                    linkMtu = currentPhysicalLinkMtu(),
+                    linkMtu = upstreamSnapshot?.linkMtu ?: currentPhysicalLinkMtu(),
                     resolver = resolver,
                     engine = engineRuntime.engine,
                     flowPolicyAdapter = flowAdapter,
@@ -868,7 +871,7 @@ class DnsFirewallService : VpnService() {
         // a network handover must never pair DNS from Wi-Fi with sockets on cellular.
         val networkSnapshot = NetworkDns.activeSnapshot(this)
         val physicalNetwork = networkSnapshot.network
-        val linkMtu = currentPhysicalLinkMtu(physicalNetwork)
+        val linkMtu = normalizePhysicalLinkMtu(networkSnapshot.linkMtu)
         if (selectedPhysicalNetwork != physicalNetwork) physicalNetworkGeneration.incrementAndGet()
         selectedPhysicalNetwork = physicalNetwork
         // Android asks VpnService to publish explicitly bound underlying networks.
