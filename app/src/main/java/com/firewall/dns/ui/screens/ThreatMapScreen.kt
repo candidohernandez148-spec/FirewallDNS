@@ -102,10 +102,10 @@ fun ThreatMapScreen(
         listOf(
             MindMapNode("core", "FIREWALL DNS", "Servicio VPN: estado real", if (vpnRunning) "ACTIVO" else "DETENIDO",
                 0f, 0f, 0f, Color(0xFF42D9FF)),
-            MindMapNode("tun", "TÚNEL TUN", "Paquetes leídos por el servicio", tunMetrics.packetsRead.toString(),
+            MindMapNode("tun", "MOTOR DE RED", "Firestack/gVisor · flujos activos", tunMetrics.flowsActive.toString(),
                 -0.88f, -0.55f, -0.18f, Color(0xFF58D6B0)),
-            MindMapNode("dns", "CONSULTAS DNS", "UDP + TCP; smoltcp: ${if (tunMetrics.smoltcpTransportAvailable == 1L) "disponible" else "no disponible"}",
-                (tunMetrics.dnsUdpPackets + tunMetrics.dnsTcp).toString(),
+            MindMapNode("dns", "DECISIONES DNS", "Consultas evaluadas por FirewallDNS",
+                (tunMetrics.dnsBlocked + tunMetrics.dnsObserved + tunMetrics.dnsAllowed).toString(),
                 0.82f, -0.63f, 0.20f, Color(0xFF78A8FF)),
             MindMapNode("decisions", "DECISIONES", "Bloqueadas / observadas / permitidas",
                 "${tunMetrics.dnsBlocked} / ${tunMetrics.dnsObserved} / ${tunMetrics.dnsAllowed}",
@@ -116,8 +116,8 @@ fun ThreatMapScreen(
             MindMapNode("rules", "REGLAS", "Reglas personalizadas de usuario",
                 "${customBlock.size} bloqueo · ${customAllow.size} permiso",
                 -0.18f, 0.94f, -0.42f, Color(0xFFB69CFF)),
-            MindMapNode("upstream", "UPSTREAM UDP", "Respuestas / fallos de la ruta DNS UDP",
-                "${tunMetrics.upstreamSuccess} / ${tunMetrics.upstreamFailure}",
+            MindMapNode("upstream", "RESOLVERS", "Servidores DNS de la red física activa",
+                tunMetrics.upstreamResolverRefreshes.toString(),
                 0.20f, -0.98f, 0.42f, Color(0xFF68D9A5)),
             MindMapNode("apps", "APLICACIONES", "Apps identificadas en el historial",
                 observedApps.toString(),
@@ -137,13 +137,13 @@ fun ThreatMapScreen(
     }
     val selected = mindMapNodes.firstOrNull { it.id == selectedNode } ?: mindMapNodes.first()
     val selectedDescription = when (selected.id) {
-        "tun" -> "Contador del servicio TUN: ${tunMetrics.packetsRead} paquetes leídos. Es acumulado del proceso actual."
-        "dns" -> "Consultas contabilizadas: UDP ${tunMetrics.dnsUdpPackets}, TCP ${tunMetrics.dnsTcp}. Transporte smoltcp productivo: ${if (tunMetrics.smoltcpTransportAvailable == 1L) "disponible" else "no disponible"}. No representa DoH/DoT."
+        "tun" -> "Pila productiva: Firestack/gVisor. Flujos activos: ${tunMetrics.flowsActive}; abiertos: ${tunMetrics.flowsOpened}; cerrados: ${tunMetrics.flowsClosed}; bloqueados: ${tunMetrics.flowsBlocked}."
+        "dns" -> "Decisiones DNS recibidas por el motor: ${tunMetrics.dnsBlocked} bloqueadas, ${tunMetrics.dnsObserved} observadas y ${tunMetrics.dnsAllowed} permitidas. No representa el contenido cifrado DoH/DoT/DoQ."
         "decisions" -> "Contadores del servicio: ${tunMetrics.dnsBlocked} bloqueadas, ${tunMetrics.dnsObserved} observadas y ${tunMetrics.dnsAllowed} permitidas."
         "threats" -> "Catálogo local curado de ${catalog.size} referencias. Es una fuente de consulta de esta pantalla; no prueba que el motor compartido haya utilizado cada entrada."
         "apps" -> "Nombres de aplicaciones resueltos en el historial visible: $observedApps. Los eventos cuyo UID no pudo resolverse se excluyen; no es el total de apps instaladas."
         "rules" -> "Reglas personalizadas: ${customBlock.size} bloqueos y ${customAllow.size} permisos. Listas descargadas no se incluyen en esta cifra."
-        "upstream" -> "Contadores de la ruta upstream DNS UDP: ${tunMetrics.upstreamSuccess} respuestas exitosas y ${tunMetrics.upstreamFailure} fallidas. No atribuye aquí estadísticas TCP."
+        "upstream" -> "Resolvers de la red física: ${tunMetrics.upstreamResolvers.ifBlank { "sin datos" }}. Actualizaciones detectadas: ${tunMetrics.upstreamResolverRefreshes}."
         else -> "VPN: ${if (vpnRunning) "activa" else "detenida"}. Modo inteligente: ${if (smartModeEnabled) "activo" else "inactivo"}. Observación: ${if (observationModeEnabled) "activa" else "inactiva"}."
     }
 
@@ -210,7 +210,7 @@ fun ThreatMapScreen(
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 MapStatPill("VPN", if (vpnRunning) "ACTIVA" else "DETENIDA", MaterialTheme.colorScheme.secondaryContainer)
-                MapStatPill("TUN", tunMetrics.packetsRead.toString(), MaterialTheme.colorScheme.primaryContainer)
+                MapStatPill("Flujos", tunMetrics.flowsActive.toString(), MaterialTheme.colorScheme.primaryContainer)
                 MapStatPill("Eventos", logs.size.toString(), MaterialTheme.colorScheme.errorContainer)
             }
         }
