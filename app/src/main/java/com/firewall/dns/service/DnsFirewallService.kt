@@ -25,6 +25,7 @@ import com.firewall.dns.domain.engine.AppFirewallManager
 import com.firewall.dns.domain.engine.DnsPacketEngine
 import com.firewall.dns.domain.engine.TunTransportPacketParser
 import com.firewalldns.engine.android.AndroidEngineRuntime
+import com.firewalldns.engine.android.AndroidFlowPolicyAdapter
 import com.firewalldns.engine.android.FragmentReassemblerConfig
 import com.firewalldns.engine.android.IpFragmentReassembler
 import com.firewalldns.engine.android.NativeTcpDnsTransport
@@ -100,6 +101,8 @@ class DnsFirewallService : VpnService() {
 
     private lateinit var connectivityManager: ConnectivityManager
     @Volatile private var sharedEngine: AndroidEngineRuntime? = null
+    @Volatile private var sharedFlowPolicyAdapter: AndroidFlowPolicyAdapter? = null
+    private val physicalNetworkGeneration = AtomicLong(0L)
     private data class UpstreamSnapshot(
         val client: DnsUpstreamFailoverClient,
         val resolvers: List<String>,
@@ -707,6 +710,7 @@ class DnsFirewallService : VpnService() {
     private fun installSharedEngine() {
         if (!BuildConfig.USE_SHARED_ENGINE) {
             sharedEngine = null
+            sharedFlowPolicyAdapter = null
             upstreamSnapshot = null
             FirewallDnsTrafficMetrics.upstreamResolversChanged(emptyList())
             return
@@ -724,6 +728,11 @@ class DnsFirewallService : VpnService() {
             }
         }.getOrNull()
         sharedEngine = runtime
+        sharedFlowPolicyAdapter = runtime?.createFlowPolicyAdapter(
+            resolvePackage = ::resolvePackageName,
+            isUidBlocked = AppFirewallManager::isUidBlocked,
+            networkGeneration = { physicalNetworkGeneration.get() },
+        )
         synchronized(upstreamRefreshLock) {
             upstreamSnapshot = null
             refreshSharedUpstreamLocked()
@@ -778,6 +787,7 @@ class DnsFirewallService : VpnService() {
         // a network handover must never pair DNS from Wi-Fi with sockets on cellular.
         val networkSnapshot = NetworkDns.activeSnapshot(this)
         val physicalNetwork = networkSnapshot.network
+        if (selectedPhysicalNetwork != physicalNetwork) physicalNetworkGeneration.incrementAndGet()
         selectedPhysicalNetwork = physicalNetwork
         // Android asks VpnService to publish explicitly bound underlying networks.
         runCatching {
@@ -873,6 +883,8 @@ class DnsFirewallService : VpnService() {
         sharedEngine = null
         upstreamSnapshot = null
         selectedPhysicalNetwork = null
+        physicalNetworkGeneration.incrementAndGet()
+        sharedFlowPolicyAdapter = null
         FirewallDnsTrafficMetrics.upstreamResolversChanged(emptyList())
 
         val session = activeTunSession
