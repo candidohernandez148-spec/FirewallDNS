@@ -16,6 +16,7 @@ import com.celzero.firestack.intra.Mark
 import com.celzero.firestack.intra.PreMark
 import com.celzero.firestack.intra.Tunnel
 import com.firewalldns.engine.core.PolicyAction
+import com.firewalldns.engine.core.NetworkFlowDecision
 import com.firewalldns.engine.runtime.EngineRuntime
 import java.net.URI
 import java.util.concurrent.ConcurrentHashMap
@@ -189,7 +190,15 @@ private class FirewallDNSFirestackBridge(
         blocklists: String,
         dstIsAlg: Boolean,
     ): Mark {
-        val decision = evaluateFlowCallback(protocol, uid, cid, src, dst)
+        val appPackage = uid.takeIf { it >= 0 }?.let { runCatching { resolvePackage(it) }.getOrNull() }
+        val domainAssessment = domains.split(',').map(String::trim).filter(String::isNotEmpty)
+            .map { domain -> runCatching { engine.evaluateDomain(domain, appPackage) }.getOrNull() }
+            .filterNotNull()
+        val selectedDomainDecision = (domainAssessment.firstOrNull { it.action == PolicyAction.BLOCK }
+            ?: domainAssessment.firstOrNull { it.action == PolicyAction.OBSERVE })?.let {
+            NetworkFlowDecision(it.action, it.reason, it.ruleId, it.source, it.policyRevision)
+        }
+        val decision = evaluateFlowCallback(protocol, uid, cid, src, dst, selectedDomainDecision)
         return decisionMark(cid, uid, decision?.action != PolicyAction.ALLOW && decision?.action != PolicyAction.OBSERVE)
     }
 
@@ -204,6 +213,7 @@ private class FirewallDNSFirestackBridge(
         cid: String,
         src: String,
         dst: String,
+        domainDecision: NetworkFlowDecision? = null,
     ) = runCatching {
         val portless = protocol == 1 || protocol == 58
         val source = parseEndpoint(src, portless) ?: return null
@@ -216,6 +226,7 @@ private class FirewallDNSFirestackBridge(
             sourcePort = source.second,
             destinationAddress = destination.first,
             destinationPort = destination.second,
+            domainDecision = domainDecision,
         )
     }.getOrNull()
 
