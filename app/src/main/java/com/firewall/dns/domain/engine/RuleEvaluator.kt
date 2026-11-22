@@ -4,7 +4,8 @@ object RuleEvaluator {
 
     data class AdblockParseResult(
         val domain: String,
-        val isException: Boolean
+        val isException: Boolean,
+        val isImportant: Boolean = false
     )
 
     fun canonicalizeDomain(raw: String): String? {
@@ -60,9 +61,113 @@ object RuleEvaluator {
         val isException = noComment.startsWith("@@")
         val body = if (isException) noComment.removePrefix("@@") else noComment
 
-        // This DNS-only policy does not yet model Adblock option precedence or
-        // request context. Reject every option instead of widening its semantics.
-        fun hasNoUnsupportedOptions(value: String): Boolean = value.none { it.code == 36 }
+        // Only the global $important modifier is supported. Other modifiers
+        // depend on client, DNS type, CNAME, or rule-disabling semantics.
+        fun parseImportantOption(value: String): Boolean? {
+            val marker = value.indexOf(36.toChar())
+            if (marker < 0) return false
+            val options = value.substring(marker + 1).split(',')
+            return if (options.isNotEmpty() && options.all {
+                    it.trim().equals("important", ignoreCase = true)
+                }
+            ) true else null
+        }
+
+        val tokens = body.split(Regex("\\s+")).filter(String::isNotBlank)
+        if (!isException && tokens.size >= 2 && tokens.first() in HOST_SINK_ADDRESSES) {
+            if (tokens.any { token -> token.any { it.code == 36 } }) return emptyList()
+            return tokens.drop(1).mapNotNull { canonicalizeDomain(it) }
+                .distinct()
+                .map { AdblockParseResult(domain = it, isException = false) }
+        }
+
+        val important = parseImportantOption(body) ?: return emptyList()
+        val candidate = when {
+            body.startsWith("||") -> {
+                val rawTarget = body.removePrefix("||")
+                    .substringBefore('
+    }
+
+
+    fun normalizeManualDomain(raw: String): String? = canonicalizeDomain(
+        raw.trim()
+            .removePrefix("@@")
+            .removePrefix("||")
+            .removePrefix("*.")
+            .substringBefore('^')
+            .substringBefore('$')
+    )
+
+    fun evaluate(
+        domain: String,
+        customAllow: Set<String>,
+        customBlock: Set<String>,
+        hostExceptions: Set<String>,
+        hostBlock: Set<String>,
+        importantExceptions: Set<String> = emptySet(),
+        importantBlock: Set<String> = emptySet()
+    ): Pair<Boolean, String> {
+        val decision = evaluateDecision(
+            domain, customAllow, customBlock, hostExceptions, hostBlock, importantExceptions, importantBlock
+        )
+        return decision.blocked to decision.reason
+    }
+
+    fun evaluateDecision(
+        domain: String,
+        customAllow: Set<String>,
+        customBlock: Set<String>,
+        hostExceptions: Set<String>,
+        hostBlock: Set<String>,
+        importantExceptions: Set<String> = emptySet(),
+        importantBlock: Set<String> = emptySet()
+    ): DecisionResult {
+        val clean = domain.trim().trimEnd('.').lowercase()
+
+        if (matchesDomainOrParent(clean, customAllow)) {
+            return DecisionResult(false, "Lista blanca", RuleSource.MANUAL_ALLOW)
+        }
+        if (matchesDomainOrParent(clean, customBlock)) {
+            return DecisionResult(true, "Regla propia", RuleSource.MANUAL_BLOCK)
+        }
+        if (matchesDomainOrParent(clean, importantExceptions)) {
+            return DecisionResult(false, "Excepción importante @@||", RuleSource.LIST_EXCEPTION)
+        }
+        if (matchesDomainOrParent(clean, importantBlock)) {
+            return DecisionResult(true, "Adblock importante ||^", RuleSource.LIST_BLOCK)
+        }
+        if (matchesDomainOrParent(clean, hostExceptions)) {
+            return DecisionResult(false, "Excepción @@||", RuleSource.LIST_EXCEPTION)
+        }
+        if (matchesDomainOrParent(clean, hostBlock)) {
+            return DecisionResult(true, "Adblock ||^", RuleSource.LIST_BLOCK)
+        }
+        return DecisionResult(false, "Permitido", RuleSource.CACHE, cacheTtlMs = 30_000L)
+    }
+
+    private companion object {
+        val HOST_SINK_ADDRESSES = setOf(
+            "0.0.0.0",
+            "127.0.0.1",
+            "::",
+            "::1",
+            "0:0:0:0:0:0:0:0",
+            "0:0:0:0:0:0:0:1",
+        )
+    }
+
+    private fun matchesDomainOrParent(domain: String, set: Set<String>): Boolean {
+        var current = domain
+        while (true) {
+            if (set.contains(current)) return true
+            val dot = current.indexOf('.')
+            if (dot == -1) break
+            current = current.substring(dot + 1)
+        }
+        return false
+    }
+}
+)
 
         val tokens = body.split(Regex("\\s+")).filter(String::isNotBlank)
         if (!isException && tokens.size >= 2 && tokens.first() in HOST_SINK_ADDRESSES) {
@@ -94,6 +199,668 @@ object RuleEvaluator {
 
         val domain = canonicalizeDomain(candidate) ?: return emptyList()
         return listOf(AdblockParseResult(domain = domain, isException = isException))
+    }
+
+
+    fun normalizeManualDomain(raw: String): String? = canonicalizeDomain(
+        raw.trim()
+            .removePrefix("@@")
+            .removePrefix("||")
+            .removePrefix("*.")
+            .substringBefore('^')
+            .substringBefore('$')
+    )
+
+    fun evaluate(
+        domain: String,
+        customAllow: Set<String>,
+        customBlock: Set<String>,
+        hostExceptions: Set<String>,
+        hostBlock: Set<String>
+    ): Pair<Boolean, String> {
+        val decision = evaluateDecision(domain, customAllow, customBlock, hostExceptions, hostBlock)
+        return decision.blocked to decision.reason
+    }
+
+    fun evaluateDecision(
+        domain: String,
+        customAllow: Set<String>,
+        customBlock: Set<String>,
+        hostExceptions: Set<String>,
+        hostBlock: Set<String>
+    ): DecisionResult {
+        val clean = domain.trim().trimEnd('.').lowercase()
+
+        if (matchesDomainOrParent(clean, customAllow)) {
+            return DecisionResult(false, "Lista blanca", RuleSource.MANUAL_ALLOW)
+        }
+        if (matchesDomainOrParent(clean, customBlock)) {
+            return DecisionResult(true, "Regla propia", RuleSource.MANUAL_BLOCK)
+        }
+        if (matchesDomainOrParent(clean, hostExceptions)) {
+            return DecisionResult(false, "Excepción @@||", RuleSource.LIST_EXCEPTION)
+        }
+        if (matchesDomainOrParent(clean, hostBlock)) {
+            return DecisionResult(true, "Adblock ||^", RuleSource.LIST_BLOCK)
+        }
+        return DecisionResult(false, "Permitido", RuleSource.CACHE, cacheTtlMs = 30_000L)
+    }
+
+    private companion object {
+        val HOST_SINK_ADDRESSES = setOf(
+            "0.0.0.0",
+            "127.0.0.1",
+            "::",
+            "::1",
+            "0:0:0:0:0:0:0:0",
+            "0:0:0:0:0:0:0:1",
+        )
+    }
+
+    private fun matchesDomainOrParent(domain: String, set: Set<String>): Boolean {
+        var current = domain
+        while (true) {
+            if (set.contains(current)) return true
+            val dot = current.indexOf('.')
+            if (dot == -1) break
+            current = current.substring(dot + 1)
+        }
+        return false
+    }
+}
+ }
+
+        val tokens = body.split(Regex("\\s+")).filter(String::isNotBlank)
+        if (!isException && tokens.size >= 2 && tokens.first() in HOST_SINK_ADDRESSES) {
+            return tokens.drop(1).mapNotNull { canonicalizeDomain(it) }
+                .distinct()
+                .map { AdblockParseResult(domain = it, isException = false) }
+        }
+
+        val candidate = when {
+            body.startsWith("||") -> {
+                if (!hasNoUnsupportedOptions(body)) return emptyList()
+                val rawTarget = body.removePrefix("||")
+                    .substringBefore('$')
+                    .removeSuffix("^")
+                if (rawTarget.isEmpty() || rawTarget.contains('/') || rawTarget.contains('*') ||
+                    rawTarget.contains('^') || rawTarget.contains(':')
+                ) return emptyList()
+                rawTarget
+            }
+            else -> {
+                if (!hasNoUnsupportedOptions(body)) return emptyList()
+                val rawTarget = body.substringBefore('$').removeSuffix("^")
+                if (rawTarget.isEmpty() || rawTarget.contains('/') || rawTarget.contains('*') ||
+                    rawTarget.contains('^') || rawTarget.contains(':')
+                ) return emptyList()
+                rawTarget
+            }
+        }
+
+        val domain = canonicalizeDomain(candidate) ?: return emptyList()
+        return listOf(AdblockParseResult(domain = domain, isException = isException))
+    }
+
+
+    fun normalizeManualDomain(raw: String): String? = canonicalizeDomain(
+        raw.trim()
+            .removePrefix("@@")
+            .removePrefix("||")
+            .removePrefix("*.")
+            .substringBefore('^')
+            .substringBefore('$')
+    )
+
+    fun evaluate(
+        domain: String,
+        customAllow: Set<String>,
+        customBlock: Set<String>,
+        hostExceptions: Set<String>,
+        hostBlock: Set<String>
+    ): Pair<Boolean, String> {
+        val decision = evaluateDecision(domain, customAllow, customBlock, hostExceptions, hostBlock)
+        return decision.blocked to decision.reason
+    }
+
+    fun evaluateDecision(
+        domain: String,
+        customAllow: Set<String>,
+        customBlock: Set<String>,
+        hostExceptions: Set<String>,
+        hostBlock: Set<String>
+    ): DecisionResult {
+        val clean = domain.trim().trimEnd('.').lowercase()
+
+        if (matchesDomainOrParent(clean, customAllow)) {
+            return DecisionResult(false, "Lista blanca", RuleSource.MANUAL_ALLOW)
+        }
+        if (matchesDomainOrParent(clean, customBlock)) {
+            return DecisionResult(true, "Regla propia", RuleSource.MANUAL_BLOCK)
+        }
+        if (matchesDomainOrParent(clean, hostExceptions)) {
+            return DecisionResult(false, "Excepción @@||", RuleSource.LIST_EXCEPTION)
+        }
+        if (matchesDomainOrParent(clean, hostBlock)) {
+            return DecisionResult(true, "Adblock ||^", RuleSource.LIST_BLOCK)
+        }
+        return DecisionResult(false, "Permitido", RuleSource.CACHE, cacheTtlMs = 30_000L)
+    }
+
+    private companion object {
+        val HOST_SINK_ADDRESSES = setOf(
+            "0.0.0.0",
+            "127.0.0.1",
+            "::",
+            "::1",
+            "0:0:0:0:0:0:0:0",
+            "0:0:0:0:0:0:0:1",
+        )
+    }
+
+    private fun matchesDomainOrParent(domain: String, set: Set<String>): Boolean {
+        var current = domain
+        while (true) {
+            if (set.contains(current)) return true
+            val dot = current.indexOf('.')
+            if (dot == -1) break
+            current = current.substring(dot + 1)
+        }
+        return false
+    }
+}
+)
+
+        val tokens = body.split(Regex("\\s+")).filter(String::isNotBlank)
+        if (!isException && tokens.size >= 2 && tokens.first() in HOST_SINK_ADDRESSES) {
+            return tokens.drop(1).mapNotNull { canonicalizeDomain(it) }
+                .distinct()
+                .map { AdblockParseResult(domain = it, isException = false) }
+        }
+
+        val candidate = when {
+            body.startsWith("||") -> {
+                if (!hasNoUnsupportedOptions(body)) return emptyList()
+                val rawTarget = body.removePrefix("||")
+                    .substringBefore('$')
+                    .removeSuffix("^")
+                if (rawTarget.isEmpty() || rawTarget.contains('/') || rawTarget.contains('*') ||
+                    rawTarget.contains('^') || rawTarget.contains(':')
+                ) return emptyList()
+                rawTarget
+            }
+            else -> {
+                if (!hasNoUnsupportedOptions(body)) return emptyList()
+                val rawTarget = body.substringBefore('$').removeSuffix("^")
+                if (rawTarget.isEmpty() || rawTarget.contains('/') || rawTarget.contains('*') ||
+                    rawTarget.contains('^') || rawTarget.contains(':')
+                ) return emptyList()
+                rawTarget
+            }
+        }
+
+        val domain = canonicalizeDomain(candidate) ?: return emptyList()
+        return listOf(AdblockParseResult(domain = domain, isException = isException))
+    }
+
+
+    fun normalizeManualDomain(raw: String): String? = canonicalizeDomain(
+        raw.trim()
+            .removePrefix("@@")
+            .removePrefix("||")
+            .removePrefix("*.")
+            .substringBefore('^')
+            .substringBefore('$')
+    )
+
+    fun evaluate(
+        domain: String,
+        customAllow: Set<String>,
+        customBlock: Set<String>,
+        hostExceptions: Set<String>,
+        hostBlock: Set<String>
+    ): Pair<Boolean, String> {
+        val decision = evaluateDecision(domain, customAllow, customBlock, hostExceptions, hostBlock)
+        return decision.blocked to decision.reason
+    }
+
+    fun evaluateDecision(
+        domain: String,
+        customAllow: Set<String>,
+        customBlock: Set<String>,
+        hostExceptions: Set<String>,
+        hostBlock: Set<String>
+    ): DecisionResult {
+        val clean = domain.trim().trimEnd('.').lowercase()
+
+        if (matchesDomainOrParent(clean, customAllow)) {
+            return DecisionResult(false, "Lista blanca", RuleSource.MANUAL_ALLOW)
+        }
+        if (matchesDomainOrParent(clean, customBlock)) {
+            return DecisionResult(true, "Regla propia", RuleSource.MANUAL_BLOCK)
+        }
+        if (matchesDomainOrParent(clean, hostExceptions)) {
+            return DecisionResult(false, "Excepción @@||", RuleSource.LIST_EXCEPTION)
+        }
+        if (matchesDomainOrParent(clean, hostBlock)) {
+            return DecisionResult(true, "Adblock ||^", RuleSource.LIST_BLOCK)
+        }
+        return DecisionResult(false, "Permitido", RuleSource.CACHE, cacheTtlMs = 30_000L)
+    }
+
+    private companion object {
+        val HOST_SINK_ADDRESSES = setOf(
+            "0.0.0.0",
+            "127.0.0.1",
+            "::",
+            "::1",
+            "0:0:0:0:0:0:0:0",
+            "0:0:0:0:0:0:0:1",
+        )
+    }
+
+    private fun matchesDomainOrParent(domain: String, set: Set<String>): Boolean {
+        var current = domain
+        while (true) {
+            if (set.contains(current)) return true
+            val dot = current.indexOf('.')
+            if (dot == -1) break
+            current = current.substring(dot + 1)
+        }
+        return false
+    }
+}
+)
+                    .removeSuffix("^")
+                if (rawTarget.isEmpty() || rawTarget.contains('/') || rawTarget.contains('*') ||
+                    rawTarget.contains('^') || rawTarget.contains(':')
+                ) return emptyList()
+                rawTarget
+            }
+            else -> {
+                val rawTarget = body.substringBefore('
+    }
+
+
+    fun normalizeManualDomain(raw: String): String? = canonicalizeDomain(
+        raw.trim()
+            .removePrefix("@@")
+            .removePrefix("||")
+            .removePrefix("*.")
+            .substringBefore('^')
+            .substringBefore('$')
+    )
+
+    fun evaluate(
+        domain: String,
+        customAllow: Set<String>,
+        customBlock: Set<String>,
+        hostExceptions: Set<String>,
+        hostBlock: Set<String>
+    ): Pair<Boolean, String> {
+        val decision = evaluateDecision(domain, customAllow, customBlock, hostExceptions, hostBlock)
+        return decision.blocked to decision.reason
+    }
+
+    fun evaluateDecision(
+        domain: String,
+        customAllow: Set<String>,
+        customBlock: Set<String>,
+        hostExceptions: Set<String>,
+        hostBlock: Set<String>
+    ): DecisionResult {
+        val clean = domain.trim().trimEnd('.').lowercase()
+
+        if (matchesDomainOrParent(clean, customAllow)) {
+            return DecisionResult(false, "Lista blanca", RuleSource.MANUAL_ALLOW)
+        }
+        if (matchesDomainOrParent(clean, customBlock)) {
+            return DecisionResult(true, "Regla propia", RuleSource.MANUAL_BLOCK)
+        }
+        if (matchesDomainOrParent(clean, hostExceptions)) {
+            return DecisionResult(false, "Excepción @@||", RuleSource.LIST_EXCEPTION)
+        }
+        if (matchesDomainOrParent(clean, hostBlock)) {
+            return DecisionResult(true, "Adblock ||^", RuleSource.LIST_BLOCK)
+        }
+        return DecisionResult(false, "Permitido", RuleSource.CACHE, cacheTtlMs = 30_000L)
+    }
+
+    private companion object {
+        val HOST_SINK_ADDRESSES = setOf(
+            "0.0.0.0",
+            "127.0.0.1",
+            "::",
+            "::1",
+            "0:0:0:0:0:0:0:0",
+            "0:0:0:0:0:0:0:1",
+        )
+    }
+
+    private fun matchesDomainOrParent(domain: String, set: Set<String>): Boolean {
+        var current = domain
+        while (true) {
+            if (set.contains(current)) return true
+            val dot = current.indexOf('.')
+            if (dot == -1) break
+            current = current.substring(dot + 1)
+        }
+        return false
+    }
+}
+)
+
+        val tokens = body.split(Regex("\\s+")).filter(String::isNotBlank)
+        if (!isException && tokens.size >= 2 && tokens.first() in HOST_SINK_ADDRESSES) {
+            return tokens.drop(1).mapNotNull { canonicalizeDomain(it) }
+                .distinct()
+                .map { AdblockParseResult(domain = it, isException = false) }
+        }
+
+        val candidate = when {
+            body.startsWith("||") -> {
+                if (!hasNoUnsupportedOptions(body)) return emptyList()
+                val rawTarget = body.removePrefix("||")
+                    .substringBefore('$')
+                    .removeSuffix("^")
+                if (rawTarget.isEmpty() || rawTarget.contains('/') || rawTarget.contains('*') ||
+                    rawTarget.contains('^') || rawTarget.contains(':')
+                ) return emptyList()
+                rawTarget
+            }
+            else -> {
+                if (!hasNoUnsupportedOptions(body)) return emptyList()
+                val rawTarget = body.substringBefore('$').removeSuffix("^")
+                if (rawTarget.isEmpty() || rawTarget.contains('/') || rawTarget.contains('*') ||
+                    rawTarget.contains('^') || rawTarget.contains(':')
+                ) return emptyList()
+                rawTarget
+            }
+        }
+
+        val domain = canonicalizeDomain(candidate) ?: return emptyList()
+        return listOf(AdblockParseResult(domain = domain, isException = isException))
+    }
+
+
+    fun normalizeManualDomain(raw: String): String? = canonicalizeDomain(
+        raw.trim()
+            .removePrefix("@@")
+            .removePrefix("||")
+            .removePrefix("*.")
+            .substringBefore('^')
+            .substringBefore('$')
+    )
+
+    fun evaluate(
+        domain: String,
+        customAllow: Set<String>,
+        customBlock: Set<String>,
+        hostExceptions: Set<String>,
+        hostBlock: Set<String>
+    ): Pair<Boolean, String> {
+        val decision = evaluateDecision(domain, customAllow, customBlock, hostExceptions, hostBlock)
+        return decision.blocked to decision.reason
+    }
+
+    fun evaluateDecision(
+        domain: String,
+        customAllow: Set<String>,
+        customBlock: Set<String>,
+        hostExceptions: Set<String>,
+        hostBlock: Set<String>
+    ): DecisionResult {
+        val clean = domain.trim().trimEnd('.').lowercase()
+
+        if (matchesDomainOrParent(clean, customAllow)) {
+            return DecisionResult(false, "Lista blanca", RuleSource.MANUAL_ALLOW)
+        }
+        if (matchesDomainOrParent(clean, customBlock)) {
+            return DecisionResult(true, "Regla propia", RuleSource.MANUAL_BLOCK)
+        }
+        if (matchesDomainOrParent(clean, hostExceptions)) {
+            return DecisionResult(false, "Excepción @@||", RuleSource.LIST_EXCEPTION)
+        }
+        if (matchesDomainOrParent(clean, hostBlock)) {
+            return DecisionResult(true, "Adblock ||^", RuleSource.LIST_BLOCK)
+        }
+        return DecisionResult(false, "Permitido", RuleSource.CACHE, cacheTtlMs = 30_000L)
+    }
+
+    private companion object {
+        val HOST_SINK_ADDRESSES = setOf(
+            "0.0.0.0",
+            "127.0.0.1",
+            "::",
+            "::1",
+            "0:0:0:0:0:0:0:0",
+            "0:0:0:0:0:0:0:1",
+        )
+    }
+
+    private fun matchesDomainOrParent(domain: String, set: Set<String>): Boolean {
+        var current = domain
+        while (true) {
+            if (set.contains(current)) return true
+            val dot = current.indexOf('.')
+            if (dot == -1) break
+            current = current.substring(dot + 1)
+        }
+        return false
+    }
+}
+ }
+
+        val tokens = body.split(Regex("\\s+")).filter(String::isNotBlank)
+        if (!isException && tokens.size >= 2 && tokens.first() in HOST_SINK_ADDRESSES) {
+            return tokens.drop(1).mapNotNull { canonicalizeDomain(it) }
+                .distinct()
+                .map { AdblockParseResult(domain = it, isException = false) }
+        }
+
+        val candidate = when {
+            body.startsWith("||") -> {
+                if (!hasNoUnsupportedOptions(body)) return emptyList()
+                val rawTarget = body.removePrefix("||")
+                    .substringBefore('$')
+                    .removeSuffix("^")
+                if (rawTarget.isEmpty() || rawTarget.contains('/') || rawTarget.contains('*') ||
+                    rawTarget.contains('^') || rawTarget.contains(':')
+                ) return emptyList()
+                rawTarget
+            }
+            else -> {
+                if (!hasNoUnsupportedOptions(body)) return emptyList()
+                val rawTarget = body.substringBefore('$').removeSuffix("^")
+                if (rawTarget.isEmpty() || rawTarget.contains('/') || rawTarget.contains('*') ||
+                    rawTarget.contains('^') || rawTarget.contains(':')
+                ) return emptyList()
+                rawTarget
+            }
+        }
+
+        val domain = canonicalizeDomain(candidate) ?: return emptyList()
+        return listOf(AdblockParseResult(domain = domain, isException = isException))
+    }
+
+
+    fun normalizeManualDomain(raw: String): String? = canonicalizeDomain(
+        raw.trim()
+            .removePrefix("@@")
+            .removePrefix("||")
+            .removePrefix("*.")
+            .substringBefore('^')
+            .substringBefore('$')
+    )
+
+    fun evaluate(
+        domain: String,
+        customAllow: Set<String>,
+        customBlock: Set<String>,
+        hostExceptions: Set<String>,
+        hostBlock: Set<String>
+    ): Pair<Boolean, String> {
+        val decision = evaluateDecision(domain, customAllow, customBlock, hostExceptions, hostBlock)
+        return decision.blocked to decision.reason
+    }
+
+    fun evaluateDecision(
+        domain: String,
+        customAllow: Set<String>,
+        customBlock: Set<String>,
+        hostExceptions: Set<String>,
+        hostBlock: Set<String>
+    ): DecisionResult {
+        val clean = domain.trim().trimEnd('.').lowercase()
+
+        if (matchesDomainOrParent(clean, customAllow)) {
+            return DecisionResult(false, "Lista blanca", RuleSource.MANUAL_ALLOW)
+        }
+        if (matchesDomainOrParent(clean, customBlock)) {
+            return DecisionResult(true, "Regla propia", RuleSource.MANUAL_BLOCK)
+        }
+        if (matchesDomainOrParent(clean, hostExceptions)) {
+            return DecisionResult(false, "Excepción @@||", RuleSource.LIST_EXCEPTION)
+        }
+        if (matchesDomainOrParent(clean, hostBlock)) {
+            return DecisionResult(true, "Adblock ||^", RuleSource.LIST_BLOCK)
+        }
+        return DecisionResult(false, "Permitido", RuleSource.CACHE, cacheTtlMs = 30_000L)
+    }
+
+    private companion object {
+        val HOST_SINK_ADDRESSES = setOf(
+            "0.0.0.0",
+            "127.0.0.1",
+            "::",
+            "::1",
+            "0:0:0:0:0:0:0:0",
+            "0:0:0:0:0:0:0:1",
+        )
+    }
+
+    private fun matchesDomainOrParent(domain: String, set: Set<String>): Boolean {
+        var current = domain
+        while (true) {
+            if (set.contains(current)) return true
+            val dot = current.indexOf('.')
+            if (dot == -1) break
+            current = current.substring(dot + 1)
+        }
+        return false
+    }
+}
+)
+
+        val tokens = body.split(Regex("\\s+")).filter(String::isNotBlank)
+        if (!isException && tokens.size >= 2 && tokens.first() in HOST_SINK_ADDRESSES) {
+            return tokens.drop(1).mapNotNull { canonicalizeDomain(it) }
+                .distinct()
+                .map { AdblockParseResult(domain = it, isException = false) }
+        }
+
+        val candidate = when {
+            body.startsWith("||") -> {
+                if (!hasNoUnsupportedOptions(body)) return emptyList()
+                val rawTarget = body.removePrefix("||")
+                    .substringBefore('$')
+                    .removeSuffix("^")
+                if (rawTarget.isEmpty() || rawTarget.contains('/') || rawTarget.contains('*') ||
+                    rawTarget.contains('^') || rawTarget.contains(':')
+                ) return emptyList()
+                rawTarget
+            }
+            else -> {
+                if (!hasNoUnsupportedOptions(body)) return emptyList()
+                val rawTarget = body.substringBefore('$').removeSuffix("^")
+                if (rawTarget.isEmpty() || rawTarget.contains('/') || rawTarget.contains('*') ||
+                    rawTarget.contains('^') || rawTarget.contains(':')
+                ) return emptyList()
+                rawTarget
+            }
+        }
+
+        val domain = canonicalizeDomain(candidate) ?: return emptyList()
+        return listOf(AdblockParseResult(domain = domain, isException = isException))
+    }
+
+
+    fun normalizeManualDomain(raw: String): String? = canonicalizeDomain(
+        raw.trim()
+            .removePrefix("@@")
+            .removePrefix("||")
+            .removePrefix("*.")
+            .substringBefore('^')
+            .substringBefore('$')
+    )
+
+    fun evaluate(
+        domain: String,
+        customAllow: Set<String>,
+        customBlock: Set<String>,
+        hostExceptions: Set<String>,
+        hostBlock: Set<String>
+    ): Pair<Boolean, String> {
+        val decision = evaluateDecision(domain, customAllow, customBlock, hostExceptions, hostBlock)
+        return decision.blocked to decision.reason
+    }
+
+    fun evaluateDecision(
+        domain: String,
+        customAllow: Set<String>,
+        customBlock: Set<String>,
+        hostExceptions: Set<String>,
+        hostBlock: Set<String>
+    ): DecisionResult {
+        val clean = domain.trim().trimEnd('.').lowercase()
+
+        if (matchesDomainOrParent(clean, customAllow)) {
+            return DecisionResult(false, "Lista blanca", RuleSource.MANUAL_ALLOW)
+        }
+        if (matchesDomainOrParent(clean, customBlock)) {
+            return DecisionResult(true, "Regla propia", RuleSource.MANUAL_BLOCK)
+        }
+        if (matchesDomainOrParent(clean, hostExceptions)) {
+            return DecisionResult(false, "Excepción @@||", RuleSource.LIST_EXCEPTION)
+        }
+        if (matchesDomainOrParent(clean, hostBlock)) {
+            return DecisionResult(true, "Adblock ||^", RuleSource.LIST_BLOCK)
+        }
+        return DecisionResult(false, "Permitido", RuleSource.CACHE, cacheTtlMs = 30_000L)
+    }
+
+    private companion object {
+        val HOST_SINK_ADDRESSES = setOf(
+            "0.0.0.0",
+            "127.0.0.1",
+            "::",
+            "::1",
+            "0:0:0:0:0:0:0:0",
+            "0:0:0:0:0:0:0:1",
+        )
+    }
+
+    private fun matchesDomainOrParent(domain: String, set: Set<String>): Boolean {
+        var current = domain
+        while (true) {
+            if (set.contains(current)) return true
+            val dot = current.indexOf('.')
+            if (dot == -1) break
+            current = current.substring(dot + 1)
+        }
+        return false
+    }
+}
+).removeSuffix("^")
+                if (rawTarget.isEmpty() || rawTarget.contains('/') || rawTarget.contains('*') ||
+                    rawTarget.contains('^') || rawTarget.contains(':')
+                ) return emptyList()
+                rawTarget
+            }
+        }
+
+        val domain = canonicalizeDomain(candidate) ?: return emptyList()
+        return listOf(AdblockParseResult(domain = domain, isException = isException, isImportant = important))
     }
 
 
