@@ -17,6 +17,7 @@ import com.celzero.firestack.intra.PreMark
 import com.celzero.firestack.intra.Tunnel
 import com.firewalldns.engine.core.PolicyAction
 import com.firewalldns.engine.core.NetworkFlowDecision
+import com.firewalldns.engine.monitor.FlowMonitorSnapshot
 import com.firewalldns.engine.runtime.EngineRuntime
 import java.net.URI
 import java.util.concurrent.ConcurrentHashMap
@@ -72,6 +73,7 @@ class FirestackTunnelAdapter private constructor(
             isUidBlocked: (Int) -> Boolean = { false },
             onDnsDecision: (String, Int, Int?, String, PolicyAction) -> Unit = { _, _, _, _, _ -> },
             onSocketProtectionResult: (Boolean) -> Unit = {},
+            onFlowSnapshot: (FlowMonitorSnapshot) -> Unit = {},
         ): FirestackTunnelAdapter {
             require(mtu in 576..9000) { "Invalid TUN MTU" }
             val tunReference = ParcelFileDescriptor.dup(tunDescriptor.fileDescriptor)
@@ -87,6 +89,7 @@ class FirestackTunnelAdapter private constructor(
                     isUidBlocked = isUidBlocked,
                     onDnsDecision = onDnsDecision,
                     onSocketProtectionResult = onSocketProtectionResult,
+                    onFlowSnapshot = onFlowSnapshot,
                 )
                 val defaultDns = Intra.newDefaultDNS(
                     Backend.DNS53,
@@ -142,6 +145,7 @@ private class FirewallDNSFirestackBridge(
     private val isUidBlocked: (Int) -> Boolean,
     private val onDnsDecision: (String, Int, Int?, String, PolicyAction) -> Unit,
     private val onSocketProtectionResult: (Boolean) -> Unit,
+    private val onFlowSnapshot: (FlowMonitorSnapshot) -> Unit,
 ) : Bridge, AutoCloseable {
 
     private val boundNetworks = ConcurrentHashMap<Int, Network>()
@@ -199,6 +203,7 @@ private class FirewallDNSFirestackBridge(
             NetworkFlowDecision(it.action, it.reason, it.ruleId, it.source, it.policyRevision)
         }
         val decision = evaluateFlowCallback(protocol, uid, cid, src, dst, selectedDomainDecision)
+        runCatching { onFlowSnapshot(engine.flowMonitor.snapshot()) }
         return decisionMark(cid, uid, decision?.action != PolicyAction.ALLOW && decision?.action != PolicyAction.OBSERVE)
     }
 
@@ -244,6 +249,7 @@ private class FirewallDNSFirestackBridge(
         if (id.isBlank()) return
         flowPolicyAdapter.recordBytes(id, summary.getTx().coerceAtLeast(0), summary.getRx().coerceAtLeast(0))
         flowPolicyAdapter.close(id)
+        runCatching { onFlowSnapshot(engine.flowMonitor.snapshot()) }
     }
 
     override fun onPrequery(who: String, fid: String, uid: String, domain: String, qtyp: Long): DomainOpts? = null
