@@ -26,6 +26,10 @@ data class BlocklistSnapshot(
     val threatDomainsByCategory: Map<ThreatFeedCategory, Set<String>>,
     val importantBlocked: Set<String> = emptySet(),
     val importantExceptions: Set<String> = emptySet(),
+    val exactBlocked: Set<String> = emptySet(),
+    val exactExceptions: Set<String> = emptySet(),
+    val importantExactBlocked: Set<String> = emptySet(),
+    val importantExactExceptions: Set<String> = emptySet(),
     val summary: String = ""
 )
 
@@ -56,6 +60,10 @@ class BlocklistDataSource(context: Context) {
         val exceptions = HashSet<String>()
         val importantBlocked = HashSet<String>()
         val importantExceptions = HashSet<String>()
+        val exactBlocked = HashSet<String>()
+        val exactExceptions = HashSet<String>()
+        val importantExactBlocked = HashSet<String>()
+        val importantExactExceptions = HashSet<String>()
         val categories = ThreatFeedCategory.values().associateWith { HashSet<String>() }.toMutableMap()
         val file = File(filesDir, ADBLOCK_FILE_NAME)
         if (file.exists()) {
@@ -73,11 +81,19 @@ class BlocklistDataSource(context: Context) {
                     } else {
                         RuleEvaluator.parseAdblockLineEntries(line).forEach { parsed ->
                             if (parsed.isException) {
-                                exceptions.add(parsed.domain)
-                                if (parsed.isImportant) importantExceptions.add(parsed.domain)
-                            } else {
+                                if (parsed.includeSubdomains) {
+                                    exceptions.add(parsed.domain)
+                                    if (parsed.isImportant) importantExceptions.add(parsed.domain)
+                                } else {
+                                    exactExceptions.add(parsed.domain)
+                                    if (parsed.isImportant) importantExactExceptions.add(parsed.domain)
+                                }
+                            } else if (parsed.includeSubdomains) {
                                 blocked.add(parsed.domain)
                                 if (parsed.isImportant) importantBlocked.add(parsed.domain)
+                            } else {
+                                exactBlocked.add(parsed.domain)
+                                if (parsed.isImportant) importantExactBlocked.add(parsed.domain)
                             }
                         }
                     }
@@ -89,7 +105,11 @@ class BlocklistDataSource(context: Context) {
             exceptions = exceptions,
             threatDomainsByCategory = categories.mapValues { it.value.toSet() },
             importantBlocked = importantBlocked,
-            importantExceptions = importantExceptions
+            importantExceptions = importantExceptions,
+            exactBlocked = exactBlocked,
+            exactExceptions = exactExceptions,
+            importantExactBlocked = importantExactBlocked,
+            importantExactExceptions = importantExactExceptions
         )
     }
 
