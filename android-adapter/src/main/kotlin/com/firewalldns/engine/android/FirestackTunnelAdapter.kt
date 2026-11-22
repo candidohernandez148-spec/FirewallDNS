@@ -507,14 +507,18 @@ private const val MAX_DOMAIN_METADATA_CHARS = 4096
 private const val MAX_ENDPOINT_LENGTH = 128
 private const val MAX_FLOW_ID_LENGTH = 128
 
-internal fun parseFirestackDomainMetadata(value: String?): List<String> =
-    value.orEmpty().take(MAX_DOMAIN_METADATA_CHARS)
-        .split(',')
-        .asSequence()
+internal fun parseFirestackDomainMetadata(value: String?): List<String> {
+    val raw = value.orEmpty()
+    val truncated = raw.length > MAX_DOMAIN_METADATA_CHARS
+    val tokens = raw.take(MAX_DOMAIN_METADATA_CHARS).split(',')
+    // Do not treat the final token as complete if the metadata string was cut.
+    val completeTokens = if (truncated) tokens.dropLast(1) else tokens
+    return completeTokens.asSequence()
         .map(String::trim)
         .filter { it.length in 1..MAX_DOMAIN_LENGTH }
         .take(MAX_FLOW_DOMAINS)
         .toList()
+}
 
 internal fun isFirestackRdnsBlocklistAddress(value: String): Boolean {
     val address = parseFirestackEndpoint(value, portless = true)?.first ?: return false
