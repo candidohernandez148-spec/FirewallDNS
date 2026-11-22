@@ -56,6 +56,9 @@ fun AppsSettingsScreen(
     onOpenBatteryOpt: () -> Unit,
     onOpenVpnSettings: () -> Unit
 ) {
+    val firestackActive = stats.isRunning && stats.engine.contains("Firestack/gVisor", ignoreCase = true)
+    val dnsOnlyFallback = stats.isRunning && stats.engine.contains("DNS fallback", ignoreCase = true)
+
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 9.dp),
         contentPadding = PaddingValues(bottom = 12.dp),
@@ -105,14 +108,14 @@ fun AppsSettingsScreen(
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Aplicaciones", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text("Excluye apps del filtrado o bloquea su acceso a Internet.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (stats.engine.startsWith("FirewallDNS TUN")) {
+                if (dnsOnlyFallback) {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(14.dp),
                         color = MaterialTheme.colorScheme.tertiaryContainer
                     ) {
                         Text(
-                            "El TUN actual filtra consultas DNS. El bloqueo de conexiones que no son DNS por aplicación se incorporará cuando el motor nativo FirewallDNS esté integrado.",
+                            "El motor de respaldo solo filtra consultas DNS. Las reglas por aplicación no bloquean conexiones TCP/UDP/ICMP mientras este modo esté activo.",
                             modifier = Modifier.padding(14.dp),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onTertiaryContainer
@@ -149,16 +152,16 @@ fun AppsSettingsScreen(
                 val excluded = excludedPackages.contains(app.packageName)
                 val internetBlocked = blockedApps.contains(app.packageName)
 
-                val dnsOnlyFallback = stats.engine.startsWith("FirewallDNS TUN")
                 val chipText = when {
                     excluded -> "Excluida"
-                    internetBlocked && dnsOnlyFallback -> "Regla guardada"
+                    internetBlocked && !firestackActive -> "Regla guardada"
                     internetBlocked -> "Sin internet"
                     else -> "Protegida"
                 }
                 val chipColor = when {
                     excluded -> MaterialTheme.colorScheme.tertiary
-                    internetBlocked -> MaterialTheme.colorScheme.error
+                    internetBlocked && firestackActive -> MaterialTheme.colorScheme.error
+                    internetBlocked -> MaterialTheme.colorScheme.tertiary
                     else -> MaterialTheme.colorScheme.secondary
                 }
 
@@ -204,7 +207,7 @@ fun AppsSettingsScreen(
                             Text(
                                 when {
                                     excluded -> "Internet bloqueado (desactiva excluir)"
-                                    internetBlocked && dnsOnlyFallback -> "Regla guardada; el TUN actual aplica reglas DNS"
+                                    internetBlocked && !firestackActive -> "Regla guardada; el bloqueo total requiere Firestack activo"
                                     internetBlocked -> "Internet bloqueado"
                                     else -> "Internet permitido"
                                 },
