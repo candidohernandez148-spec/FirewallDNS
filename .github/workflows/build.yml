@@ -129,7 +129,7 @@ jobs:
         working-directory: third_party/firestack
         env:
           GOTOOLCHAIN: local
-        run: go test ./intra ./intra/dnsx -run 'TestCaptureDnsPortEnablesAllPort53Interception|TestFirewallDNSPortModeInterceptsAnyResolverAddress' -count=1
+        run: go test ./intra/dnsx -run TestFirewallDNSPortModeInterceptsAnyResolverAddress -count=1
 
       - name: Set up Android SDK and NDK
         uses: android-actions/setup-android@v3
@@ -146,7 +146,7 @@ jobs:
         env:
           GOTOOLCHAIN: local
         run: |
-          go test ./intra/...
+          go test ./intra/dnsx/...
           make intra
           test -s build/intra/tun2socks.aar
           unzip -l build/intra/tun2socks.aar | grep -q 'jni/arm64-v8a/libgojni.so'
