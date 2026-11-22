@@ -3,6 +3,7 @@ package com.firewall.dns.service
 import com.firewalldns.engine.android.DnsSocketProtectionProtocol
 import com.firewalldns.engine.android.FragmentReassemblerMetrics
 import com.firewalldns.engine.android.SmoltcpDnsTcpMetrics
+import com.firewalldns.engine.monitor.FlowMonitorSnapshot
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
@@ -73,6 +74,14 @@ object FirewallDnsTrafficMetrics {
         val fragmentAssembliesExpired: Long,
         val fragmentPendingAssemblies: Long,
         val fragmentBufferedBytes: Long,
+        val firestackActive: Long,
+        val flowsActive: Long,
+        val flowsOpened: Long,
+        val flowsClosed: Long,
+        val flowsBlocked: Long,
+        val flowBytesSent: Long,
+        val flowBytesReceived: Long,
+        val flowCapacityRejected: Long,
     )
 
     private val packetsRead = AtomicLong()
@@ -134,6 +143,14 @@ object FirewallDnsTrafficMetrics {
     private val fragmentAssembliesExpired = AtomicLong()
     private val fragmentPendingAssemblies = AtomicLong()
     private val fragmentBufferedBytes = AtomicLong()
+    private val firestackActive = AtomicLong()
+    private val flowsActive = AtomicLong()
+    private val flowsOpened = AtomicLong()
+    private val flowsClosed = AtomicLong()
+    private val flowsBlocked = AtomicLong()
+    private val flowBytesSent = AtomicLong()
+    private val flowBytesReceived = AtomicLong()
+    private val flowCapacityRejected = AtomicLong()
 
     internal fun packetRead() { packetsRead.incrementAndGet() }
     internal fun queueRejected() { queueRejected.incrementAndGet() }
@@ -197,6 +214,20 @@ object FirewallDnsTrafficMetrics {
     internal fun responseWritten() { packetsWritten.incrementAndGet() }
     internal fun writeError() { writeErrors.incrementAndGet() }
     internal fun workerError() { workerErrors.incrementAndGet() }
+    internal fun firestackStarted() { firestackActive.set(1L) }
+    internal fun firestackStopped() {
+        firestackActive.set(0L)
+        flowsActive.set(0L)
+    }
+    internal fun flowSnapshot(snapshot: FlowMonitorSnapshot) {
+        flowsActive.set(snapshot.active.toLong())
+        flowsOpened.set(snapshot.opened)
+        flowsClosed.set(snapshot.closed)
+        flowsBlocked.set(snapshot.blocked)
+        flowBytesSent.set(snapshot.bytesSent)
+        flowBytesReceived.set(snapshot.bytesReceived)
+        flowCapacityRejected.set(snapshot.capacityRejected)
+    }
     internal fun smoltcpStarted() { smoltcpTransportAvailable.set(1L) }
     internal fun smoltcpStopped() {
         smoltcpTransportAvailable.set(0L)
@@ -286,5 +317,13 @@ object FirewallDnsTrafficMetrics {
         fragmentAssembliesExpired = fragmentAssembliesExpired.get(),
         fragmentPendingAssemblies = fragmentPendingAssemblies.get(),
         fragmentBufferedBytes = fragmentBufferedBytes.get(),
+        firestackActive = firestackActive.get(),
+        flowsActive = flowsActive.get(),
+        flowsOpened = flowsOpened.get(),
+        flowsClosed = flowsClosed.get(),
+        flowsBlocked = flowsBlocked.get(),
+        flowBytesSent = flowBytesSent.get(),
+        flowBytesReceived = flowBytesReceived.get(),
+        flowCapacityRejected = flowCapacityRejected.get(),
     )
 }
