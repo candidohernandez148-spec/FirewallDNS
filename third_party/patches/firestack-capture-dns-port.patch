@@ -3,7 +3,7 @@ new file mode 100644
 index 0000000..1111111
 --- /dev/null
 +++ b/intra/firewalldns.go
-@@ -0,0 +1,18 @@
+@@ -0,0 +1,20 @@
 +// This Source Code Form is subject to the terms of the Mozilla Public
 +// License, v. 2.0. If a copy of the MPL was not distributed with this
 +// file, You can obtain one at http://mozilla.org/MPL/2.0/.
@@ -42,6 +42,8 @@ index 0000000..2222222
 +)
 +
 +func TestCaptureDnsPortEnablesAllPort53Interception(t *testing.T) {
++	previous := settings.DNSMode.Load()
++	defer settings.DNSMode.Store(previous)
 +	CaptureDnsPort()
 +	if got := settings.DNSMode.Load(); got != settings.DNSModePort {
 +		t.Fatalf("DNSMode = %d, want %d (port capture)", got, settings.DNSModePort)
