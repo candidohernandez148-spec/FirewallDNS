@@ -368,7 +368,7 @@ private class FirewallDNSFirestackBridge(
         runCatching { onDnsDecision(domainValue, qtyp.toInt(), ownerUid, reason, action) }
         return DNSOpts().apply {
             setUID(uidValue)
-            setTIDCSV(if (action == PolicyAction.BLOCK) Backend.Block else Backend.Default)
+            setTIDCSV(dnsTransportForPolicyAction(action))
         }
     }
 
@@ -434,3 +434,7 @@ internal fun parseFirestackEndpoint(value: String, portless: Boolean): Pair<Stri
         host to port
     }
 }.getOrNull()
+
+/** DNS policy uses Firestack's BlockAll transport; Backend.Block is a flow proxy ID. */
+internal fun dnsTransportForPolicyAction(action: PolicyAction): String =
+    if (action == PolicyAction.BLOCK) Backend.BlockAll else Backend.Default
