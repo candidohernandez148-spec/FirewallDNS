@@ -533,6 +533,7 @@ private fun LiveEngineOperations(
             "Rechazos por capacidad" to metrics.flowCapacityRejected,
             "Firestack activo (0/1)" to metrics.firestackActive,
         ))
+        LiveActiveFlows(metrics.activeFlows)
         LiveMetricSection("FRAGMENTACIÓN Y PROTECCIÓN DE SOCKETS", listOf(
             "Fragmentos aceptados" to metrics.fragmentsAccepted,
             "Paquetes reensamblados" to metrics.packetsReassembled,
@@ -619,6 +620,59 @@ private fun LiveMetricSection(
                     Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
                     Text(value.toString(), style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+
+@Composable
+private fun LiveActiveFlows(flows: List<com.firewalldns.engine.monitor.ActiveFlowSnapshot>) {
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(15.dp)) {
+        Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("CONEXIONES ACTIVAS IDENTIFICADAS", Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(flows.size.toString(), style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            }
+            Text("Instantánea real del monitor Firestack; se actualiza aproximadamente cada segundo. Se muestran hasta 30 conexiones.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (flows.isEmpty()) {
+                Text("No hay flujos activos registrados en este instante.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                flows.take(30).forEach { flow ->
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(flow.identity.protocol.name, style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold)
+                            Text(" · ${flow.action}", style = MaterialTheme.typography.labelSmall,
+                                color = when (flow.action.uppercase()) {
+                                    "BLOCK" -> MaterialTheme.colorScheme.error
+                                    "OBSERVE" -> MaterialTheme.colorScheme.tertiary
+                                    else -> MaterialTheme.colorScheme.primary
+                                })
+                        }
+                        Text(
+                            "${flow.identity.sourceAddress}:${flow.identity.sourcePort}  →  ${flow.identity.destinationAddress}:${flow.identity.destinationPort}",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            "${flow.identity.appPackage ?: "Aplicación no identificada"} · TX ${flow.bytesSent} B · RX ${flow.bytesReceived} B",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(flow.reason, style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (flow != flows.take(30).last()) {
+                        androidx.compose.material3.HorizontalDivider()
+                    }
                 }
             }
         }
