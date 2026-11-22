@@ -68,6 +68,7 @@ class FirestackTunnelAdapter private constructor(
             flowPolicyAdapter: AndroidFlowPolicyAdapter,
             physicalNetworkProvider: () -> Network?,
             resolvePackage: (Int) -> String?,
+            isUidBlocked: (Int) -> Boolean = { false },
             onDnsDecision: (String, Int, Int?, String, PolicyAction) -> Unit = { _, _, _, _, _ -> },
             onSocketProtectionResult: (Boolean) -> Unit = {},
         ): FirestackTunnelAdapter {
@@ -82,6 +83,7 @@ class FirestackTunnelAdapter private constructor(
                     flowPolicyAdapter = flowPolicyAdapter,
                     physicalNetworkProvider = physicalNetworkProvider,
                     resolvePackage = resolvePackage,
+                    isUidBlocked = isUidBlocked,
                     onDnsDecision = onDnsDecision,
                     onSocketProtectionResult = onSocketProtectionResult,
                 )
@@ -130,6 +132,7 @@ private class FirewallDNSFirestackBridge(
     private val flowPolicyAdapter: AndroidFlowPolicyAdapter,
     private val physicalNetworkProvider: () -> Network?,
     private val resolvePackage: (Int) -> String?,
+    private val isUidBlocked: (Int) -> Boolean,
     private val onDnsDecision: (String, Int, Int?, String, PolicyAction) -> Unit,
     private val onSocketProtectionResult: (Boolean) -> Unit,
 ) : Bridge, AutoCloseable {
@@ -232,10 +235,13 @@ private class FirewallDNSFirestackBridge(
         val ownerUid = uid.toIntOrNull()
         val appPackage = ownerUid?.takeIf { it >= 0 }?.let { runCatching { resolvePackage(it) }.getOrNull() }
         val decision = engine.evaluateDomain(domain, appPackage)
-        runCatching { onDnsDecision(domain, qtyp.toInt(), ownerUid, decision.reason, decision.action) }
+        val appBlocked = ownerUid?.takeIf { it >= 0 }?.let { runCatching { isUidBlocked(it) }.getOrDefault(false) } == true
+        val action = if (appBlocked) PolicyAction.BLOCK else decision.action
+        val reason = if (appBlocked) "app_uid_blocked" else decision.reason
+        runCatching { onDnsDecision(domain, qtyp.toInt(), ownerUid, reason, action) }
         return DNSOpts().apply {
             setUID(uid)
-            setTIDCSV(if (decision.action == PolicyAction.BLOCK) Backend.Block else Backend.Default)
+            setTIDCSV(if (action == PolicyAction.BLOCK) Backend.Block else Backend.Default)
         }
     }
 
