@@ -109,38 +109,42 @@ class FlowConnectionMonitor(
     fun recordBytes(id: String, sentBytes: Long = 0, receivedBytes: Long = 0, nowEpochMillis: Long): Boolean {
         require(sentBytes >= 0 && receivedBytes >= 0)
         val flow = active[id] ?: return false
-        flow.sent.add(sentBytes)
-        flow.received.add(receivedBytes)
-        flow.lastActivity.set(nowEpochMillis)
-        sent.add(sentBytes)
-        received.add(receivedBytes)
-        return true
+        synchronized(flow) {
+            if (active[id] !== flow) return false
+            flow.sent.add(sentBytes)
+            flow.received.add(receivedBytes)
+            flow.lastActivity.set(nowEpochMillis)
+            sent.add(sentBytes)
+            received.add(receivedBytes)
+            return true
+        }
     }
 
     /** Records a fail-closed packet-stack rejection without publishing a fake flow. */
     fun recordBlocked() { blocked.increment() }
 
     fun close(id: String): Boolean {
-        val removed = active.remove(id) ?: return false
-        closed.increment()
-        slots.release()
-        return true
+        val flow = active[id] ?: return false
+        synchronized(flow) {
+            if (!active.remove(id, flow)) return false
+            closed.increment()
+            slots.release()
+            return true
+        }
     }
 
     fun evictIdle(nowEpochMillis: Long): Int {
         var removed = 0
         active.entries.forEach { entry ->
-            val observedActivity = entry.value.lastActivity.get()
-            val expired = nowEpochMillis - observedActivity >= idleTimeoutMillis
-            // Do not evict a flow that received bytes after the stale timestamp
-            // was observed by this cleanup pass.
-            if (expired &&
-                entry.value.lastActivity.get() == observedActivity &&
-                active.remove(entry.key, entry.value)
-            ) {
-                closed.increment()
-                slots.release()
-                removed++
+            val flow = entry.value
+            synchronized(flow) {
+                if (nowEpochMillis - flow.lastActivity.get() >= idleTimeoutMillis &&
+                    active.remove(entry.key, flow)
+                ) {
+                    closed.increment()
+                    slots.release()
+                    removed++
+                }
             }
         }
         return removed
