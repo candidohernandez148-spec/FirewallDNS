@@ -528,11 +528,11 @@ private fun ThreeDimensionalMindMap(
                         canvas.drawCircle(point.x, point.y, nodeRadius * if (nodeActive) 2.8f else 1.7f, basePaint)
                         basePaint.color = node.tint.copy(alpha = if (nodeActive) .34f else .10f).toArgb()
                         canvas.drawCircle(point.x, point.y, nodeRadius * 1.65f, basePaint)
-                        basePaint.color = node.tint.copy(alpha = if (nodeActive) 1f else .42f).toArgb()
+                        basePaint.color = node.tint.copy(alpha = if (nodeActive) 1f else .14f).toArgb()
                         if (nodeActive) basePaint.setShadowLayer(12f, 0f, 4f, node.tint.copy(alpha = .75f).toArgb())
                         canvas.drawCircle(point.x, point.y, nodeRadius * if (isSelected) 1.18f else 1f, basePaint)
                         basePaint.clearShadowLayer()
-                        basePaint.color = android.graphics.Color.WHITE
+                        basePaint.color = if (nodeActive) android.graphics.Color.WHITE else android.graphics.Color.GRAY
                         canvas.drawCircle(point.x, point.y, nodeRadius * .34f, basePaint)
 
                         basePaint.color = if (isSelected) node.tint.toArgb() else onSurface.toArgb()
