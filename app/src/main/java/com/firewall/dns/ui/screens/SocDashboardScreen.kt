@@ -132,17 +132,17 @@ fun SocDashboardScreen(
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TunMetric("Paquetes", tunMetrics.packetsRead, Modifier.weight(1f))
-                    TunMetric("DNS UDP", tunMetrics.dnsUdpPackets, Modifier.weight(1f))
-                    TunMetric("DNS TCP", tunMetrics.dnsTcp, Modifier.weight(1f))
-                    TunMetric("Sesiones TCP", tunMetrics.smoltcpSessionsActive, Modifier.weight(1f))
+                    TunMetric("Flujos activos", tunMetrics.flowsActive, Modifier.weight(1f))
+                    TunMetric("Bloqueados", tunMetrics.flowsBlocked, Modifier.weight(1f))
+                    TunMetric("Abiertos", tunMetrics.flowsOpened, Modifier.weight(1f))
+                    TunMetric("Cerrados", tunMetrics.flowsClosed, Modifier.weight(1f))
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                Text("smoltcp: ${tunMetrics.smoltcpSessionsOpened} abiertas · ${tunMetrics.smoltcpDataEvents} datos",
+                Text("FirewallDNS · Firestack/gVisor: ${if (tunMetrics.firestackActive > 0) "activo" else "inactivo"}",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("${tunMetrics.smoltcpResponsesQueued} respuestas en cola · RST fallback: ${tunMetrics.tcpRstSent}",
+                Text("Tráfico TX/RX: ${tunMetrics.flowBytesSent} / ${tunMetrics.flowBytesReceived} bytes",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Fallos: ${tunMetrics.smoltcpResponseFailures + tunMetrics.smoltcpNativeErrors}",
+                Text("Sockets protegidos: ${tunMetrics.firestackProtectSuccess}/${tunMetrics.firestackProtectAttempts} · enlaces físicos: ${tunMetrics.firestackBindSuccess}/${tunMetrics.firestackBindAttempts}",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
