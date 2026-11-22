@@ -43,12 +43,19 @@ object RuleEvaluator {
      * URL-, resource-, client-, and request-context-dependent options are
      * deliberately rejected rather than silently widened into global domain blocks.
      */
-    fun parseAdblockLine(raw: String): AdblockParseResult? {
+    fun parseAdblockLine(raw: String): AdblockParseResult? =
+        parseAdblockLineEntries(raw).firstOrNull()
+
+    /**
+     * Returns every DNS host from hosts-format lines. Some mature feeds put
+     * several aliases on one line; retaining only the first silently loses rules.
+     */
+    fun parseAdblockLineEntries(raw: String): List<AdblockParseResult> {
         val trimmed = raw.trim()
-        if (trimmed.isEmpty() || trimmed.startsWith("!") || trimmed.startsWith("#")) return null
+        if (trimmed.isEmpty() || trimmed.startsWith("!") || trimmed.startsWith("#")) return emptyList()
 
         val noComment = trimmed.substringBefore("#").trim()
-        if (noComment.isEmpty()) return null
+        if (noComment.isEmpty()) return emptyList()
 
         val isException = noComment.startsWith("@@")
         val body = if (isException) noComment.removePrefix("@@") else noComment
@@ -62,35 +69,38 @@ object RuleEvaluator {
             return options.isNotEmpty() && options.all { it.trim().equals("important", ignoreCase = true) }
         }
 
+        val tokens = body.split(Regex("\\s+")).filter(String::isNotBlank)
+        if (!isException && tokens.size >= 2 && tokens.first() in HOST_SINK_ADDRESSES) {
+            return tokens.drop(1).mapNotNull { canonicalizeDomain(it) }
+                .distinct()
+                .map { AdblockParseResult(domain = it, isException = false) }
+        }
+
         val candidate = when {
             body.startsWith("||") -> {
-                if (!hasOnlyDnsSafeOptions(body)) return null
+                if (!hasOnlyDnsSafeOptions(body)) return emptyList()
                 val rawTarget = body.removePrefix("||")
                     .substringBefore('$')
                     .removeSuffix("^")
                 if (rawTarget.isEmpty() || rawTarget.contains('/') || rawTarget.contains('*') ||
                     rawTarget.contains('^') || rawTarget.contains(':')
-                ) return null
+                ) return emptyList()
                 rawTarget
             }
-            body.startsWith("0.0.0.0") || body.startsWith("127.0.0.1") || body.startsWith("::") -> {
-                val parts = body.split(Regex("\\s+")).filter(String::isNotBlank)
-                if (parts.size < 2) return null
-                parts[1]
-            }
             else -> {
-                if (!hasOnlyDnsSafeOptions(body)) return null
+                if (!hasOnlyDnsSafeOptions(body)) return emptyList()
                 val rawTarget = body.substringBefore('$').removeSuffix("^")
                 if (rawTarget.isEmpty() || rawTarget.contains('/') || rawTarget.contains('*') ||
                     rawTarget.contains('^') || rawTarget.contains(':')
-                ) return null
+                ) return emptyList()
                 rawTarget
             }
         }
 
-        val domain = canonicalizeDomain(candidate) ?: return null
-        return AdblockParseResult(domain = domain, isException = isException)
+        val domain = canonicalizeDomain(candidate) ?: return emptyList()
+        return listOf(AdblockParseResult(domain = domain, isException = isException))
     }
+
 
     fun normalizeManualDomain(raw: String): String? = canonicalizeDomain(
         raw.trim()
@@ -134,6 +144,17 @@ object RuleEvaluator {
             return DecisionResult(true, "Adblock ||^", RuleSource.LIST_BLOCK)
         }
         return DecisionResult(false, "Permitido", RuleSource.CACHE, cacheTtlMs = 30_000L)
+    }
+
+    private companion object {
+        val HOST_SINK_ADDRESSES = setOf(
+            "0.0.0.0",
+            "127.0.0.1",
+            "::",
+            "::1",
+            "0:0:0:0:0:0:0:0",
+            "0:0:0:0:0:0:0:1",
+        )
     }
 
     private fun matchesDomainOrParent(domain: String, set: Set<String>): Boolean {
