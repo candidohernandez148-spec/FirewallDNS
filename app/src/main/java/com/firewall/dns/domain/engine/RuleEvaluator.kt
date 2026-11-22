@@ -62,7 +62,7 @@ object RuleEvaluator {
 
         // This DNS-only policy does not yet model Adblock option precedence or
         // request context. Reject every option instead of widening its semantics.
-        fun hasNoUnsupportedOptions(value: String): Boolean = value.none { it == '\
+        fun hasNoUnsupportedOptions(value: String): Boolean = value.none { it.code == 36 }
 
         val tokens = body.split(Regex("\\s+")).filter(String::isNotBlank)
         if (!isException && tokens.size >= 2 && tokens.first() in HOST_SINK_ADDRESSES) {
