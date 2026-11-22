@@ -1,3 +1,11 @@
+> **Estado histórico:** este documento describe la integración inicial del motor DNS compartido y conserva decisiones/validaciones de aquella etapa. Sus frases que limitan el servicio a DNS-only y las referencias a smoltcp como transporte productivo general ya no describen el estado actual de `main`.
+>
+> **Arquitectura vigente:** un solo `VpnService`, una sola interfaz TUN y Firestack/gVisor como única pila de tráfico productiva para TCP/UDP/ICMP IPv4/IPv6. FirewallDNS conserva una única autoridad de políticas, amenazas, reglas por aplicación/IP/puerto, DNS y telemetría. smoltcp permanece aislado en el camino de respaldo DNS/TCP y en pruebas; no compite por el TUN cuando Firestack está activo. DoH no se descifra; DoT/DoQ se filtran por puertos estándar y los endpoints DoH se identifican solo cuando existe correlación conocida.
+>
+> Consulta [FIRESTACK_INTEGRATION_PLAN.md](FIRESTACK_INTEGRATION_PLAN.md) para el diseño vigente, las capacidades integradas, las licencias y la matriz de validación pendiente en el Samsung A34 5G.
+>
+> ---
+>
 # Integración de FirewallDNS-Engine en Android
 
 ## Qué se integra en esta rama
