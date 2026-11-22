@@ -6,7 +6,6 @@ import com.firewalldns.engine.core.NetworkFlowRequest
 import com.firewalldns.engine.core.NetworkFlowRule
 import com.firewalldns.engine.core.PolicyDecision
 import com.firewalldns.engine.core.PolicyEngine
-import com.firewalldns.engine.core.PolicyAction
 import com.firewalldns.engine.core.PolicyRule
 import com.firewalldns.engine.dns.DnsEvaluation
 import com.firewalldns.engine.dns.DnsPolicyAdapter
