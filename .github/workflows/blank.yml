@@ -39,6 +39,38 @@ jobs:
       - name: Instalar cargo-ndk
         run: cargo install cargo-ndk --locked
 
+      - name: Instalar Go para Firestack
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.27.3"
+          cache-dependency-path: third_party/firestack/go.sum
+
+      - name: Checkout Firestack fijado
+        uses: actions/checkout@v7
+        with:
+          repository: celzero/firestack
+          ref: c27887056230769ee897b7c7b92976b96d3c9a6d
+          path: third_party/firestack
+
+      - name: Instalar NDK para Firestack
+        run: |
+          sdkmanager --install "ndk;28.2.13676358"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+
+      - name: Compilar AAR Firestack gVisor
+        working-directory: third_party/firestack
+        env:
+          GOTOOLCHAIN: local
+        run: |
+          make intra
+          test -s build/intra/tun2socks.aar
+          unzip -l build/intra/tun2socks.aar | grep -q 'jni/arm64-v8a/libgojni.so'
+
+      - name: Instalar AAR Firestack en Android adapter
+        run: |
+          mkdir -p android-adapter/libs
+          cp third_party/firestack/build/intra/tun2socks.aar android-adapter/libs/tun2socks.aar
+
       - name: Configurar Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
@@ -92,7 +124,7 @@ jobs:
           echo "::add-mask::$KEY_PASSWORD_VALUE"
 
       - name: Ejecutar pruebas unitarias
-        run: gradle testDebugUnitTest --no-daemon --stacktrace
+        run: gradle :engine-core:test :engine-monitor:test :threat-engine:test :dns-engine:test :engine-runtime:test :android-adapter:testDebugUnitTest :app:testDebugUnitTest --no-daemon --stacktrace
 
       - name: Compilar APK FirewallDNS Release
         run: gradle :app:assembleRelease --no-daemon --stacktrace
@@ -104,11 +136,14 @@ jobs:
           APK="app/build/outputs/apk/release/app-release.apk"
           test -s "$APK"
           unzip -l "$APK" | grep -q 'lib/arm64-v8a/libfirewalldns_native.so' || {
-            echo "::error::El APK Release no contiene el motor nativo ARM64"; exit 1;
+            echo "::error::El APK Release no contiene el motor Rust ARM64"; exit 1;
+          }
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libgojni.so' || {
+            echo "::error::El APK Release no contiene Firestack/gVisor ARM64"; exit 1;
           }
           BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
           "$BUILD_TOOLS/apksigner" verify "$APK"
-          echo "APK FirewallDNS Release: motor Rust/JNI ARM64 y firma verificados"
+          echo "APK FirewallDNS Release: motores Rust/JNI + Firestack/gVisor ARM64 y firma verificados"
 
       - name: Subir APK FirewallDNS
         uses: actions/upload-artifact@v7
