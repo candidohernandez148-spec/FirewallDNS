@@ -3,6 +3,7 @@ package com.firewalldns.engine.monitor
 import com.firewalldns.engine.core.FlowProtocol
 import com.firewalldns.engine.core.NetworkFlowDecision
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Semaphore
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.LongAdder
 
@@ -65,6 +66,7 @@ class FlowConnectionMonitor(
     }
 
     private val active = ConcurrentHashMap<String, MutableFlow>()
+    private val slots = Semaphore(maxActiveFlows)
     private val opened = LongAdder()
     private val closed = LongAdder()
     private val blocked = LongAdder()
@@ -86,9 +88,9 @@ class FlowConnectionMonitor(
             return true
         }
         if (active.containsKey(identity.id)) return false
-        if (active.size >= maxActiveFlows) {
+        if (!slots.tryAcquire()) {
             evictIdle(nowEpochMillis)
-            if (active.size >= maxActiveFlows) {
+            if (!slots.tryAcquire()) {
                 capacityRejected.increment()
                 return false
             }
@@ -98,7 +100,7 @@ class FlowConnectionMonitor(
             nowEpochMillis, AtomicLong(nowEpochMillis),
         )
         val inserted = active.putIfAbsent(identity.id, flow) == null
-        if (inserted) opened.increment()
+        if (inserted) opened.increment() else slots.release()
         return inserted
     }
 
@@ -116,6 +118,7 @@ class FlowConnectionMonitor(
     fun close(id: String): Boolean {
         val removed = active.remove(id) ?: return false
         closed.increment()
+        slots.release()
         return true
     }
 
@@ -125,6 +128,7 @@ class FlowConnectionMonitor(
             val expired = nowEpochMillis - entry.value.lastActivity.get() >= idleTimeoutMillis
             if (expired) {
                 closed.increment()
+                slots.release()
                 removed++
             }
             expired
