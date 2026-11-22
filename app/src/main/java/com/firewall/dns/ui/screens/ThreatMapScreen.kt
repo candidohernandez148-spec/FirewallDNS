@@ -62,6 +62,12 @@ private data class MindMapEdge(val from: String, val to: String)
 
 private val architectureEdges = listOf(
     MindMapEdge("core", "tun"),
+    MindMapEdge("tun", "nic"),
+    MindMapEdge("nic", "ip"),
+    MindMapEdge("ip", "tcp"),
+    MindMapEdge("ip", "udp"),
+    MindMapEdge("ip", "icmp"),
+    MindMapEdge("ip", "fwd"),
     MindMapEdge("tun", "dns"),
     MindMapEdge("dns", "decisions"),
     MindMapEdge("core", "threats"),
@@ -103,8 +109,20 @@ fun ThreatMapScreen(
         listOf(
             MindMapNode("core", "FIREWALLDNS", "Servicio VPN", if (vpnRunning) "ACTIVO" else "DETENIDO",
                 0f, 0f, 0f, Color(0xFF42D9FF)),
-            MindMapNode("tun", "MOTOR DE RED", "Firestack/gVisor", tunMetrics.flowsActive.toString(),
+            MindMapNode("tun", "TUN", "Interfaz VPN", "${tunMetrics.tunRxBytes} / ${tunMetrics.tunTxBytes}",
                 -0.88f, -0.55f, -0.18f, Color(0xFF58D6B0)),
+            MindMapNode("nic", "NIC", "Interfaz de red", "${tunMetrics.nicRxPackets} / ${tunMetrics.nicTxPackets}",
+                -0.96f, 0.10f, 0.30f, Color(0xFF68D9A5)),
+            MindMapNode("ip", "IP", "IPv4 / IPv6 · contadores", "${tunMetrics.ipPacketsReceived} / ${tunMetrics.ipPacketsSent}",
+                -0.45f, 0.84f, -0.28f, Color(0xFF78A8FF)),
+            MindMapNode("tcp", "TCP", "Segmentos RX / TX", "${tunMetrics.tcpSegmentsReceived} / ${tunMetrics.tcpSegmentsSent}",
+                -0.98f, 0.62f, 0.18f, Color(0xFF42D9FF)),
+            MindMapNode("udp", "UDP", "Datagramas RX / TX", "${tunMetrics.udpPacketsReceived} / ${tunMetrics.udpPacketsSent}",
+                -0.30f, 1.02f, 0.24f, Color(0xFF58D6B0)),
+            MindMapNode("icmp", "ICMP", "IPv4 / IPv6", "${tunMetrics.icmpV4Received + tunMetrics.icmpV6Received} RX",
+                0.42f, 1.00f, -0.20f, Color(0xFFFFB454)),
+            MindMapNode("fwd", "FWD", "Reenvío IP", "${tunMetrics.ipForwardDrops} drops",
+                0.98f, 0.56f, 0.26f, Color(0xFFB69CFF)),
             MindMapNode("dns", "DNS", "Consultas evaluadas",
                 (tunMetrics.dnsBlocked + tunMetrics.dnsObserved + tunMetrics.dnsAllowed).toString(),
                 0.82f, -0.63f, 0.20f, Color(0xFF78A8FF)),
@@ -148,7 +166,7 @@ fun ThreatMapScreen(
                     vpnRunning = vpnRunning
                 ) { id ->
                     section = when (id) {
-                        "tun" -> "red"
+                        "tun", "nic", "ip", "tcp", "udp", "icmp", "fwd" -> "red"
                         "dns" -> "dns"
                         "threats" -> "amenazas"
                         "rules" -> "reglas"
@@ -303,15 +321,15 @@ private fun LiveTrafficFlowMap(
                     Text(if (vpnRunning) "EN VIVO" else "DETENIDO", color = if (vpnRunning) Color(0xFF22C55E) else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    FlowStage("ENTRADA", "TUN", "N/D", Modifier.weight(1f))
+                    FlowStage("ENTRADA", "TUN RX", metrics.tunRxBytes, Modifier.weight(1f))
                     Text("›", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    FlowStage("INSPECCIÓN", "DNS", metrics.dnsPolicyDecisions.toString(), Modifier.weight(1f))
+                    FlowStage("CAPAS", "IP RX/TX", "${metrics.ipPacketsReceived}/${metrics.ipPacketsSent}", Modifier.weight(1f))
                     Text("›", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    FlowStage("DECISIÓN", "B/O/P", "${metrics.dnsBlocked}/${metrics.dnsObserved}/${metrics.dnsAllowed}", Modifier.weight(1f))
+                    FlowStage("POLÍTICA", "DNS B/O/A", "${metrics.dnsBlocked}/${metrics.dnsObserved}/${metrics.dnsAllowed}", Modifier.weight(1f))
                     Text("›", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    FlowStage("SALIDA", "Flujos", metrics.flowsActive.toString(), Modifier.weight(1f))
+                    FlowStage("FLOWS", "ACTIVOS", metrics.flowsActive.toString(), Modifier.weight(1f))
                 }
-                Text("Decisiones DNS acumuladas · contadores nativos de paquetes TUN y transporte UDP/TCP no disponibles en esta API · B bloqueado · O observado · P permitido", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("TUN y contadores IP proceden del snapshot nativo Firestack/gVisor; las decisiones B/O/A son métricas DNS separadas. Las capas no se suman entre sí.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
@@ -453,7 +471,7 @@ private fun ThreeDimensionalMindMap(
                 )
             }
             Canvas(
-                Modifier.fillMaxWidth().height(320.dp)
+                Modifier.fillMaxWidth().height(390.dp)
                     .pointerInput(Unit) {
                         detectTapGestures { tap ->
                             val hit = nodes.map { node ->
