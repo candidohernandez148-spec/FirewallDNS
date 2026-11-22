@@ -79,6 +79,14 @@ object FirewallDnsTrafficMetrics {
         val firestackBindAttempts: Long,
         val firestackBindSuccess: Long,
         val firestackBindFailure: Long,
+        val policyRuleCount: Long,
+        val policyRevision: Long,
+        val policyInstallFailures: Long,
+        val policyInstallStatus: String,
+        val lastDnsDomain: String,
+        val lastDnsAction: String,
+        val lastDnsReason: String,
+        val lastDnsDecisionAtEpochMs: Long,
     )
 
     private val packetsRead = AtomicLong()
@@ -145,6 +153,14 @@ object FirewallDnsTrafficMetrics {
     private val firestackBindAttempts = AtomicLong()
     private val firestackBindSuccess = AtomicLong()
     private val firestackBindFailure = AtomicLong()
+    private val policyRuleCount = AtomicLong()
+    private val policyRevision = AtomicLong()
+    private val policyInstallFailures = AtomicLong()
+    private val policyInstallStatus = AtomicReference("SIN APLICAR")
+    private val lastDnsDomain = AtomicReference("")
+    private val lastDnsAction = AtomicReference("")
+    private val lastDnsReason = AtomicReference("")
+    private val lastDnsDecisionAtEpochMs = AtomicLong()
 
     internal fun packetRead() { packetsRead.incrementAndGet() }
     internal fun queueRejected() { queueRejected.incrementAndGet() }
@@ -215,6 +231,21 @@ object FirewallDnsTrafficMetrics {
     internal fun firestackSocketBindingResult(success: Boolean) {
         firestackBindAttempts.incrementAndGet()
         if (success) firestackBindSuccess.incrementAndGet() else firestackBindFailure.incrementAndGet()
+    }
+    internal fun policyRulesApplied(count: Int, revision: Long) {
+        policyRuleCount.set(count.coerceAtLeast(0).toLong())
+        policyRevision.set(revision.coerceAtLeast(0L))
+        policyInstallStatus.set("APLICADAS")
+    }
+    internal fun policyRulesApplyFailed() {
+        policyInstallFailures.incrementAndGet()
+        policyInstallStatus.set("ERROR AL APLICAR")
+    }
+    internal fun dnsDecision(domain: String, action: String, reason: String) {
+        lastDnsDomain.set(domain.take(253))
+        lastDnsAction.set(action.take(24))
+        lastDnsReason.set(reason.take(160))
+        lastDnsDecisionAtEpochMs.set(System.currentTimeMillis())
     }
     internal fun firestackStarted() { firestackActive.set(1L) }
     internal fun firestackStopped() {
@@ -310,5 +341,13 @@ object FirewallDnsTrafficMetrics {
         firestackBindAttempts = firestackBindAttempts.get(),
         firestackBindSuccess = firestackBindSuccess.get(),
         firestackBindFailure = firestackBindFailure.get(),
+        policyRuleCount = policyRuleCount.get(),
+        policyRevision = policyRevision.get(),
+        policyInstallFailures = policyInstallFailures.get(),
+        policyInstallStatus = policyInstallStatus.get(),
+        lastDnsDomain = lastDnsDomain.get(),
+        lastDnsAction = lastDnsAction.get(),
+        lastDnsReason = lastDnsReason.get(),
+        lastDnsDecisionAtEpochMs = lastDnsDecisionAtEpochMs.get(),
     )
 }
