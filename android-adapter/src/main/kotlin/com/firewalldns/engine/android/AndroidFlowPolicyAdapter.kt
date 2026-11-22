@@ -3,7 +3,6 @@ package com.firewalldns.engine.android
 import com.firewalldns.engine.core.FlowProtocol
 import com.firewalldns.engine.core.NetworkFlowDecision
 import com.firewalldns.engine.core.NetworkFlowRequest
-import com.firewalldns.engine.core.NetworkFlowDecision
 import com.firewalldns.engine.core.PolicyAction
 import com.firewalldns.engine.core.RuleSource
 import com.firewalldns.engine.monitor.FlowIdentity
