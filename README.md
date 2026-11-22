@@ -21,7 +21,7 @@ Aplicación Android de **firewall virtual local sin permisos root**, construida 
     * Existe un único `VpnService`, un descriptor TUN y una autoridad de políticas. Firestack/gVisor es un componente integrado del motor FirewallDNS, no una segunda VPN ni un segundo motor de reglas.
     * Si la pila productiva no puede iniciarse, FirewallDNS falla de forma segura y no activa un motor DNS alternativo ni muestra protección como activa.
     * Un solo `VpnService` y un solo descriptor TUN, administrado por `DnsFirewallService`.
-    * Firestack/gVisor es la única pila de paquetes de producción para TCP/UDP/ICMP IPv4/IPv6. Rust/smoltcp queda aislado en pruebas y diagnósticos; nunca procesa tráfico de la VPN activa.
+    * Firestack/gVisor es la única pila de paquetes incluida en la aplicación para TCP/UDP/ICMP IPv4/IPv6. El prototipo Rust/smoltcp y sus pruebas nativas fueron retirados del proyecto activo.
     * Los callbacks de Firestack se conectan a la política única de FirewallDNS para bloquear, observar o permitir conexiones por UID, aplicación, protocolo, IP/CIDR y puerto.
     * Los sockets de salida se protegen contra bucles VPN y se enlazan a la red física seleccionada. Los cambios Wi-Fi/datos móviles actualizan resolvers y MTU sin reiniciar el TUN.
 * **Filtrado DNS y protección de amenazas:**
@@ -75,6 +75,6 @@ app/src/main/java/com/firewall/dns/
 
 ## Diagnóstico integrado del motor
 
-El diagnóstico se ejecuta desde la pantalla **Diagnóstico** de FirewallDNS; no requiere instalar una aplicación adicional ni iniciar una segunda VPN. La pantalla consulta métricas del servicio TUN que está funcionando, permite comprobar Rust/JNI y ofrece una prueba DNS/TCP upstream real mediante los mismos sockets protegidos y resolvers configurados. La prueba TCP solo se considera aprobada cuando recibe y valida una respuesta DNS sobre TCP/53; el resultado de `VpnService.protect()` por sí solo no demuestra conectividad.
+El diagnóstico se ejecuta desde la pantalla **Diagnóstico** de FirewallDNS; no requiere instalar una aplicación adicional ni iniciar una segunda VPN. La pantalla consulta métricas en vivo del servicio TUN productivo. Las pruebas manuales de Rust/JNI y DNS/TCP upstream fueron retiradas; la conectividad real se valida con pruebas de tráfico por el TUN y las métricas de Firestack/gVisor.
 
 Desde esa pantalla puedes compartir el informe JSON. Los contadores son acumulativos del proceso/servicio y deben interpretarse junto con el estado de la VPN y el momento de la prueba. Consulta [docs/DIAGNOSTIC_APP.md](docs/DIAGNOSTIC_APP.md) para conocer el alcance y las limitaciones. El antiguo módulo companion queda fuera del flujo y no es necesario instalarlo.
