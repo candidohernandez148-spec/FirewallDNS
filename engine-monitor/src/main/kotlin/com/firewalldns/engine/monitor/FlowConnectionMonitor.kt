@@ -117,6 +117,9 @@ class FlowConnectionMonitor(
         return true
     }
 
+    /** Records a fail-closed packet-stack rejection without publishing a fake flow. */
+    fun recordBlocked() { blocked.increment() }
+
     fun close(id: String): Boolean {
         val removed = active.remove(id) ?: return false
         closed.increment()
