@@ -919,7 +919,7 @@ class DnsFirewallService : VpnService() {
     }
 
     private fun resolvePackageName(uid: Int): String? =
-        if (uid < 0) null else runCatching { packageManager.getPackagesForUid(uid)?.firstOrNull() }.getOrNull()
+        if (uid < 0) null else runCatching { packageManager.getPackagesForUid(uid)?.singleOrNull() }.getOrNull()
 
     private fun resolveAppName(uid: Int): String {
         if (uid == Process.INVALID_UID || uid < 0) return "Sistema / DNS"
