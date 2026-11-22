@@ -263,6 +263,7 @@ fun FirewallApp(
     val onlyBlocked by viewModel.onlyBlocked.collectAsState()
     val customBlock by viewModel.customBlockList.collectAsState()
     val customAllow by viewModel.customAllowList.collectAsState()
+    val flowRules by viewModel.networkFlowRules.collectAsState()
     val blocklistUrls by viewModel.blocklistUrls.collectAsState()
     val blocklistsDownloaded by viewModel.blocklistsDownloaded.collectAsState()
     val smartModeEnabled by viewModel.smartModeEnabled.collectAsState()
@@ -428,6 +429,9 @@ fun FirewallApp(
                     onDownloadBlocklist = viewModel::downloadBlocklist,
                     onAddCustomRule = viewModel::setCustomRule,
                     onRemoveCustomRule = viewModel::removeCustomRule,
+                    flowRules = flowRules,
+                    onAddFlowRule = viewModel::addNetworkFlowRule,
+                    onRemoveFlowRule = viewModel::removeNetworkFlowRule,
                     apps = apps,
                     excludedPackages = excludedPackages,
                     blockedApps = blockedApps,
