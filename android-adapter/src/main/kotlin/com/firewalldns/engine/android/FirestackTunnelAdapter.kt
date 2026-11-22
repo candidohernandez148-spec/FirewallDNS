@@ -151,6 +151,9 @@ private class FirewallDNSFirestackBridge(
     private fun bindToPhysicalNetwork(fd: Long) {
         if (closed.get()) return
         val descriptor = fd.toInt()
+        // Firestack invokes Bind4/Bind6 instead of Protect for global-unicast
+        // sockets, so this callback must perform both Android operations.
+        protectSocket(descriptor)
         val network = physicalNetworkProvider() ?: run {
             runCatching { onSocketBindingResult(false) }
             return
