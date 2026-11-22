@@ -43,7 +43,6 @@ object FirewallDnsTrafficMetrics {
         val udpPacketsReceived: Long,
         val udpPacketsSent: Long,
         val udpReceiveErrors: Long,
-        val udpSendErrors: Long,
         val udpDrops: Long,
         val icmpV4Received: Long,
         val icmpV4Sent: Long,
@@ -61,6 +60,7 @@ object FirewallDnsTrafficMetrics {
         val unsupportedTransport: Long,
         val dnsUdpPackets: Long,
         val malformedDns: Long,
+        val dnsPolicyDecisions: Long,
         val dnsRejected: Long,
         val dnsBlocked: Long,
         val dnsObserved: Long,
@@ -149,7 +149,6 @@ object FirewallDnsTrafficMetrics {
     private val udpPacketsReceived = AtomicLong()
     private val udpPacketsSent = AtomicLong()
     private val udpReceiveErrors = AtomicLong()
-    private val udpSendErrors = AtomicLong()
     private val udpDrops = AtomicLong()
     private val icmpV4Received = AtomicLong()
     private val icmpV4Sent = AtomicLong()
@@ -173,6 +172,7 @@ object FirewallDnsTrafficMetrics {
     private val dnsAllowed = AtomicLong()
     private val cacheHits = AtomicLong()
     private val cacheMisses = AtomicLong()
+    private val dnsPolicyDecisions = AtomicLong()
     private val engineEventsDropped = AtomicLong()
     private val engineQueuedEvents = AtomicLong()
     private val upstreamSuccess = AtomicLong()
@@ -277,7 +277,6 @@ object FirewallDnsTrafficMetrics {
         udpPacketsReceived.set(stats.udpPacketsReceived)
         udpPacketsSent.set(stats.udpPacketsSent)
         udpReceiveErrors.set(stats.udpReceiveErrors)
-        udpSendErrors.set(stats.udpSendErrors)
         udpDrops.set(stats.udpDrops)
         icmpV4Received.set(stats.icmpV4Received)
         icmpV4Sent.set(stats.icmpV4Sent)
@@ -290,6 +289,7 @@ object FirewallDnsTrafficMetrics {
         dnsRejected.set(snapshot.rejected)
         cacheHits.set(snapshot.cacheHits)
         cacheMisses.set(snapshot.cacheMisses)
+        dnsPolicyDecisions.set(snapshot.decisions)
         engineEventsDropped.set(snapshot.eventsDropped)
         engineQueuedEvents.set(snapshot.queuedEvents.toLong())
     }
@@ -415,7 +415,6 @@ object FirewallDnsTrafficMetrics {
         udpPacketsReceived = udpPacketsReceived.get(),
         udpPacketsSent = udpPacketsSent.get(),
         udpReceiveErrors = udpReceiveErrors.get(),
-        udpSendErrors = udpSendErrors.get(),
         udpDrops = udpDrops.get(),
         icmpV4Received = icmpV4Received.get(),
         icmpV4Sent = icmpV4Sent.get(),
@@ -433,6 +432,7 @@ object FirewallDnsTrafficMetrics {
         unsupportedTransport = unsupportedTransport.get(),
         dnsUdpPackets = dnsUdpPackets.get(),
         malformedDns = malformedDns.get(),
+        dnsPolicyDecisions = dnsPolicyDecisions.get(),
         dnsRejected = dnsRejected.get(),
         dnsBlocked = dnsBlocked.get(),
         dnsObserved = dnsObserved.get(),
