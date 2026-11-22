@@ -272,6 +272,9 @@ class DnsFirewallService : VpnService() {
                 onFlowSnapshot = FirewallDnsTrafficMetrics::flowSnapshot,
                 onSocketProtectionResult = FirewallDnsTrafficMetrics::firestackSocketProtectionResult,
                 onSocketBindingResult = FirewallDnsTrafficMetrics::firestackSocketBindingResult,
+                onDnsResponse = { summary ->
+                    FirewallDnsTrafficMetrics.dnsResponse(summary.status, summary.cached, summary.latency)
+                },
                 onDnsDecision = { domain, qType, uid, reason, action ->
                     when (action) {
                         PolicyAction.BLOCK -> FirewallDnsTrafficMetrics.dnsBlocked()
