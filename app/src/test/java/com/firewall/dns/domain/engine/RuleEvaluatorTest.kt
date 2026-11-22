@@ -106,11 +106,11 @@ class RuleEvaluatorTest {
             RuleEvaluator.parseAdblockLine("@@||tracker.example^" + dollar + "important")
         )
         assertEquals(
-            RuleEvaluator.AdblockParseResult("tracker.example", false),
+            RuleEvaluator.AdblockParseResult("tracker.example", false, includeSubdomains = false),
             RuleEvaluator.parseAdblockLine("tracker.example")
         )
         assertEquals(
-            RuleEvaluator.AdblockParseResult("tracker.example", false),
+            RuleEvaluator.AdblockParseResult("tracker.example", false, includeSubdomains = false),
             RuleEvaluator.parseAdblockLine("0.0.0.0 tracker.example # local sinkhole")
         )
     }
@@ -119,16 +119,16 @@ class RuleEvaluatorTest {
     fun parsesEveryDomainFromMultiAliasHostsLines() {
         assertEquals(
             listOf(
-                RuleEvaluator.AdblockParseResult("tracker.example", false),
-                RuleEvaluator.AdblockParseResult("www.tracker.example", false),
-                RuleEvaluator.AdblockParseResult("cdn.tracker.example", false)
+                RuleEvaluator.AdblockParseResult("tracker.example", false, includeSubdomains = false),
+                RuleEvaluator.AdblockParseResult("www.tracker.example", false, includeSubdomains = false),
+                RuleEvaluator.AdblockParseResult("cdn.tracker.example", false, includeSubdomains = false)
             ),
             RuleEvaluator.parseAdblockLineEntries(
                 "0.0.0.0 tracker.example www.tracker.example cdn.tracker.example"
             )
         )
         assertEquals(
-            listOf(RuleEvaluator.AdblockParseResult("tracker.example", false)),
+            listOf(RuleEvaluator.AdblockParseResult("tracker.example", false, includeSubdomains = false)),
             RuleEvaluator.parseAdblockLineEntries("::1 tracker.example")
         )
     }
@@ -205,4 +205,27 @@ class RuleEvaluatorTest {
         assertEquals(false, result.first)
         assertEquals("Excepción importante @@||", result.second)
     }
+
+    @Test
+    fun bareDomainRulesMatchOnlyTheExactHostname() {
+        val exact = RuleEvaluator.evaluate(
+            domain = "tracker.example",
+            customAllow = emptySet(),
+            customBlock = emptySet(),
+            hostExceptions = emptySet(),
+            hostBlock = emptySet(),
+            exactBlock = setOf("tracker.example")
+        )
+        val subdomain = RuleEvaluator.evaluate(
+            domain = "cdn.tracker.example",
+            customAllow = emptySet(),
+            customBlock = emptySet(),
+            hostExceptions = emptySet(),
+            hostBlock = emptySet(),
+            exactBlock = setOf("tracker.example")
+        )
+        assertEquals(true, exact.first)
+        assertEquals(false, subdomain.first)
+    }
+
 }
