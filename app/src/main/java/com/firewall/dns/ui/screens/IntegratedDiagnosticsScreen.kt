@@ -307,7 +307,7 @@ fun IntegratedDiagnosticsScreen(
                 Text("Cobertura y límites", style = MaterialTheme.typography.titleMedium)
                 Text("MEDIDO: Firestack/gVisor procesa los flujos TCP y UDP generales que Android enruta al TUN; sus decisiones se aplican mediante la política central de FirewallDNS. Los contadores de flujos y bytes proceden de sus callbacks reales.")
                 Text("MEDIDO: intentos y resultado booleano de VpnService.protect() para sockets upstream UDP/TCP. También se exponen fragmentos aceptados, paquetes reensamblados, descartes por límite/validez y ensamblajes expirados. La prueba de tráfico fragmentado a través del TUN productivo aún requiere instrumentación en dispositivo.")
-                Text("DoH, DoT y DoQ pueden atravesar la pila como tráfico cifrado, pero sus consultas internas no se inspeccionan ni se presentan como bloqueadas por dominio. La inspección DNS por dominio se aplica a consultas DNS visibles que pasan por el callback del motor.")
+                Text("DNS UDP/TCP puerto 53 se intercepta para cualquier destino. Se bloquean puertos estándar DoT/DoQ y endpoints DoH conocidos. DoH personalizado o por IP directa sobre HTTPS/443 sigue cifrado y no puede detectarse universalmente; no se afirma inspección de su contenido.")
                 Button(onClick = {
                     val send = Intent(Intent.ACTION_SEND).apply {
                         type = "application/json"
