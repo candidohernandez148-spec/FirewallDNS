@@ -6,24 +6,6 @@ concurrency:
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - "fix/physical-network-dns-handover"
-    paths:
-      - "rust-core/**"
-      - "android-adapter/**"
-      - "dns-engine/**"
-      - "engine-runtime/**"
-      - "engine-core/**"
-      - "engine-monitor/**"
-      - "threat-engine/**"
-      - "third_party/**"
-      - "docs/**"
-      - "third_party/patches/**"
-      - "app/**"
-      - "build.gradle.kts"
-      - "settings.gradle.kts"
-      - ".github/workflows/build.yml"
   pull_request:
     paths:
       - "rust-core/**"
