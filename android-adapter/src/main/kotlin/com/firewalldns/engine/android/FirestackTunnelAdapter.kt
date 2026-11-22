@@ -141,6 +141,7 @@ private class FirewallDNSFirestackBridge(
 ) : Bridge, AutoCloseable {
 
     private val boundNetworks = ConcurrentHashMap<Int, Network>()
+    private val protectedDescriptors = ConcurrentHashMap.newKeySet<Int>()
     private val closed = AtomicBoolean(false)
 
     override fun bind4(who: String, addrport: String, fd: Long) = bindToPhysicalNetwork(fd)
@@ -149,6 +150,7 @@ private class FirewallDNSFirestackBridge(
     private fun bindToPhysicalNetwork(fd: Long) {
         if (closed.get()) return
         val descriptor = fd.toInt()
+        protectSocket(descriptor)
         val network = physicalNetworkProvider() ?: return
         val result = runCatching {
             ParcelFileDescriptor.fromFd(descriptor).use { duplicate ->
@@ -161,11 +163,15 @@ private class FirewallDNSFirestackBridge(
 
     override fun protect(who: String, fd: Long) {
         if (closed.get()) throw IllegalStateException("FirewallDNS Firestack bridge is closed")
-        val descriptor = fd.toInt()
-        boundNetworks.remove(descriptor)
+        protectSocket(fd.toInt())
+    }
+
+    private fun protectSocket(descriptor: Int) {
+        if (protectedDescriptors.contains(descriptor)) return
         val protected = vpnService.protect(descriptor)
         runCatching { onSocketProtectionResult(protected) }
         if (!protected) throw IllegalStateException("VpnService.protect failed for Firestack socket")
+        protectedDescriptors.add(descriptor)
     }
 
     override fun preflow(protocol: Int, uid: Int, cid: String, src: String, dst: String): PreMark =
@@ -289,6 +295,7 @@ private class FirewallDNSFirestackBridge(
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
         boundNetworks.clear()
+        protectedDescriptors.clear()
     }
 
     private fun parseEndpoint(value: String, portless: Boolean): Pair<String, Int>? = runCatching {
