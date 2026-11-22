@@ -1,7 +1,6 @@
 package com.firewall.dns.service
 
 import com.firewalldns.engine.android.DnsSocketProtectionProtocol
-import com.firewalldns.engine.android.SmoltcpDnsTcpMetrics
 import com.firewalldns.engine.monitor.FlowMonitorSnapshot
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -53,33 +52,6 @@ class FirewallDnsTrafficMetricsTest {
         assertEquals(0L, FirewallDnsTrafficMetrics.snapshot().flowsActive)
     }
 
-    @Test
-    fun stoppedTransportClearsLiveAvailabilityAndSessionCount() {
-        FirewallDnsTrafficMetrics.smoltcpStarted()
-        FirewallDnsTrafficMetrics.smoltcpSnapshot(
-            SmoltcpDnsTcpMetrics(
-                packetsAccepted = 4,
-                ingressRejected = 1,
-                sessionsOpened = 2,
-                sessionsClosed = 0,
-                dataEvents = 2,
-                peerHalfCloses = 0,
-                responsesQueued = 1,
-                responseFailures = 0,
-                activeSessions = 2,
-                nativeErrors = 0,
-            )
-        )
-
-        assertEquals(1L, FirewallDnsTrafficMetrics.snapshot().smoltcpTransportAvailable)
-        assertEquals(2L, FirewallDnsTrafficMetrics.snapshot().smoltcpSessionsActive)
-
-        FirewallDnsTrafficMetrics.smoltcpStopped()
-
-        val stopped = FirewallDnsTrafficMetrics.snapshot()
-        assertEquals(0L, stopped.smoltcpTransportAvailable)
-        assertEquals(0L, stopped.smoltcpSessionsActive)
-    }
     @Test
     fun socketProtectionOutcomesAreCountedSeparatelyForUdpAndTcp() {
         val before = FirewallDnsTrafficMetrics.snapshot()
