@@ -222,6 +222,8 @@ object FirewallRepository {
             threatDomainsByCategory = snapshot.threatDomainsByCategory.mapValues { (_, domains) ->
                 domains.toSet()
             },
+            importantBlocked = snapshot.importantBlocked.toSet(),
+            importantExceptions = snapshot.importantExceptions.toSet(),
             summary = snapshot.summary
         )
         // Sincroniza el evaluador determinista antes de publicar el snapshot completo.
@@ -357,11 +359,19 @@ object FirewallRepository {
                 add(PolicyRule("user-block:$domain", domain, action = PolicyAction.BLOCK,
                     source = RuleSource.USER, priority = 90_000, reason = "custom_block"))
             }
-            snapshot.exceptions.forEach { domain ->
+            snapshot.importantExceptions.forEach { domain ->
+                add(PolicyRule("list-important-exception:$domain", domain, action = PolicyAction.ALLOW,
+                    source = RuleSource.MANAGED, priority = 85_000, reason = "blocklist_important_exception"))
+            }
+            snapshot.importantBlocked.forEach { domain ->
+                add(PolicyRule("list-important-block:$domain", domain, action = PolicyAction.BLOCK,
+                    source = RuleSource.MANAGED, priority = 84_000, reason = "blocklist_important_match"))
+            }
+            (snapshot.exceptions - snapshot.importantExceptions).forEach { domain ->
                 add(PolicyRule("list-exception:$domain", domain, action = PolicyAction.ALLOW,
                     source = RuleSource.MANAGED, priority = 80_000, reason = "blocklist_exception"))
             }
-            snapshot.blocked.forEach { domain ->
+            (snapshot.blocked - snapshot.importantBlocked).forEach { domain ->
                 add(PolicyRule("blocklist:$domain", domain, action = PolicyAction.BLOCK,
                     source = RuleSource.MANAGED, priority = 10_000, reason = "blocklist_match"))
             }
@@ -376,8 +386,10 @@ object FirewallRepository {
             domain = domain,
             customAllow = customAllowSet,
             customBlock = customBlockSet,
-            hostExceptions = activeRules.exceptions,
-            hostBlock = activeRules.blocked
+            hostExceptions = activeRules.exceptions - activeRules.importantExceptions,
+            hostBlock = activeRules.blocked - activeRules.importantBlocked,
+            importantExceptions = activeRules.importantExceptions,
+            importantBlock = activeRules.importantBlocked
         )
         if (!baseEval.first && baseEval.second != "Permitido") {
             return baseEval
