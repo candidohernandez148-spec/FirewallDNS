@@ -11,20 +11,25 @@
 
 ---
 
-Aplicación Android de **firewall local y filtrado DNS sin permisos root**, construida en Kotlin con Jetpack Compose (Material 3) y arquitectura **MVVM**. Permite supervisar en tiempo real las consultas DNS de cada aplicación, aplicar listas estándar Adblock (`||dominio.com^`) y bloquear o excluir aplicaciones individuales directamente desde el dispositivo.
+Aplicación Android de **firewall virtual local sin permisos root**, construida en Kotlin con Jetpack Compose (Material 3) y arquitectura **MVVM**. Un único `VpnService`/TUN entrega el tráfico IPv4/IPv6 a Firestack/gVisor; FirewallDNS aplica su propia política de conexiones y dominios, con DNS filtrado, control por aplicación y telemetría local.
 
 ---
 
 ## ✨ Características principales
 
-* **Arquitectura VPN simplificada:**
-    * Se conserva un único servicio Android `VpnService` con interfaz TUN: `DnsFirewallService`.
-    * El TUN procesa DNS por UDP y DNS por TCP/53 mediante smoltcp 0.14, con JNI, colas acotadas y un único hilo propietario del transporte.
-    * El tráfico TCP/UDP general que no sea DNS/53 sigue fuera del alcance del filtrado; no se afirma inspección de DoH, DoT ni DoQ.
-    * No existe un segundo motor VPN ni un servicio de respaldo.
-* **Control de aplicaciones (Split Tunneling y bloqueo total):**
-  * Aplica reglas DNS por aplicación; el bloqueo general de conexiones TCP/UDP por UID queda pendiente de integrar el motor nativo FirewallDNS.
-  * Excluye aplicaciones concretas del filtrado mediante `addDisallowedApplication`.
+* **Motor virtual de red TCP/UDP sobre TUN:**
+    * Un solo `VpnService` y un solo descriptor TUN, administrado por `DnsFirewallService`.
+    * Firestack/gVisor procesa conexiones TCP, UDP e ICMP IPv4/IPv6; smoltcp/Rust se conserva como componente nativo de DNS/TCP y banco de pruebas, no como una segunda pila que compita por el TUN.
+    * Los callbacks de Firestack se conectan a la política única de FirewallDNS para bloquear, observar o permitir conexiones por UID, aplicación, protocolo, IP/CIDR y puerto.
+    * Los sockets de salida se protegen contra bucles VPN y se enlazan a la red física seleccionada. Los cambios Wi-Fi/datos móviles actualizan resolvers y MTU sin reiniciar el TUN.
+* **Filtrado DNS y protección de amenazas:**
+    * Captura de DNS UDP/TCP por puerto 53 para aplicar listas, reglas propias y ThreatAnalyzer incluso cuando una aplicación consulta un resolver codificado.
+    * DNS bloqueado se responde mediante el transporte `BlockAll` de Firestack; los flujos de red bloqueados utilizan su proxy `Block`.
+    * DoT/DoQ se bloquean en puertos estándar configurados. DoH solo se identifica por correlación con dominios de endpoints conocidos; **no se descifra TLS ni se afirma inspección universal de DoH/DoT/DoQ**.
+* **Control de aplicaciones y conexiones:**
+    * UID de Firestack y, cuando no está disponible, intento de atribución mediante `ConnectivityManager.getConnectionOwnerUid` en Android 10+.
+    * Reglas de flujo por UID, paquete, protocolo, dirección/rango IPv4/IPv6 y puerto; las reglas heurísticas solo pueden observar, nunca bloquear por sí solas.
+    * Monitor de conexiones con bytes enviados/recibidos, motivo de decisión y generación de red.
 * **Listas Adblock externas y reglas personalizadas:**
   * Compatible con sintaxis estándar Adblock DNS (`||dominio.com^` y excepciones `@@||dominio.com^`), con presets recomendados de **HaGeZi** (Ligera, Estándar y Avanzada) y soporte para añadir URLs externas sin recompilar.
   * Reglas manuales de **Lista Blanca** y **Lista Negra** con prioridad sobre las listas descargadas, y botones rápidos de *Permitir/Bloquear* desde el historial en vivo.
@@ -37,9 +42,19 @@ Aplicación Android de **firewall local y filtrado DNS sin permisos root**, cons
 
 ---
 
-## 🏗️ Arquitectura del proyecto (MVVM)
+## 🏗️ Arquitectura del proyecto (MVVM + motor modular)
 
-El proyecto está organizado por capas dentro de `:app`:
+El proyecto separa la política y la pila de red en módulos Gradle:
+
+- `:engine-core`: normalización, reglas DNS y reglas de flujo TCP/UDP/ICMP.
+- `:dns-engine`: análisis y evaluación DNS.
+- `:threat-engine`: inteligencia de amenazas y señales deterministas.
+- `:engine-monitor`: métricas y ciclo de vida de conexiones.
+- `:engine-runtime`: autoridad de política y composición del motor.
+- `:android-adapter`: puente Android/Firestack, protección de sockets y conexión con TUN.
+- `:app`: interfaz, repositorio, permisos y ciclo de vida de `VpnService`.
+
+El proyecto de aplicación conserva esta estructura MVVM:
 
 ```text
 app/src/main/java/com/firewall/dns/
