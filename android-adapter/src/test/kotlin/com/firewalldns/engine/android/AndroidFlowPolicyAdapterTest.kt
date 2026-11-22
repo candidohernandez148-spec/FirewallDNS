@@ -78,11 +78,14 @@ class AndroidFlowPolicyAdapterTest {
     }
 
     @Test fun mapsIcmpWithoutInventingTransportPorts() {
-        val adapter = AndroidFlowPolicyAdapter(EngineRuntime(), nowEpochMillis = { 1L })
+        val engine = EngineRuntime()
+        val adapter = AndroidFlowPolicyAdapter(engine, nowEpochMillis = { 1L })
         val decision = adapter.evaluate(
             "icmp-1", 58, -1, "fd00::2", 0, "2001:db8::1", 0,
         )
         assertEquals(PolicyAction.ALLOW, decision.action)
-        assertEquals(1, adapter.javaClass.let { 1 })
+        val flow = engine.flowMonitor.snapshot().flows.single()
+        assertEquals(FlowProtocol.ICMP, flow.identity.protocol)
+        assertEquals(0, flow.identity.destinationPort)
     }
 }
