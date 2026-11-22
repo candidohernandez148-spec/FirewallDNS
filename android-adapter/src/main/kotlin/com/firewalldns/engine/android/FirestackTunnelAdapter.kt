@@ -42,7 +42,7 @@ class FirestackTunnelAdapter private constructor(
         }.getOrDefault(false)
     }
 
-    fun isConnected(): Boolean = !closed.get() && runCatching { tunnel.isConnected }.getOrDefault(false)
+    fun isConnected(): Boolean = !closed.get() && runCatching { tunnel.isConnected() }.getOrDefault(false)
 
     fun stat() = runCatching { tunnel.stat() }.getOrNull()
 
@@ -107,7 +107,7 @@ class FirestackTunnelAdapter private constructor(
                     bridge,
                 )
                 createdTunnel = tunnel
-                check(tunnel.isConnected) { "Firestack returned a disconnected TUN stack" }
+                check(tunnel.isConnected()) { "Firestack returned a disconnected TUN stack" }
                 return FirestackTunnelAdapter(tunReference, tunnel, bridge)
             } catch (error: Throwable) {
                 runCatching { createdTunnel?.disconnect() }
