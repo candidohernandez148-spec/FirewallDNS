@@ -27,12 +27,14 @@ import com.firewall.dns.domain.model.DnsLogEntry
 import com.firewall.dns.domain.model.FirewallStats
 import com.firewall.dns.domain.security.DnsActivityAnalyzer
 import com.firewall.dns.domain.security.DnsRiskLevel
+import com.firewall.dns.service.FirewallDnsTrafficMetrics
 
 @Composable
 fun SecurityCenterScreen(
     stats: FirewallStats,
     logs: List<DnsLogEntry>,
     otherVpnActive: Boolean,
+    tunMetrics: FirewallDnsTrafficMetrics.Snapshot,
     onOpenActivity: () -> Unit
 ) {
     val context = LocalContext.current
@@ -58,6 +60,12 @@ fun SecurityCenterScreen(
         appendLine("Consultas permitidas: " + stats.totalAllowed)
         appendLine("Consultas bloqueadas: " + stats.totalBlocked)
         appendLine("Eventos conservados: " + logs.size)
+        appendLine("Flujos TUN activos: " + tunMetrics.flowsActive)
+        appendLine("IP RX/TX: " + tunMetrics.ipPacketsReceived + "/" + tunMetrics.ipPacketsSent)
+        appendLine("TCP RX/TX: " + tunMetrics.tcpSegmentsReceived + "/" + tunMetrics.tcpSegmentsSent)
+        appendLine("UDP RX/TX: " + tunMetrics.udpPacketsReceived + "/" + tunMetrics.udpPacketsSent)
+        appendLine("ICMPv4 RX/TX: " + tunMetrics.icmpV4Received + "/" + tunMetrics.icmpV4Sent)
+        appendLine("ICMPv6 RX/TX: " + tunMetrics.icmpV6Received + "/" + tunMetrics.icmpV6Sent)
         appendLine("Coincidencias de amenaza en el historial: " + recentThreats.size)
         appendLine("Otra VPN detectada: " + if (otherVpnActive) "Sí" else "No")
         appendLine()
@@ -191,6 +199,23 @@ fun SecurityCenterScreen(
                     DetailRow("Tipo de red", stats.networkType)
                     DetailRow("Reglas cargadas", stats.loadedRulesCount.toString())
                     DetailRow("VPN externa", if (otherVpnActive) "Detectada" else "No detectada")
+                }
+            }
+        }
+        item {
+            Text("Telemetría del túnel en vivo", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    DetailRow("Firestack", if (tunMetrics.firestackActive > 0L) "Activo" else "Sin confirmación")
+                    DetailRow("Flujos activos", tunMetrics.flowsActive.toString())
+                    DetailRow("TUN RX / TX", "${tunMetrics.tunRxBytes} / ${tunMetrics.tunTxBytes} bytes")
+                    DetailRow("NIC RX / TX", "${tunMetrics.nicRxPackets} / ${tunMetrics.nicTxPackets}")
+                    DetailRow("IP RX / TX", "${tunMetrics.ipPacketsReceived} / ${tunMetrics.ipPacketsSent}")
+                    DetailRow("TCP RX / TX", "${tunMetrics.tcpSegmentsReceived} / ${tunMetrics.tcpSegmentsSent}")
+                    DetailRow("UDP RX / TX", "${tunMetrics.udpPacketsReceived} / ${tunMetrics.udpPacketsSent}")
+                    DetailRow("ICMPv4 RX / TX", "${tunMetrics.icmpV4Received} / ${tunMetrics.icmpV4Sent}")
+                    DetailRow("ICMPv6 RX / TX", "${tunMetrics.icmpV6Received} / ${tunMetrics.icmpV6Sent}")
+                    Text("Contadores acumulados por capa; no son paquetes individuales ni deben sumarse entre sí.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
