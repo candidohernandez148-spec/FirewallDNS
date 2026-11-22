@@ -69,7 +69,7 @@ class DnsPolicyAdapterTest {
         val allowed = assertIs<DnsEvaluation.Forward>(
             adapter.evaluate(query("ads.doubleclick.net"), nowEpochMillis = 3),
         )
-        assertEquals(PolicyAction.ALLOW, allowed.decision.action)
+        assertEquals(PolicyAction.OBSERVE, allowed.decision.action)
     }
 
     @Test fun weakDomainHeuristicsOnlyObserveAndTrustedDomainsAreAllowed() {
