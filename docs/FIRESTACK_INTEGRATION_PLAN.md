@@ -37,6 +37,14 @@ Firestack `intra.Connect` recibe un objeto `Bridge` que combina:
 
 La implementación Kotlin debe ser un adaptador delgado hacia interfaces de FirewallDNS, no una copia de las reglas de Rethink. La política de dominios y UID seguirá perteneciendo a FirewallDNS. No se activarán transportes/proxies opcionales de Firestack que no sean necesarios para el firewall local.
 
+## Captura DNS de resolvers arbitrarios
+
+Firestack's default DNS mode captures only the synthetic DNS IPs configured in the VPN. That would allow applications using hard-coded resolver IPs (for example, a public resolver) to send UDP/TCP port 53 without reaching FirewallDNS domain policy.
+
+To close that gap, this repository carries the MPL-2.0 patch `third_party/patches/firestack-capture-dns-port.patch`. It adds `intra.CaptureDnsPort()`, which selects Firestack's `DNSModePort` before `Intra.Connect`. The resulting stack routes every DNS UDP/TCP port-53 flow through its DNS override and FirewallDNS `onQuery` decision. The Firestack default upstream sockets are protected by the Android Bridge, so they do not loop back into the TUN. CI runs a focused Go test for this patch before building the AAR.
+
+This does **not** decrypt DoH/DoT/DoQ or arbitrary encrypted DNS on ports 443/853/784. It also does not make every TCP/UDP payload semantically inspectable; non-DNS traffic is filtered by flow policy and metadata.
+
 ## Secuencia de integración
 
 ### Fase A — Base reproducible y cumplimiento
