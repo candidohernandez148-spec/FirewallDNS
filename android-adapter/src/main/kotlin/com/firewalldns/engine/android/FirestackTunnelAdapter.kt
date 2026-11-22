@@ -267,10 +267,18 @@ private class FirewallDNSFirestackBridge(
         val domainValue = domain.orEmpty()
         val ownerUid = uidValue.toIntOrNull()
         val appPackage = ownerUid?.takeIf { it >= 0 }?.let { runCatching { resolvePackage(it) }.getOrNull() }
-        val decision = engine.evaluateDomain(domainValue, appPackage)
+        val decision = runCatching { engine.evaluateDomain(domainValue, appPackage) }.getOrNull()
         val appBlocked = ownerUid?.takeIf { it >= 0 }?.let { runCatching { isUidBlocked(it) }.getOrDefault(false) } == true
-        val action = if (appBlocked) PolicyAction.BLOCK else decision.action
-        val reason = if (appBlocked) "app_uid_blocked" else decision.reason
+        val action = when {
+            appBlocked -> PolicyAction.BLOCK
+            decision == null -> PolicyAction.BLOCK
+            else -> decision.action
+        }
+        val reason = when {
+            appBlocked -> "app_uid_blocked"
+            decision == null -> "dns_policy_evaluation_failed"
+            else -> decision.reason
+        }
         runCatching { onDnsDecision(domainValue, qtyp.toInt(), ownerUid, reason, action) }
         return DNSOpts().apply {
             setUID(uidValue)
