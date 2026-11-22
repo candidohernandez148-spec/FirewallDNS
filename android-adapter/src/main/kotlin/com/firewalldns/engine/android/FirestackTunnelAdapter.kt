@@ -28,11 +28,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Android VpnService TUN. It never creates a second VPN or reads the TUN fd.
  */
 class FirestackTunnelAdapter private constructor(
-    private val vpnService: VpnService,
     private val tunReference: ParcelFileDescriptor,
     private val tunnel: Tunnel,
     private val bridge: FirewallDNSFirestackBridge,
-    private val defaultDnsAddress: String,
 ) : AutoCloseable {
 
     private val closed = AtomicBoolean(false)
@@ -108,13 +106,7 @@ class FirestackTunnelAdapter private constructor(
                 )
                 createdTunnel = tunnel
                 check(tunnel.isConnected) { "Firestack returned a disconnected TUN stack" }
-                return FirestackTunnelAdapter(
-                    vpnService,
-                    tunReference,
-                    tunnel,
-                    bridge,
-                    formatHostPort(resolver),
-                )
+                return FirestackTunnelAdapter(tunReference, tunnel, bridge)
             } catch (error: Throwable) {
                 runCatching { createdTunnel?.disconnect() }
                 runCatching { bridge?.close() }
