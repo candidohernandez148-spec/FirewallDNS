@@ -14,6 +14,7 @@ on:
       - "engine-monitor/**"
       - "threat-engine/**"
       - "docs/**"
+      - "third_party/patches/**"
       - "app/**"
       - "build.gradle.kts"
       - "settings.gradle.kts"
@@ -117,6 +118,9 @@ jobs:
           repository: celzero/firestack
           ref: c27887056230769ee897b7c7b92976b96d3c9a6d
           path: third_party/firestack
+
+      - name: Apply FirewallDNS DNS interception patch
+        run: git -C third_party/firestack apply "$GITHUB_WORKSPACE/third_party/patches/firestack-capture-dns-port.patch"
 
       - uses: actions/setup-go@v6
         with:
