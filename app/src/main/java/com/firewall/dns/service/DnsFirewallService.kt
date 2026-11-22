@@ -376,7 +376,6 @@ class DnsFirewallService : VpnService() {
                     engine = engineRuntime.engine,
                     flowPolicyAdapter = flowAdapter,
                     physicalNetworkProvider = { selectedPhysicalNetwork },
-                    resolvePackage = ::resolvePackageName,
                     isUidBlocked = AppFirewallManager::isUidBlocked,
                     onFlowSnapshot = FirewallDnsTrafficMetrics::flowSnapshot,
                     onSocketProtectionResult = FirewallDnsTrafficMetrics::firestackSocketProtectionResult,
