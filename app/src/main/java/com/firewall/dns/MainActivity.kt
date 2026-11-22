@@ -403,6 +403,7 @@ fun FirewallApp(
                     stats = stats,
                     logs = logs,
                     traffic = traffic,
+                    tunMetrics = tunMetrics,
                     otherVpnActive = otherVpnActive,
                     searchQuery = searchQuery,
                     onlyBlocked = onlyBlocked,
