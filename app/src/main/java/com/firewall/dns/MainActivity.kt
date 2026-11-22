@@ -319,6 +319,7 @@ fun FirewallApp(
                                     2 -> "Centro de amenazas"
                                     3 -> "Protección"
                                     4 -> "Mapa de conocimiento"
+                                    else -> "FirewallDNS"
                                 },
                                 fontWeight = FontWeight.Bold,
                                 style = MaterialTheme.typography.titleMedium
