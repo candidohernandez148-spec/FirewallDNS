@@ -11,6 +11,30 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AndroidFlowPolicyAdapterTest {
+    @Test fun curatedDomainThreatCanBlockTheAssociatedNetworkFlow() {
+        val engine = EngineRuntime()
+        val domainDecision = engine.evaluateDomain("ads.doubleclick.net", "com.example.app", 100)
+        val adapter = AndroidFlowPolicyAdapter(engine, nowEpochMillis = { 101L })
+        val decision = adapter.evaluate(
+            flowId = "tcp-domain-block",
+            protocolNumber = 6,
+            ownerUid = -1,
+            sourceAddress = "10.10.10.2",
+            sourcePort = 42000,
+            destinationAddress = "203.0.113.10",
+            destinationPort = 443,
+            domainDecision = com.firewalldns.engine.core.NetworkFlowDecision(
+                domainDecision.action,
+                domainDecision.reason,
+                domainDecision.ruleId,
+                domainDecision.source,
+                domainDecision.policyRevision,
+            ),
+        )
+        assertEquals(PolicyAction.BLOCK, decision.action)
+        assertEquals(1L, engine.flowMonitor.snapshot().blocked)
+    }
+
     @Test fun resolvesKnownUidAndAppliesAppSpecificBlock() {
         val engine = EngineRuntime()
         engine.replaceFlowRules(
