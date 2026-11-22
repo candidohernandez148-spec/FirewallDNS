@@ -26,6 +26,7 @@ import com.firewall.dns.domain.engine.DnsPacketEngine
 import com.firewall.dns.domain.engine.TunTransportPacketParser
 import com.firewalldns.engine.android.AndroidEngineRuntime
 import com.firewalldns.engine.android.AndroidFlowPolicyAdapter
+import com.firewalldns.engine.android.FirestackTunnelAdapter
 import com.firewalldns.engine.android.FragmentReassemblerConfig
 import com.firewalldns.engine.android.IpFragmentReassembler
 import com.firewalldns.engine.android.NativeTcpDnsTransport
@@ -63,8 +64,9 @@ class DnsFirewallService : VpnService() {
 
     private class TunSession(
         val descriptor: ParcelFileDescriptor,
-        val input: FileInputStream,
-        val output: FileOutputStream
+        val input: FileInputStream?,
+        val output: FileOutputStream?,
+        val firestack: FirestackTunnelAdapter? = null,
     ) {
         val active = AtomicBoolean(true)
         val inFlightWorkers = AtomicInteger(0)
@@ -323,8 +325,7 @@ class DnsFirewallService : VpnService() {
         getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification())
     }
 
-    private fun startVpn() = synchronized(vpnLock) {
-        closeInterfaceSync()
+    private fun buildVpnBuilder(fullTunnel: Boolean): Builder {
         val upstream = FirewallRepository.getUpstreamDns()
         val builder = Builder()
             .setSession("FirewallDNS")
@@ -335,32 +336,99 @@ class DnsFirewallService : VpnService() {
             .addAddress("fd00:10:10::2", 128)
             .addDnsServer("fd00:10:10::1")
             .addRoute("fd00:10:10::1", 128)
-        TRAPPED_IPV4_DNS.filter { it != upstream }.forEach { builder.addRoute(it, 32) }
-        TRAPPED_IPV6_DNS.forEach { builder.addRoute(it, 128) }
+
+        if (fullTunnel) {
+            builder.addRoute("0.0.0.0", 0)
+            builder.addRoute("::", 0)
+        } else {
+            TRAPPED_IPV4_DNS.filter { it != upstream }.forEach { builder.addRoute(it, 32) }
+            TRAPPED_IPV6_DNS.forEach { builder.addRoute(it, 128) }
+        }
 
         (FirewallRepository.excludedPackages.value + packageName).forEach { pkg ->
             try {
                 builder.addDisallowedApplication(pkg)
             } catch (_: PackageManager.NameNotFoundException) {}
         }
+        return builder
+    }
 
-        val established = builder.establish()
-        if (established == null) {
+    private fun startVpn() = synchronized(vpnLock) {
+        closeInterfaceSync()
+        val fullTunnelDescriptor = buildVpnBuilder(fullTunnel = true).establish()
+        if (fullTunnelDescriptor == null) {
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return
         }
+
         installSharedEngine()
+        val engineRuntime = sharedEngine
+        val flowAdapter = sharedFlowPolicyAdapter
+        val resolver = upstreamSnapshot?.resolvers?.firstOrNull() ?: NetworkDns.EMERGENCY_DNS
+        val firestack = if (engineRuntime != null && flowAdapter != null) {
+            runCatching {
+                FirestackTunnelAdapter.connect(
+                    vpnService = this,
+                    tunDescriptor = fullTunnelDescriptor,
+                    mtu = 1500,
+                    resolver = resolver,
+                    engine = engineRuntime.engine,
+                    flowPolicyAdapter = flowAdapter,
+                    physicalNetworkProvider = { selectedPhysicalNetwork },
+                    resolvePackage = ::resolvePackageName,
+                    onDnsDecision = { domain, qType, uid, reason, action ->
+                        when (action) {
+                            PolicyAction.BLOCK -> FirewallDnsTrafficMetrics.dnsBlocked()
+                            PolicyAction.OBSERVE -> FirewallDnsTrafficMetrics.dnsObserved()
+                            PolicyAction.ALLOW -> FirewallDnsTrafficMetrics.dnsAllowed()
+                        }
+                        FirewallRepository.addLog(
+                            domain = domain,
+                            qType = DnsPacketEngine.queryTypeToString(qType),
+                            isBlocked = action == PolicyAction.BLOCK,
+                            reason = reason,
+                            appName = resolveAppName(uid ?: Process.INVALID_UID),
+                        )
+                    },
+                )
+            }.getOrNull()
+        } else null
+
+        val established = if (firestack != null) {
+            fullTunnelDescriptor
+        } else {
+            // Never leave a full-device route without a functioning packet stack.
+            runCatching { fullTunnelDescriptor.close() }
+            buildVpnBuilder(fullTunnel = false).establish()
+        }
+        if (established == null) {
+            firestack?.close()
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return
+        }
+
         isRunning = true
-        FirewallRepository.setRunning(true, "FirewallDNS TUN (DNS)")
+        FirewallRepository.setRunning(
+            true,
+            if (firestack != null) "FirewallDNS TUN (Firestack/gVisor)" else "FirewallDNS TUN (DNS fallback)",
+        )
         val session = TunSession(
-            established,
-            FileInputStream(established.fileDescriptor),
-            FileOutputStream(established.fileDescriptor)
+            descriptor = established,
+            input = if (firestack == null) FileInputStream(established.fileDescriptor) else null,
+            output = if (firestack == null) FileOutputStream(established.fileDescriptor) else null,
+            firestack = firestack,
         )
         activeTunSession = session
 
-        val engineRuntime = sharedEngine
+        if (firestack != null) {
+            // Firestack owns packet ingress/egress on the duplicated TUN descriptor.
+            // The legacy reader and smoltcp DNS/TCP laboratory must not compete for packets.
+            updateForegroundNotification()
+            return
+        }
+
         val upstreamClient = upstreamSnapshot?.client
         if (engineRuntime != null && upstreamClient != null) {
             val nativeTransport = runCatching {
