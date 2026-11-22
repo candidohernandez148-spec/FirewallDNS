@@ -30,7 +30,7 @@ data class NetworkFlowRequest(
     init {
         require(appUid == null || appUid >= 0) { "UID must be non-negative or unknown" }
         require(destinationPort in 1..65535) { "Destination port must be between 1 and 65535" }
-        require(parseIp(destinationAddress) != null) { "Destination address must be a numeric IPv4 or IPv6 address" }
+        require(parseIpAddress(destinationAddress) != null) { "Destination address must be a numeric IPv4 or IPv6 address" }
     }
 }
 
@@ -83,7 +83,7 @@ class NetworkFlowPolicyEngine(initialRules: Collection<NetworkFlowRule> = emptyL
 
     fun evaluate(request: NetworkFlowRequest, nowEpochMillis: Long = System.currentTimeMillis()): NetworkFlowDecision {
         val current = snapshot.get()
-        val destination = requireNotNull(parseIp(request.destinationAddress))
+        val destination = requireNotNull(parseIpAddress(request.destinationAddress))
         val winner = current.rules.firstOrNull { compiled ->
             compiled.rule.enabled &&
                 (compiled.rule.expiresAtEpochMillis?.let { it > nowEpochMillis } ?: true) &&
@@ -133,7 +133,7 @@ class NetworkFlowPolicyEngine(initialRules: Collection<NetworkFlowRule> = emptyL
         fun parseCidr(value: String): Pair<ByteArray, Int> {
             val parts = value.split('/')
             require(parts.size == 2) { "Invalid CIDR '$value'" }
-            val address = requireNotNull(parseIp(parts[0])) { "Invalid IP in CIDR '$value'" }
+            val address = requireNotNull(parseIpAddress(parts[0])) { "Invalid IP in CIDR '$value'" }
             val bits = parts[1].toIntOrNull()
                 ?: throw IllegalArgumentException("Invalid prefix in CIDR '$value'")
             require(bits in 0..address.size * 8) { "CIDR prefix out of range in '$value'" }
@@ -147,17 +147,18 @@ class NetworkFlowPolicyEngine(initialRules: Collection<NetworkFlowRule> = emptyL
             return network to bits
         }
 
-        fun parseIp(value: String): ByteArray? {
-            val unscoped = value.substringBefore('%')
-            val validLiteral = if (unscoped.contains(':')) {
-                Regex("[0-9A-Fa-f:.]+").matches(unscoped)
-            } else {
-                Regex("[0-9]{1,3}(\\.[0-9]{1,3}){3}").matches(unscoped) &&
-                    unscoped.split('.').all { part -> part.toIntOrNull()?.let { it in 0..255 } == true }
-            }
-            if (!validLiteral) return null
-            return runCatching { InetAddress.getByName(unscoped).address }.getOrNull()
-                ?.takeIf { it.size == 4 || it.size == 16 }
-        }
     }
+}
+
+private fun parseIpAddress(value: String): ByteArray? {
+    val unscoped = value.substringBefore('%')
+    val validLiteral = if (unscoped.contains(':')) {
+        Regex("[0-9A-Fa-f:.]+").matches(unscoped)
+    } else {
+        Regex("[0-9]{1,3}(\\.[0-9]{1,3}){3}").matches(unscoped) &&
+            unscoped.split('.').all { part -> part.toIntOrNull()?.let { it in 0..255 } == true }
+    }
+    if (!validLiteral) return null
+    return runCatching { InetAddress.getByName(unscoped).address }.getOrNull()
+        ?.takeIf { it.size == 4 || it.size == 16 }
 }
