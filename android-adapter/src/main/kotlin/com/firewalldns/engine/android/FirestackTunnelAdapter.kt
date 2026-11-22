@@ -31,9 +31,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  * encapsulated inside this adapter module.
  */
 data class FirestackDnsResponseSummary(
-    val status: String,
+    val status: Int,
     val cached: Boolean,
-    val latency: Long,
+    val latency: Double,
 )
 
 class FirestackTunnelAdapter private constructor(
