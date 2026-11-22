@@ -822,6 +822,23 @@ class DnsFirewallService : VpnService() {
             FirewallDnsTrafficMetrics.upstreamResolversChanged(emptyList())
             return
         }
+
+        // Keep the exact EngineRuntime instance already held by Firestack's Bridge.
+        // Replacing the host reference alone would leave live DNS/flow callbacks on
+        // a stale ruleset after blocklist or smart-protection settings change.
+        val existing = sharedEngine
+        if (existing != null) {
+            existing.engine.replaceRules(FirewallRepository.enginePolicyRules())
+            existing.engine.replaceThreatAnalyzer(
+                if (FirewallRepository.isSmartModeEnabled()) {
+                    com.firewalldns.engine.threat.ThreatAnalyzer()
+                } else {
+                    com.firewalldns.engine.threat.ThreatAnalyzer(emptyList(), emptyList())
+                },
+            )
+            return
+        }
+
         val runtime = runCatching {
             AndroidEngineRuntime(
                 this,
