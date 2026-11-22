@@ -82,6 +82,12 @@ object FirewallDnsTrafficMetrics {
         val flowBytesSent: Long,
         val flowBytesReceived: Long,
         val flowCapacityRejected: Long,
+        val firestackProtectAttempts: Long,
+        val firestackProtectSuccess: Long,
+        val firestackProtectFailure: Long,
+        val firestackBindAttempts: Long,
+        val firestackBindSuccess: Long,
+        val firestackBindFailure: Long,
     )
 
     private val packetsRead = AtomicLong()
@@ -151,6 +157,12 @@ object FirewallDnsTrafficMetrics {
     private val flowBytesSent = AtomicLong()
     private val flowBytesReceived = AtomicLong()
     private val flowCapacityRejected = AtomicLong()
+    private val firestackProtectAttempts = AtomicLong()
+    private val firestackProtectSuccess = AtomicLong()
+    private val firestackProtectFailure = AtomicLong()
+    private val firestackBindAttempts = AtomicLong()
+    private val firestackBindSuccess = AtomicLong()
+    private val firestackBindFailure = AtomicLong()
 
     internal fun packetRead() { packetsRead.incrementAndGet() }
     internal fun queueRejected() { queueRejected.incrementAndGet() }
@@ -214,6 +226,14 @@ object FirewallDnsTrafficMetrics {
     internal fun responseWritten() { packetsWritten.incrementAndGet() }
     internal fun writeError() { writeErrors.incrementAndGet() }
     internal fun workerError() { workerErrors.incrementAndGet() }
+    internal fun firestackSocketProtectionResult(success: Boolean) {
+        firestackProtectAttempts.incrementAndGet()
+        if (success) firestackProtectSuccess.incrementAndGet() else firestackProtectFailure.incrementAndGet()
+    }
+    internal fun firestackSocketBindingResult(success: Boolean) {
+        firestackBindAttempts.incrementAndGet()
+        if (success) firestackBindSuccess.incrementAndGet() else firestackBindFailure.incrementAndGet()
+    }
     internal fun firestackStarted() { firestackActive.set(1L) }
     internal fun firestackStopped() {
         firestackActive.set(0L)
@@ -325,5 +345,11 @@ object FirewallDnsTrafficMetrics {
         flowBytesSent = flowBytesSent.get(),
         flowBytesReceived = flowBytesReceived.get(),
         flowCapacityRejected = flowCapacityRejected.get(),
+        firestackProtectAttempts = firestackProtectAttempts.get(),
+        firestackProtectSuccess = firestackProtectSuccess.get(),
+        firestackProtectFailure = firestackProtectFailure.get(),
+        firestackBindAttempts = firestackBindAttempts.get(),
+        firestackBindSuccess = firestackBindSuccess.get(),
+        firestackBindFailure = firestackBindFailure.get(),
     )
 }
