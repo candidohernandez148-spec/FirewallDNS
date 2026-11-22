@@ -106,6 +106,10 @@ class RuleEvaluatorTest {
             RuleEvaluator.parseAdblockLine("@@||tracker.example^" + dollar + "important")
         )
         assertEquals(
+            RuleEvaluator.AdblockParseResult("tracker.example", true, includeSubdomains = false),
+            RuleEvaluator.parseAdblockLine("@@tracker.example")
+        )
+        assertEquals(
             RuleEvaluator.AdblockParseResult("tracker.example", false, includeSubdomains = false),
             RuleEvaluator.parseAdblockLine("tracker.example")
         )
@@ -223,6 +227,29 @@ class RuleEvaluatorTest {
             hostExceptions = emptySet(),
             hostBlock = emptySet(),
             exactBlock = setOf("tracker.example")
+        )
+        assertEquals(true, exact.first)
+        assertEquals(false, subdomain.first)
+    }
+
+
+    @Test
+    fun importantExactRuleDoesNotMatchSubdomains() {
+        val exact = RuleEvaluator.evaluate(
+            domain = "tracker.example",
+            customAllow = emptySet(),
+            customBlock = emptySet(),
+            hostExceptions = emptySet(),
+            hostBlock = emptySet(),
+            importantExactBlock = setOf("tracker.example")
+        )
+        val subdomain = RuleEvaluator.evaluate(
+            domain = "cdn.tracker.example",
+            customAllow = emptySet(),
+            customBlock = emptySet(),
+            hostExceptions = emptySet(),
+            hostBlock = emptySet(),
+            importantExactBlock = setOf("tracker.example")
         )
         assertEquals(true, exact.first)
         assertEquals(false, subdomain.first)
