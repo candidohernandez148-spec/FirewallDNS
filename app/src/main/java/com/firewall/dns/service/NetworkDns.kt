@@ -33,8 +33,8 @@ object NetworkDns {
         if (addr.isLoopbackAddress || addr.isAnyLocalAddress) return false
         if (addr is Inet6Address) {
             if (!allowIpv6 || addr.isLinkLocalAddress || addr.isSiteLocalAddress) return false
-            val firstByte = addr.address[0].toInt() and 0xFE
-            if (firstByte == 0xFC) return false // Excluye IPv6 ULA privada (fc00::/7)
+            // ULA resolvers (fc00::/7) are valid on private Wi-Fi networks;
+            // keep them because sockets are pinned to the exact physical Network.
         }
         return true
     }
