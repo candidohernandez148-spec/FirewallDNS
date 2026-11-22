@@ -46,6 +46,14 @@ class FlowConnectionMonitorTest {
         assertEquals(1, monitor.snapshot().active)
     }
 
+    @Test fun failClosedStackRejectionsAreCountedWithoutInventingAFlow() {
+        val monitor = FlowConnectionMonitor()
+        monitor.recordBlocked()
+        assertEquals(1L, monitor.snapshot().blocked)
+        assertEquals(0, monitor.snapshot().active)
+        assertTrue(monitor.snapshot().flows.isEmpty())
+    }
+
     @Test fun blockedFlowIsCountedButNeverPublishedAsActive() {
         val monitor = FlowConnectionMonitor()
         val blocked = NetworkFlowDecision(PolicyAction.BLOCK, "user_block", "rule-1")
