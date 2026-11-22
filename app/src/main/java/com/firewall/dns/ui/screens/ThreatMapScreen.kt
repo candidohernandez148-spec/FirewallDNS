@@ -609,42 +609,66 @@ private fun SocKpi(
 
 @Composable
 private fun SocAppDnsActivity(logs: List<DnsLogEntry>) {
+    data class UidActivity(
+        val uid: Int,
+        val appName: String,
+        val blocked: Int,
+        val observed: Int,
+        val allowed: Int,
+        val total: Int
+    )
     val appRows = logs.asSequence()
-        .filter { it.appName.isNotBlank() && it.appName != "Sistema / DNS" }
-        .groupBy { it.appName }
-        .map { (app, events) ->
-            Triple(app, events.count { it.isBlocked }, events.size - events.count { it.isBlocked })
+        .filter { it.uid >= 0 }
+        .groupBy { it.uid }
+        .map { (uid, events) ->
+            UidActivity(
+                uid = uid,
+                appName = events.firstOrNull { it.appName.isNotBlank() }?.appName ?: "Paquete no resuelto",
+                blocked = events.count { it.decisionAction == "BLOCK" || it.isBlocked },
+                observed = events.count { it.decisionAction == "OBSERVE" },
+                allowed = events.count { it.decisionAction != "OBSERVE" && it.decisionAction != "BLOCK" && !it.isBlocked },
+                total = events.size
+            )
         }
-        .sortedByDescending { it.second + it.third }
-        .take(5)
+        .sortedByDescending { it.total }
+        .take(6)
+    val unknownUidCount = logs.count { it.uid < 0 }
     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
         Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("ACTIVIDAD DNS POR APLICACIÓN", style = MaterialTheme.typography.titleSmall,
+            Text("ACTIVIDAD DNS POR UID DE ANDROID", style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold)
-            if (appRows.isEmpty()) {
-                Text("Sin consultas DNS atribuibles a aplicaciones en los eventos recientes.",
+            if (appRows.isEmpty() && unknownUidCount == 0) {
+                Text("Sin consultas DNS registradas.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
-                appRows.forEach { (app, blocked, allowed) ->
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                appRows.forEach { row ->
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(app, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium,
+                            Text(row.appName, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold, maxLines = 1)
-                            Text("BLOQ. $blocked  ·  PERM. $allowed",
-                                style = MaterialTheme.typography.labelSmall,
+                            Text("UID ${row.uid}", style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
+                        Text("BLOQ. ${row.blocked}  ·  OBS. ${row.observed}  ·  PERM. ${row.allowed}  ·  TOTAL ${row.total}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
                         androidx.compose.material3.LinearProgressIndicator(
-                            progress = { if (blocked + allowed == 0) 0f else blocked.toFloat() / (blocked + allowed) },
+                            progress = { if (row.total == 0) 0f else row.blocked.toFloat() / row.total },
                             modifier = Modifier.fillMaxWidth(),
                             color = MaterialTheme.colorScheme.error,
                             trackColor = MaterialTheme.colorScheme.surfaceVariant
                         )
                     }
                 }
+                if (unknownUidCount > 0) {
+                    androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Text("SIN UID IDENTIFICABLE: $unknownUidCount consultas",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
-            Text("Basado en las consultas DNS recientes atribuidas por Android. No incluye anuncios servidos desde conexiones cifradas sin dominio DNS visible.",
+            Text("Agrupación por UID entregado por Firestack/Android. Un UID puede pertenecer a más de un paquete; las consultas sin UID se mantienen separadas. No incluye anuncios servidos dentro de conexiones cifradas sin dominio DNS visible.",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
