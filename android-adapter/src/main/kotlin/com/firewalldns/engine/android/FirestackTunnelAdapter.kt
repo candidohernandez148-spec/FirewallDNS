@@ -311,7 +311,8 @@ private class FirewallDNSFirestackBridge(
     ): Mark {
         val resolvedUid = resolveOwnerUid(protocol, uid, src.orEmpty(), dst.orEmpty())
         val appPackage = flowPolicyAdapter.resolvePackageForUid(resolvedUid)
-        val domainAssessment = domains.orEmpty().split(',').map(String::trim).filter(String::isNotEmpty)
+        val flowDomains = parseFirestackDomainMetadata(domains)
+        val domainAssessment = flowDomains
             .map { domain -> runCatching { engine.evaluateDomain(domain, appPackage) }.getOrNull() }
             .filterNotNull()
         val selectedDomainDecision = (domainAssessment.firstOrNull { it.action == PolicyAction.BLOCK }
@@ -322,9 +323,8 @@ private class FirewallDNSFirestackBridge(
         val encryptedDnsPort = destination?.let {
             EncryptedDnsGuard.shouldBlockPort(protocol, it.second)
         } == true
-        val confirmedDoh = domains.orEmpty().split(',').map(String::trim)
-            .any(EncryptedDnsGuard::isKnownDohEndpoint)
-        val probableDoh = probableDomains.orEmpty().split(',').map(String::trim)
+        val confirmedDoh = flowDomains.any(EncryptedDnsGuard::isKnownDohEndpoint)
+        val probableDoh = parseFirestackDomainMetadata(probableDomains)
             .any(EncryptedDnsGuard::isKnownDohEndpoint)
         val encryptedDnsDecision = when {
             encryptedDnsPort -> NetworkFlowDecision(
@@ -376,14 +376,14 @@ private class FirewallDNSFirestackBridge(
             protocol, resolvedUid, safeCid, src.orEmpty(), dst.orEmpty(),
             effectiveDomainDecision, originalDestinations,
         )
-        runCatching { onFlowSnapshot(engine.flowMonitor.snapshot()) }
+        runCatching { onFlowSnapshot(engine.flowMonitor.snapshot(includeFlows = false)) }
         return decisionMark(safeCid, resolvedUid, decision.action != PolicyAction.ALLOW && decision.action != PolicyAction.OBSERVE)
     }
 
     override fun inflow(protocol: Int, uid: Int, cid: String?, src: String?, dst: String?): Mark {
         val safeCid = cid.orEmpty()
         val decision = evaluateFlowCallback(protocol, uid, safeCid, src.orEmpty(), dst.orEmpty())
-        runCatching { onFlowSnapshot(engine.flowMonitor.snapshot()) }
+        runCatching { onFlowSnapshot(engine.flowMonitor.snapshot(includeFlows = false)) }
         return decisionMark(safeCid, uid, decision.action != PolicyAction.ALLOW && decision.action != PolicyAction.OBSERVE)
     }
 
@@ -396,6 +396,7 @@ private class FirewallDNSFirestackBridge(
         domainDecision: NetworkFlowDecision? = null,
         originalDestinations: List<String> = emptyList(),
     ): NetworkFlowDecision = runCatching {
+        require(cid.length in 1..MAX_FLOW_ID_LENGTH) { "Invalid Firestack flow identifier" }
         val portless = protocol == 1 || protocol == 58
         val source = requireNotNull(parseFirestackEndpoint(src, portless)) { "Invalid Firestack source endpoint" }
         val destination = requireNotNull(parseFirestackEndpoint(dst, portless)) { "Invalid Firestack destination endpoint" }
@@ -436,17 +437,21 @@ private class FirewallDNSFirestackBridge(
         if (id.isBlank()) return
         flowPolicyAdapter.recordBytes(id, flowSummary.getTx().coerceAtLeast(0), flowSummary.getRx().coerceAtLeast(0))
         flowPolicyAdapter.close(id)
-        runCatching { onFlowSnapshot(engine.flowMonitor.snapshot()) }
+        runCatching { onFlowSnapshot(engine.flowMonitor.snapshot(includeFlows = false)) }
     }
 
     override fun onPrequery(who: String?, fid: String?, uid: String?, domain: String?, qtyp: Long): DomainOpts? = null
 
     override fun onQuery(who: String?, fid: String?, uid: String?, domain: String?, qtyp: Long): DNSOpts {
         val uidValue = uid.orEmpty()
-        val domainValue = domain.orEmpty()
+        val domainValue = domain.orEmpty().trim()
         val ownerUid = uidValue.toIntOrNull()
         val appPackage = ownerUid?.let(flowPolicyAdapter::resolvePackageForUid)
-        val decision = runCatching { engine.evaluateDomain(domainValue, appPackage) }.getOrNull()
+        val decision = if (domainValue.length in 1..MAX_DOMAIN_LENGTH) {
+            runCatching { engine.evaluateDomain(domainValue, appPackage) }.getOrNull()
+        } else {
+            null
+        }
         val appBlocked = ownerUid?.takeIf { it >= 0 }?.let { runCatching { isUidBlocked(it) }.getOrDefault(false) } == true
         val action = when {
             appBlocked -> PolicyAction.BLOCK
@@ -458,7 +463,7 @@ private class FirewallDNSFirestackBridge(
             decision == null -> "dns_policy_evaluation_failed"
             else -> decision.reason
         }
-        runCatching { onDnsDecision(domainValue, qtyp.toInt(), ownerUid, reason, action) }
+        runCatching { onDnsDecision(domainValue.take(MAX_DOMAIN_LENGTH), qtyp.toInt(), ownerUid, reason, action) }
         return DNSOpts().apply {
             setUID(uidValue)
             setTIDCSV(dnsTransportForPolicyAction(action))
@@ -496,6 +501,25 @@ private class FirewallDNSFirestackBridge(
 
 }
 
+internal const val MAX_DOMAIN_LENGTH = 253
+private const val MAX_FLOW_DOMAINS = 16
+private const val MAX_DOMAIN_METADATA_CHARS = 4096
+private const val MAX_ENDPOINT_LENGTH = 128
+private const val MAX_FLOW_ID_LENGTH = 128
+
+internal fun parseFirestackDomainMetadata(value: String?): List<String> {
+    val raw = value.orEmpty()
+    val truncated = raw.length > MAX_DOMAIN_METADATA_CHARS
+    val tokens = raw.take(MAX_DOMAIN_METADATA_CHARS).split(',')
+    // Do not treat the final token as complete if the metadata string was cut.
+    val completeTokens = if (truncated) tokens.dropLast(1) else tokens
+    return completeTokens.asSequence()
+        .map(String::trim)
+        .filter { it.length in 1..MAX_DOMAIN_LENGTH }
+        .take(MAX_FLOW_DOMAINS)
+        .toList()
+}
+
 internal fun isFirestackRdnsBlocklistAddress(value: String): Boolean {
     val address = parseFirestackEndpoint(value, portless = true)?.first ?: return false
     return address == "0.0.0.0" || address == "::"
@@ -503,7 +527,7 @@ internal fun isFirestackRdnsBlocklistAddress(value: String): Boolean {
 
 internal fun parseFirestackEndpoint(value: String, portless: Boolean): Pair<String, Int>? = runCatching {
     val endpoint = value.trim()
-    require(endpoint.isNotEmpty())
+    require(endpoint.length in 1..MAX_ENDPOINT_LENGTH)
     if (portless) {
         val host = when {
             endpoint.startsWith("[") && endpoint.contains("]") ->

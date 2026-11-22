@@ -57,7 +57,6 @@ fun AppsSettingsScreen(
     onOpenVpnSettings: () -> Unit
 ) {
     val firestackActive = stats.isRunning && stats.engine.contains("Firestack/gVisor", ignoreCase = true)
-    val dnsOnlyFallback = stats.isRunning && stats.engine.contains("DNS fallback", ignoreCase = true)
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 9.dp),
@@ -108,20 +107,6 @@ fun AppsSettingsScreen(
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Aplicaciones", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text("Excluye apps del filtrado o bloquea su acceso a Internet.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (dnsOnlyFallback) {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(14.dp),
-                        color = MaterialTheme.colorScheme.tertiaryContainer
-                    ) {
-                        Text(
-                            "El motor de respaldo solo filtra consultas DNS. Las reglas por aplicación no bloquean conexiones TCP/UDP/ICMP mientras este modo esté activo.",
-                            modifier = Modifier.padding(14.dp),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer
-                        )
-                    }
-                }
                 OutlinedTextField(
                     value = appSearch,
                     onValueChange = onAppSearchChange,

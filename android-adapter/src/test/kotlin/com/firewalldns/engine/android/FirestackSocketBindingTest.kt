@@ -64,6 +64,26 @@ class FirestackSocketBindingTest {
     }
 
     @Test
+    fun boundsFirestackDomainMetadataAndDropsOversizedEntries() {
+        val domains = (1..24).joinToString(",") { "host$it.example" }
+        assertEquals(16, parseFirestackDomainMetadata(domains).size)
+        assertEquals(
+            listOf("ads.example", "tracker.example"),
+            parseFirestackDomainMetadata(" ads.example,, tracker.example "),
+        )
+        assertEquals(emptyList<String>(), parseFirestackDomainMetadata("x".repeat(254)))
+        assertEquals(
+            listOf("valid.example"),
+            parseFirestackDomainMetadata("valid.example," + "x".repeat(4090) + ",tail.example"),
+        )
+    }
+
+    @Test
+    fun rejectsOverlongFirestackEndpoints() {
+        assertEquals(null, parseFirestackEndpoint("192.0.2.1:443".repeat(20), false))
+    }
+
+    @Test
     fun recognizesFirestackRdnsBlocklistSentinelsForIpv4AndIpv6() {
         assertEquals(true, isFirestackRdnsBlocklistAddress("0.0.0.0"))
         assertEquals(true, isFirestackRdnsBlocklistAddress("::"))

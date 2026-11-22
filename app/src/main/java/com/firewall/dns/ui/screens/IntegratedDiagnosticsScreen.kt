@@ -177,11 +177,14 @@ fun IntegratedDiagnosticsScreen(
         }
         Card {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Tráfico observado en TUN", style = MaterialTheme.typography.titleMedium)
-                Metric("Paquetes leídos", metrics.packetsRead)
-                Metric("IPv4 / IPv6", metrics.ipv4Packets, metrics.ipv6Packets)
-                Metric("DNS UDP / DNS TCP", metrics.dnsUdpPackets, metrics.dnsTcp)
-                Metric("Respuestas escritas", metrics.packetsWritten)
+                Text("Motor FirewallDNS en vivo", style = MaterialTheme.typography.titleMedium)
+                Metric("Firestack activo (1=sí)", metrics.firestackActive)
+                Metric("Flujos activos", metrics.flowsActive)
+                Metric("Flujos abiertos / cerrados", metrics.flowsOpened, metrics.flowsClosed)
+                Metric("Flujos bloqueados", metrics.flowsBlocked)
+                Metric("Bytes enviados / recibidos", metrics.flowBytesSent, metrics.flowBytesReceived)
+                Metric("Sockets protegidos / intentos", metrics.firestackProtectSuccess, metrics.firestackProtectAttempts)
+                Metric("Enlaces físicos / intentos", metrics.firestackBindSuccess, metrics.firestackBindAttempts)
                 Metric("Eventos del monitor", observedEvents.toLong())
             }
         }
@@ -191,8 +194,6 @@ fun IntegratedDiagnosticsScreen(
                 Metric("Bloqueadas", metrics.dnsBlocked)
                 Metric("Observadas", metrics.dnsObserved)
                 Metric("Permitidas", metrics.dnsAllowed)
-                Metric("Rechazadas / malformadas", metrics.dnsRejected, metrics.malformedDns)
-                Metric("Caché aciertos / fallos", metrics.cacheHits, metrics.cacheMisses)
             }
         }
         Card {
@@ -220,7 +221,7 @@ fun IntegratedDiagnosticsScreen(
         Card {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Prueba DNS/TCP upstream real", style = MaterialTheme.typography.titleMedium)
-                Text("Envía una consulta DNS de prueba (example.com, tipo A) por TCP/53 a los resolvers configurados, usando los mismos sockets protegidos del servicio VPN. No crea otra VPN ni modifica las reglas. Esta prueba mide la salida upstream; no inyecta una conexión TCP/53 entrante por el TUN ni valida por sí sola smoltcp. Por eso sus contadores pueden permanecer en cero.")
+                Text("Envía una consulta DNS de prueba (example.com, tipo A) por TCP/53 a los resolvers configurados, usando los mismos sockets protegidos del servicio VPN. No crea otra VPN ni modifica las reglas. Esta prueba mide la salida upstream; no inyecta una conexión TCP/53 entrante por el TUN. smoltcp solo se ejecuta en el banco nativo de pruebas.")
                 Button(
                     enabled = vpnRunning && !tcpProbeRunning,
                     onClick = {

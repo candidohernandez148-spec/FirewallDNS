@@ -46,6 +46,18 @@ class FlowConnectionMonitorTest {
         assertEquals(1, monitor.snapshot().active)
     }
 
+    @Test fun aggregateSnapshotSkipsFlowMaterializationButKeepsCounters() {
+        val monitor = FlowConnectionMonitor(maxActiveFlows = 2)
+        val decision = NetworkFlowDecision(PolicyAction.ALLOW, "allowed")
+        assertTrue(monitor.open(identity("aggregate-flow"), decision, 10))
+
+        val aggregate = monitor.snapshot(includeFlows = false)
+        assertEquals(1, aggregate.active)
+        assertEquals(1L, aggregate.opened)
+        assertTrue(aggregate.flows.isEmpty())
+        assertEquals(1, monitor.snapshot().flows.size)
+    }
+
     @Test fun failClosedStackRejectionsAreCountedWithoutInventingAFlow() {
         val monitor = FlowConnectionMonitor()
         monitor.recordBlocked()

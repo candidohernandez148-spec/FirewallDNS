@@ -150,7 +150,11 @@ class FlowConnectionMonitor(
         return removed
     }
 
-    fun snapshot(): FlowMonitorSnapshot = FlowMonitorSnapshot(
+    /**
+     * Returns aggregate counters without materializing/sorting active-flow details
+     * when called from packet-stack callbacks. UI drill-downs may request details.
+     */
+    fun snapshot(includeFlows: Boolean = true): FlowMonitorSnapshot = FlowMonitorSnapshot(
         active = active.size,
         opened = opened.sum(),
         closed = closed.sum(),
@@ -158,6 +162,10 @@ class FlowConnectionMonitor(
         bytesSent = sent.sum(),
         bytesReceived = received.sum(),
         capacityRejected = capacityRejected.sum(),
-        flows = active.values.map { it.snapshot() }.sortedBy { it.startedAtEpochMillis },
+        flows = if (includeFlows) {
+            active.values.map { it.snapshot() }.sortedBy { it.startedAtEpochMillis }
+        } else {
+            emptyList()
+        },
     )
 }
