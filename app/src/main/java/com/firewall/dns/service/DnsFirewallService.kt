@@ -109,6 +109,7 @@ class DnsFirewallService : VpnService() {
         val client: DnsUpstreamFailoverClient,
         val resolvers: List<String>,
         val physicalNetwork: android.net.Network?,
+        val linkMtu: Int,
     )
     /**
      * Client and resolver labels are one immutable publication. Keeping them
@@ -867,6 +868,7 @@ class DnsFirewallService : VpnService() {
         // a network handover must never pair DNS from Wi-Fi with sockets on cellular.
         val networkSnapshot = NetworkDns.activeSnapshot(this)
         val physicalNetwork = networkSnapshot.network
+        val linkMtu = currentPhysicalLinkMtu(physicalNetwork)
         if (selectedPhysicalNetwork != physicalNetwork) physicalNetworkGeneration.incrementAndGet()
         selectedPhysicalNetwork = physicalNetwork
         // Android asks VpnService to publish explicitly bound underlying networks.
@@ -884,7 +886,15 @@ class DnsFirewallService : VpnService() {
         if (current != null &&
             discovered == current.resolvers &&
             physicalNetwork == current.physicalNetwork
-        ) return
+        ) {
+            if (linkMtu != current.linkMtu) {
+                activeTunSession?.firestack?.let { stack ->
+                    if (!stack.updateLinkMtu(linkMtu)) FirewallDnsTrafficMetrics.upstreamFailure()
+                }
+                upstreamSnapshot = current.copy(linkMtu = linkMtu)
+            }
+            return
+        }
         val replacement = runCatching {
             runtime.createDnsFailover(
                 upstreams = discovered.map { address ->
@@ -896,12 +906,12 @@ class DnsFirewallService : VpnService() {
 
         // Publish client, resolver labels and physical Network as one generation.
         // In-flight exchanges keep the old client pinned to its original Network.
-        upstreamSnapshot = UpstreamSnapshot(replacement, discovered.toList(), physicalNetwork)
+        upstreamSnapshot = UpstreamSnapshot(replacement, discovered.toList(), physicalNetwork, linkMtu)
         FirewallDnsTrafficMetrics.upstreamResolversChanged(discovered)
         // Rebind Firestack's default DNS transport to the resolver from this exact
         // physical-network generation without restarting the TUN/netstack.
         activeTunSession?.firestack?.let { stack ->
-            if (!stack.updatePhysicalNetworkResolver(discovered.joinToString(","), currentPhysicalLinkMtu(physicalNetwork))) {
+            if (!stack.updatePhysicalNetworkResolver(discovered.joinToString(","), linkMtu)) {
                 FirewallDnsTrafficMetrics.upstreamFailure()
             }
         }
