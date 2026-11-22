@@ -33,6 +33,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.runBlocking
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -223,7 +224,12 @@ class DnsFirewallService : VpnService() {
         return builder
     }
 
-    private fun startVpn() = synchronized(vpnLock) {
+    private fun startVpn() {
+        // The first policy snapshot must include the persisted downloaded lists.
+        // Waiting here prevents a startup race where the TUN starts with seed rules
+        // before the asynchronous disk load publishes the saved blocklist.
+        runBlocking(Dispatchers.IO) { FirewallRepository.awaitInitialBlocklistLoad() }
+        synchronized(vpnLock) {
         closeInterfaceSync()
         val tunDescriptor = buildVpnBuilder().establish()
         if (tunDescriptor == null) {
@@ -309,6 +315,7 @@ class DnsFirewallService : VpnService() {
         // Reconcile any physical-network change that happened during startup.
         refreshSharedUpstream()
         updateForegroundNotification()
+        }
     }
 
     private fun installSharedEngine() {
