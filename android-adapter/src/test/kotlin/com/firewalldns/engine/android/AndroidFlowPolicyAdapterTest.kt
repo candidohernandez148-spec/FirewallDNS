@@ -11,6 +11,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AndroidFlowPolicyAdapterTest {
+    @Test fun mapsBlockedDnsToFirestackBlockAllTransportNotFlowBlockProxy() {
+        assertEquals("BlockAll", dnsTransportForPolicyAction(PolicyAction.BLOCK))
+        assertEquals("Default", dnsTransportForPolicyAction(PolicyAction.OBSERVE))
+        assertEquals("Default", dnsTransportForPolicyAction(PolicyAction.ALLOW))
+    }
+
     @Test fun curatedDomainThreatCanBlockTheAssociatedNetworkFlow() {
         val engine = EngineRuntime()
         val domainDecision = engine.evaluateDomain("ads.doubleclick.net", "com.example.app", 100)
