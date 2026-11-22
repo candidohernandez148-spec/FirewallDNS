@@ -960,7 +960,7 @@ private fun LiveEngineOperations(
             "Muestras de latencia" to metrics.dnsResponseLatencySamples,
             "Latencia media (ms)" to if (metrics.dnsResponseLatencySamples > 0L)
                 metrics.dnsResponseLatencyMsTotal / metrics.dnsResponseLatencySamples else 0L,
-            "Último código de estado" to metrics.dnsResponseLastStatus,
+            "Último código de estado (-1 = sin dato)" to metrics.dnsResponseLastStatus,
         ), "Callback real OnResponse de Firestack. Puede emitirse más de una vez por consulta; cuenta resúmenes, no consultas únicas ni intentos por socket upstream.")
         LiveActiveFlows(metrics.activeFlows)
         LiveMetricSection("PROTECCIÓN DE SOCKETS FIRESTACK", listOf(
