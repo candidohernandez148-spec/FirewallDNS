@@ -155,6 +155,42 @@ fun SocDashboardScreen(
             }
         }
 
+        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Protocolos del túnel", Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    val sampleAge = if (tunMetrics.nativeStatsUpdatedAtEpochMs > 0L)
+                        ((System.currentTimeMillis() - tunMetrics.nativeStatsUpdatedAtEpochMs).coerceAtLeast(0L) / 1000L)
+                    else null
+                    Text(
+                        when {
+                            sampleAge == null -> "SIN MUESTRA"
+                            sampleAge > 35L -> "DATOS ANTIGUOS"
+                            else -> "SNAPSHOT · ${sampleAge}s"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (sampleAge != null && sampleAge <= 35L)
+                            MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TunMetric("IP RX / TX", "${tunMetrics.ipPacketsReceived} / ${tunMetrics.ipPacketsSent}", Modifier.weight(1f))
+                    TunMetric("TCP RX / TX", "${tunMetrics.tcpSegmentsReceived} / ${tunMetrics.tcpSegmentsSent}", Modifier.weight(1f))
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TunMetric("UDP RX / TX", "${tunMetrics.udpPacketsReceived} / ${tunMetrics.udpPacketsSent}", Modifier.weight(1f))
+                    TunMetric("ICMPv4 RX / TX", "${tunMetrics.icmpV4Received} / ${tunMetrics.icmpV4Sent}", Modifier.weight(1f))
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TunMetric("ICMPv6 RX / TX", "${tunMetrics.icmpV6Received} / ${tunMetrics.icmpV6Sent}", Modifier.weight(1f))
+                    TunMetric("TCP establecidos", tunMetrics.tcpEstablished.toString(), Modifier.weight(1f))
+                }
+                Text("Estadísticas acumuladas de Firestack/gVisor. No se suman entre capas ni equivalen a paquetes individuales animados.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
         if (!operational || !blocklistsDownloaded || threatMatches > 0) {
             Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
@@ -203,9 +239,13 @@ fun SocDashboardScreen(
 }
 
 @Composable
-private fun TunMetric(label: String, value: Long, modifier: Modifier = Modifier) {
+private fun TunMetric(label: String, value: Long, modifier: Modifier = Modifier) =
+    TunMetric(label, value.toString(), modifier)
+
+@Composable
+private fun TunMetric(label: String, value: String, modifier: Modifier = Modifier) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Text(value.toString(), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1)
+        Text(value, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1)
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
