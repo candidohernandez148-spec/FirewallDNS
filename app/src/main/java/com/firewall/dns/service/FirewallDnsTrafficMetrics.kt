@@ -8,7 +8,7 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Aggregate-only counters for the production DNS-only TUN path.
+ * Aggregate-only counters for the production Firestack TUN and DNS policy paths.
  *
  * No packet bytes, IP addresses, domains, UIDs, or package names are retained.
  * Counters are process-local and can be sampled without blocking packet workers.
