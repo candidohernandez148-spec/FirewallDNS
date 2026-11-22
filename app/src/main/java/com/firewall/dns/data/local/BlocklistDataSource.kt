@@ -113,6 +113,8 @@ class BlocklistDataSource(context: Context) {
 
         val blocked = HashSet<String>(defaultDomains)
         val exceptions = HashSet<String>()
+        val importantBlocked = HashSet<String>()
+        val importantExceptions = HashSet<String>()
         val categoryDomains = ThreatFeedCategory.values().associateWith { HashSet<String>() }.toMutableMap()
         var lastError: Exception? = null
         val completedSources = HashSet<String>()
@@ -183,6 +185,8 @@ class BlocklistDataSource(context: Context) {
 
                 val sourceBlocked = HashSet<String>()
                 val sourceExceptions = HashSet<String>()
+                val sourceImportantBlocked = HashSet<String>()
+                val sourceImportantExceptions = HashSet<String>()
                 var lineCount = 0
                 var parsedRuleCount = 0
                 String(payload, StandardCharsets.UTF_8).lineSequence().forEach { line ->
@@ -191,7 +195,13 @@ class BlocklistDataSource(context: Context) {
                     if (line.length > MAX_LINE_CHARS) throw IllegalStateException("La lista contiene una línea demasiado larga")
                     RuleEvaluator.parseAdblockLineEntries(line).forEach { parsed ->
                         parsedRuleCount++
-                        if (parsed.isException) sourceExceptions.add(parsed.domain) else sourceBlocked.add(parsed.domain)
+                        if (parsed.isException) {
+                            sourceExceptions.add(parsed.domain)
+                            if (parsed.isImportant) sourceImportantExceptions.add(parsed.domain)
+                        } else {
+                            sourceBlocked.add(parsed.domain)
+                            if (parsed.isImportant) sourceImportantBlocked.add(parsed.domain)
+                        }
                     }
                 }
                 ThreatFeedIntegrityPolicy.validateSource(payload.size, parsedRuleCount)?.let { message ->
@@ -202,6 +212,8 @@ class BlocklistDataSource(context: Context) {
                 sourceDigests += ThreatFeedIntegrityPolicy.sha256(payload)
                 blocked.addAll(sourceBlocked)
                 exceptions.addAll(sourceExceptions)
+                importantBlocked.addAll(sourceImportantBlocked)
+                importantExceptions.addAll(sourceImportantExceptions)
                 val category = ThreatFeedCatalog.categoryForUrl(targetUrl)
                 if (category != ThreatFeedCategory.GENERAL) {
                     categoryDomains.getValue(category).addAll(sourceBlocked)
@@ -234,12 +246,20 @@ class BlocklistDataSource(context: Context) {
                     }
                 }
             }
-            blocked.sorted().forEach { domain ->
+            (blocked - importantBlocked).sorted().forEach { domain ->
                 writer.write("||$domain^")
                 writer.newLine()
             }
-            exceptions.sorted().forEach { domain ->
+            importantBlocked.sorted().forEach { domain ->
+                writer.write("||$domain^\u0024important")
+                writer.newLine()
+            }
+            (exceptions - importantExceptions).sorted().forEach { domain ->
                 writer.write("@@||$domain^")
+                writer.newLine()
+            }
+            importantExceptions.sorted().forEach { domain ->
+                writer.write("@@||$domain^\u0024important")
                 writer.newLine()
             }
             writer.flush()
@@ -263,6 +283,8 @@ class BlocklistDataSource(context: Context) {
                 blocked = blocked,
                 exceptions = exceptions,
                 threatDomainsByCategory = categoryDomains.mapValues { it.value.toSet() },
+                importantBlocked = importantBlocked,
+                importantExceptions = importantExceptions,
                 summary = summary
             )
         )
