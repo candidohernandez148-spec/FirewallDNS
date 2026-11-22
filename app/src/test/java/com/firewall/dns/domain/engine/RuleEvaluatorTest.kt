@@ -87,18 +87,14 @@ class RuleEvaluatorTest {
 
 
     @Test
-    fun parsesDnsSafeDomainRulesAndImportantOption() {
+    fun parsesDnsSafeDomainRulesWithoutContextualOptions() {
         assertEquals(
             RuleEvaluator.AdblockParseResult("tracker.example", false),
             RuleEvaluator.parseAdblockLine("||tracker.example^"),
         )
         assertEquals(
-            RuleEvaluator.AdblockParseResult("tracker.example", false),
-            RuleEvaluator.parseAdblockLine("||tracker.example^$important"),
-        )
-        assertEquals(
             RuleEvaluator.AdblockParseResult("tracker.example", true),
-            RuleEvaluator.parseAdblockLine("@@||tracker.example^$important"),
+            RuleEvaluator.parseAdblockLine("@@||tracker.example^"),
         )
         assertEquals(
             RuleEvaluator.AdblockParseResult("tracker.example", false),
@@ -127,6 +123,8 @@ class RuleEvaluatorTest {
     @Test
     fun rejectsAdblockOptionsThatCannotBeEnforcedByDnsOnlyFiltering() {
         listOf(
+            "||tracker.example^$important",
+            "@@||tracker.example^$important",
             "||tracker.example^$third-party",
             "||tracker.example^$domain=publisher.example",
             "||tracker.example^$badfilter",
