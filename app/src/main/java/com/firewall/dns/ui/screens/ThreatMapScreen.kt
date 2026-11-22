@@ -890,21 +890,54 @@ private fun LiveEngineOperations(
             Text("ACTIVIDAD OPERATIVA EN TIEMPO REAL", style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold)
             Text(
-                if (vpnRunning) "Lectura de contadores del servicio activo. Los valores son acumulados reales desde que se inició el proceso."
+                if (vpnRunning) "DNS y flujos se actualizan con el servicio; los contadores nativos TUN/IP/TCP/UDP/ICMP se consultan desde Firestack (caché máxima aproximada: 30 s)."
                 else "Servicio detenido. Se muestran los últimos contadores disponibles; no se simula actividad.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        LiveMetricSection("TRÁFICO TUN · PAQUETES", listOf(
-            "Paquetes leídos" to metrics.packetsRead,
-            "Paquetes escritos" to metrics.packetsWritten,
-            "IPv4 recibidos" to metrics.ipv4Packets,
-            "IPv6 recibidos" to metrics.ipv6Packets,
-            "Errores de escritura" to metrics.writeErrors,
-            "Rechazos de cola" to metrics.queueRejected,
-            "Rechazos de parser" to metrics.parserRejected,
-            "Transporte no compatible" to metrics.unsupportedTransport,
+        LiveMetricSection("TRÁFICO TUN · INTERFAZ NATIVA", listOf(
+            "Paquetes recibidos por TUN" to metrics.packetsRead,
+            "Paquetes enviados por TUN" to metrics.packetsWritten,
+            "Paquetes inválidos L4" to metrics.tunInvalidPackets,
+            "Protocolos L3 desconocidos" to metrics.tunUnknownL3Packets,
+            "Protocolos L4 desconocidos" to metrics.tunUnknownL4Packets,
+            "Descartes de interfaz" to metrics.tunDrops,
+            "Errores de escritura registrados por host" to metrics.writeErrors,
+            "Rechazos de cola del host" to metrics.queueRejected,
+            "Rechazos del parser del host" to metrics.parserRejected,
+        ), "Bytes RX ${metrics.tunRxBytes} · TX ${metrics.tunTxBytes}. Firestack no separa aquí el total por IPv4 e IPv6.")
+        LiveMetricSection("CAPA IP Y REENVÍO", listOf(
+            "Paquetes IP recibidos" to metrics.ipPacketsReceived,
+            "Paquetes IP enviados" to metrics.ipPacketsSent,
+            "Fragmentos IP inválidos" to metrics.fragmentsDroppedInvalid,
+            "Paquetes IP inválidos" to metrics.ipInvalidPackets,
+            "Errores IP al recibir" to metrics.ipReceiveErrors,
+            "Errores IP al enviar" to metrics.ipSendErrors,
+            "Descartes de forwarding" to metrics.ipForwardDrops,
+            "Errores de forwarding" to metrics.ipForwardErrors,
+        ))
+        LiveMetricSection("PROTOCOLO TCP · NATIVO", listOf(
+            "Segmentos recibidos" to metrics.tcpSegmentsReceived,
+            "Segmentos enviados" to metrics.tcpSegmentsSent,
+            "Conexiones establecidas" to metrics.tcpEstablished,
+            "Fallos al conectar" to metrics.tcpConnectFailures,
+            "Retransmisiones" to metrics.tcpRetransmits,
+            "Timeouts" to metrics.tcpTimeouts,
+            "Descartes TCP" to metrics.tcpDrops,
+        ))
+        LiveMetricSection("PROTOCOLO UDP · NATIVO", listOf(
+            "Datagramas recibidos" to metrics.udpPacketsReceived,
+            "Datagramas enviados" to metrics.udpPacketsSent,
+            "Errores al recibir" to metrics.udpReceiveErrors,
+            "Errores al enviar" to metrics.udpSendErrors,
+            "Descartes UDP" to metrics.udpDrops,
+        ))
+        LiveMetricSection("PROTOCOLO ICMP · NATIVO", listOf(
+            "ICMPv4 recibidos" to metrics.icmpV4Received,
+            "ICMPv4 enviados" to metrics.icmpV4Sent,
+            "ICMPv6 recibidos" to metrics.icmpV6Received,
+            "ICMPv6 enviados" to metrics.icmpV6Sent,
         ))
         LiveMetricSection("INSPECCIÓN DNS Y DECISIONES", listOf(
             "Consultas DNS UDP" to metrics.dnsUdpPackets,
