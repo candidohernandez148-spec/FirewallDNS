@@ -928,10 +928,10 @@ private fun LiveEngineOperations(
             "Descartes UDP" to metrics.udpDrops,
         ), "No se expone ErrSnd: la versión Firestack revisada asigna incorrectamente ese campo.")
         LiveMetricSection("ICMP · IPv4 / IPv6", listOf(
-            "ICMPv4 recibidos" to metrics.icmpV4Received,
-            "ICMPv4 enviados" to metrics.icmpV4Sent,
-            "ICMPv6 recibidos" to metrics.icmpV6Received,
-            "ICMPv6 enviados" to metrics.icmpV6Sent,
+            "ICMPv4 · Echo replies recibidos" to metrics.icmpV4Received,
+            "ICMPv4 · Echo requests enviados" to metrics.icmpV4Sent,
+            "ICMPv6 · Echo replies recibidos" to metrics.icmpV6Received,
+            "ICMPv6 · Echo requests enviados" to metrics.icmpV6Sent,
         ), "Los contadores ICMP sí están separados por familia IP. Los contadores TCP/UDP/IP generales no ofrecen esa separación.")
         LiveMetricSection("INSPECCIÓN DNS Y DECISIONES", listOf(
             "Evaluaciones DNS" to metrics.dnsPolicyDecisions,
