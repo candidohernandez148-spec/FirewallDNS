@@ -3,6 +3,7 @@ package com.firewalldns.engine.android
 import com.firewalldns.engine.core.FlowProtocol
 import com.firewalldns.engine.core.NetworkFlowDecision
 import com.firewalldns.engine.core.NetworkFlowRequest
+import com.firewalldns.engine.core.NetworkFlowDecision
 import com.firewalldns.engine.core.PolicyAction
 import com.firewalldns.engine.core.RuleSource
 import com.firewalldns.engine.monitor.FlowIdentity
@@ -28,6 +29,7 @@ class AndroidFlowPolicyAdapter(
         sourcePort: Int,
         destinationAddress: String,
         destinationPort: Int,
+        domainDecision: NetworkFlowDecision? = null,
     ): NetworkFlowDecision {
         require(flowId.isNotBlank())
         val protocol = when (protocolNumber) {
@@ -49,16 +51,20 @@ class AndroidFlowPolicyAdapter(
             destinationAddress = destinationAddress,
             destinationPort = destinationPort,
         )
-        val decision = if (uid != null && runCatching { isUidBlocked(uid) }.getOrDefault(false)) {
-            NetworkFlowDecision(
+        val flowDecision = engine.evaluateFlow(request, nowEpochMillis())
+        val appBlocked = uid != null && runCatching { isUidBlocked(uid) }.getOrDefault(false)
+        val decision = when {
+            appBlocked -> NetworkFlowDecision(
                 action = PolicyAction.BLOCK,
                 reason = "app_uid_blocked",
                 ruleId = "app-uid-$uid",
                 source = RuleSource.USER,
                 policyRevision = engine.flowPolicyRevision,
             )
-        } else {
-            engine.evaluateFlow(request, nowEpochMillis())
+            flowDecision.action == PolicyAction.BLOCK -> flowDecision
+            domainDecision?.action == PolicyAction.BLOCK -> domainDecision
+            domainDecision?.action == PolicyAction.OBSERVE -> domainDecision
+            else -> flowDecision
         }
         engine.flowMonitor.open(
             FlowIdentity(
