@@ -328,7 +328,7 @@ class DnsFirewallService : VpnService() {
     private fun currentPhysicalLinkMtu(network: android.net.Network? = selectedPhysicalNetwork): Int {
         val connectivity = getSystemService(android.net.ConnectivityManager::class.java)
         val reported = network?.let { connectivity?.getLinkProperties(it)?.mtu } ?: 0
-        return reported.takeIf { it in 576..9000 } ?: 1500
+        return reported.takeIf { it in 576..9000 }?.coerceAtLeast(1280) ?: 1500
     }
 
     private fun buildVpnBuilder(fullTunnel: Boolean): Builder {
