@@ -30,9 +30,9 @@ object NetworkDns {
     )
 
     private fun isUsableDns(addr: InetAddress, allowIpv6: Boolean): Boolean {
-        if (addr.isLoopbackAddress || addr.isAnyLocalAddress) return false
+        if (addr.isLoopbackAddress || addr.isAnyLocalAddress || addr.isLinkLocalAddress) return false
         if (addr is Inet6Address) {
-            if (!allowIpv6 || addr.isLinkLocalAddress || addr.isSiteLocalAddress) return false
+            if (!allowIpv6 || addr.isSiteLocalAddress) return false
             // ULA resolvers (fc00::/7) are valid on private Wi-Fi networks;
             // keep them because sockets are pinned to the exact physical Network.
         }
