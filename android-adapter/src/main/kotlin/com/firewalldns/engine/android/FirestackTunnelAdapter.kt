@@ -74,6 +74,7 @@ class FirestackTunnelAdapter private constructor(
             require(mtu in 576..9000) { "Invalid TUN MTU" }
             val tunReference = ParcelFileDescriptor.dup(tunDescriptor.fileDescriptor)
             var bridge: FirewallDNSFirestackBridge? = null
+            var createdTunnel: Tunnel? = null
             try {
                 bridge = FirewallDNSFirestackBridge(
                     vpnService = vpnService,
@@ -99,6 +100,7 @@ class FirestackTunnelAdapter private constructor(
                     defaultDns,
                     bridge,
                 )
+                createdTunnel = tunnel
                 check(tunnel.isConnected) { "Firestack returned a disconnected TUN stack" }
                 return FirestackTunnelAdapter(
                     vpnService,
@@ -108,6 +110,7 @@ class FirestackTunnelAdapter private constructor(
                     formatHostPort(resolver),
                 )
             } catch (error: Throwable) {
+                runCatching { createdTunnel?.disconnect() }
                 runCatching { bridge?.close() }
                 runCatching { tunReference.close() }
                 throw error
