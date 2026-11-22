@@ -10,7 +10,6 @@ import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
 import android.net.VpnService
 import android.os.Build
-import android.os.Bundle
 import android.os.ParcelFileDescriptor
 import android.os.Process
 import androidx.core.app.NotificationCompat
@@ -83,90 +82,6 @@ class DnsFirewallService : VpnService() {
     private val networkHandoverRecoveryScheduled = AtomicBoolean(false)
 
     companion object {
-        @Volatile private var diagnosticInstance: DnsFirewallService? = null
-
-        /**
-         * Runs the forced upstream TCP diagnostic from the in-app diagnostics screen
-         * or the legacy signature-protected provider. Call from an I/O thread, never
-         * from the TUN packet loop.
-         */
-        fun runDiagnosticTcpProbe(query: ByteArray): Bundle {
-            if (query.size !in 12..65_535) {
-                return Bundle().apply {
-                    putBoolean("approved", false)
-                    putString("detail", "La consulta DNS de diagnóstico tiene una longitud inválida.")
-                }
-            }
-            val service = diagnosticInstance
-            val snapshot = service?.upstreamSnapshot
-            val upstream = snapshot?.client
-            if (service == null || !service.isRunning || snapshot == null || upstream == null) {
-                return Bundle().apply {
-                    putBoolean("approved", false)
-                    putString("detail", "El servicio FirewallDNS o sus resolvers protegidos no están activos.")
-                }
-            }
-            val resolverSnapshot = snapshot.resolvers
-            val attemptDetails = mutableListOf<String>()
-            return when (val result = upstream.exchangeTcp(
-                query,
-                DnsExchangeCancellation(),
-            ) { attempt ->
-                // The forced diagnostic path bypasses normal DNS processing, so
-                // record the outcome and duration for each physical resolver.
-                val resolver = resolverSnapshot.getOrNull(attempt.resolverIndex)
-                    ?: "resolver#${attempt.resolverIndex + 1}"
-                val elapsedMs = TimeUnit.NANOSECONDS.toMillis(attempt.elapsedNanos)
-                val outcome = when (val attemptResult = attempt.result) {
-                    is DnsUpstreamResult.Success -> {
-                        FirewallDnsTrafficMetrics.upstreamSuccess()
-                        "OK ${attemptResult.response.transport}"
-                    }
-                    is DnsUpstreamResult.Failure -> {
-                        FirewallDnsTrafficMetrics.upstreamAttemptFailure(attemptResult.reason)
-                        buildString {
-                            append(attemptResult.reason)
-                            attemptResult.detail?.let { append(" [").append(it).append(']') }
-                        }
-                    }
-                    DnsUpstreamResult.Cancelled -> "cancelada"
-                }
-                attemptDetails += "$resolver: $outcome (${elapsedMs} ms)"
-            }) {
-                is DnsUpstreamResult.Success -> Bundle().apply {
-                    putBoolean(
-                        "approved",
-                        result.response.transport == com.firewalldns.engine.dns.DnsUpstreamTransport.TCP,
-                    )
-                    putString(
-                        "detail",
-                        "Transporte=${result.response.transport}; respuesta DNS validada. " +
-                            "Intentos: ${attemptDetails.joinToString("; ")}",
-                    )
-                }
-                is DnsUpstreamResult.Failure -> {
-                    FirewallDnsTrafficMetrics.upstreamFailure()
-                    Bundle().apply {
-                        putBoolean("approved", false)
-                        putString(
-                            "detail",
-                            "DNS/TCP upstream falló: ${result.reason}. " +
-                                "Intentos por resolver: ${attemptDetails.joinToString("; ")}",
-                        )
-                    }
-                }
-                DnsUpstreamResult.Cancelled -> {
-                    FirewallDnsTrafficMetrics.upstreamCancelled()
-                    Bundle().apply {
-                        putBoolean("approved", false)
-                        putString(
-                            "detail",
-                            "La prueba DNS/TCP fue cancelada. Intentos: ${attemptDetails.joinToString("; ")}",
-                        )
-                    }
-                }
-            }
-        }
 
         const val ACTION_START = "com.firewall.dns.action.START_TUN"
         const val ACTION_STOP = "com.firewall.dns.action.STOP_TUN"
@@ -189,7 +104,6 @@ class DnsFirewallService : VpnService() {
 
     override fun onCreate() {
         super.onCreate()
-        diagnosticInstance = this
         FirewallRepository.init(applicationContext)
         connectivityManager = getSystemService(ConnectivityManager::class.java)
         registerPhysicalNetworkCallback()
