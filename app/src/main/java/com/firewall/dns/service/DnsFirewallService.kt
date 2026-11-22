@@ -23,6 +23,7 @@ import com.firewall.dns.domain.engine.DnsPacketEngine
 import com.firewalldns.engine.android.AndroidEngineRuntime
 import com.firewalldns.engine.android.AndroidFlowPolicyAdapter
 import com.firewalldns.engine.android.FirestackTunnelAdapter
+import com.firewalldns.engine.android.FirestackDnsResponseSummary
 import com.firewalldns.engine.core.PolicyAction
 import com.firewalldns.engine.dns.DnsUpstreamConfig
 import com.firewalldns.engine.dns.DnsUpstreamFailoverClient
