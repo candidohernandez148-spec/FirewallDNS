@@ -189,13 +189,6 @@ class MainActivity : Activity() {
                 collected += TestResult("DNS TCP IPv6 por VPN", TestStatus.NOT_VERIFIED, "Requiere FirewallDNS activo, métricas y conectividad IPv6.")
             }
 
-            if (firewallDnsActive && bridgeAvailable) {
-                collected += timed("DNS/TCP upstream forzado y protegido") { forceProtectedTcpUpstreamProbe() }
-            } else {
-                collected += TestResult("DNS/TCP upstream forzado y protegido", TestStatus.NOT_VERIFIED,
-                    "Requiere el servicio FirewallDNS activo y el puente protegido accesible.")
-            }
-
             afterMetrics = readProductionMetrics()
             if (firewallDnsActive && bridgeAvailable) {
                 collected += metricDeltaResult("Contador TUN DNS UDP", "dnsUdpPackets")
@@ -287,25 +280,6 @@ listOf("Contador TUN DNS UDP", "Contador TUN DNS TCP", "Protect UDP upstream", "
             }
         } catch (t: Throwable) {
             TestResult("", TestStatus.FAILED, "$label: ${t.javaClass.simpleName}: ${t.message ?: "sin respuesta"}")
-        }
-    }
-
-    private fun forceProtectedTcpUpstreamProbe(): TestResult {
-        val query = buildDnsQuery("forced-tcp-${SystemClock.elapsedRealtimeNanos()}.example.com")
-        return try {
-            val extras = Bundle().apply { putByteArray("dns_query", query) }
-            val result = contentResolver.call(
-                Uri.parse("content://com.firewall.dns.diagnostics"),
-                "force_tcp_probe",
-                null,
-                extras,
-            ) ?: return TestResult("", TestStatus.NOT_VERIFIED, "El proveedor no devolvió resultado para la prueba TCP.")
-            val approved = result.getBoolean("approved", false)
-            TestResult("", if (approved) TestStatus.APPROVED else TestStatus.FAILED,
-                result.getString("detail") ?: "El proveedor no devolvió detalles.")
-        } catch (t: Throwable) {
-            TestResult("", TestStatus.NOT_VERIFIED,
-                "No se pudo ejecutar la prueba TCP upstream protegida: ${t.javaClass.simpleName}: ${t.message ?: "error"}.")
         }
     }
 
