@@ -1,5 +1,9 @@
 package com.firewalldns.engine.runtime
 
+import com.firewalldns.engine.core.NetworkFlowDecision
+import com.firewalldns.engine.core.NetworkFlowPolicyEngine
+import com.firewalldns.engine.core.NetworkFlowRequest
+import com.firewalldns.engine.core.NetworkFlowRule
 import com.firewalldns.engine.core.PolicyEngine
 import com.firewalldns.engine.core.PolicyRule
 import com.firewalldns.engine.dns.DnsEvaluation
@@ -22,6 +26,7 @@ class EngineRuntime(
     val monitor: EngineMonitor = EngineMonitor(),
 ) {
     private val policyEngine = PolicyEngine(initialRules)
+    private val networkFlowPolicy = NetworkFlowPolicyEngine()
     private val dnsAdapter = DnsPolicyAdapter(
         policyEngine = policyEngine,
         threatAnalyzer = threatAnalyzer,
@@ -31,10 +36,24 @@ class EngineRuntime(
     val policyRevision: Long
         get() = policyEngine.revision
 
+    val flowPolicyRevision: Long
+        get() = networkFlowPolicy.revision
+
     /** Atomically replaces the complete rules snapshot. */
     fun replaceRules(rules: Collection<PolicyRule>) {
         policyEngine.replaceRules(rules)
     }
+
+    /** Atomically replaces TCP/UDP/ICMP flow rules used by the TUN stack adapter. */
+    fun replaceFlowRules(rules: Collection<NetworkFlowRule>) {
+        networkFlowPolicy.replaceRules(rules)
+    }
+
+    /** Evaluates a validated network flow without disk or socket I/O. */
+    fun evaluateFlow(
+        request: NetworkFlowRequest,
+        nowEpochMillis: Long = System.currentTimeMillis(),
+    ): NetworkFlowDecision = networkFlowPolicy.evaluate(request, nowEpochMillis)
 
     /** Evaluates one DNS packet; OBSERVE always forwards and BLOCK synthesizes NXDOMAIN. */
     fun evaluateDns(
