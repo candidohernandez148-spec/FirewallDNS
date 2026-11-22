@@ -378,6 +378,7 @@ class DnsFirewallService : VpnService() {
                     physicalNetworkProvider = { selectedPhysicalNetwork },
                     resolvePackage = ::resolvePackageName,
                     isUidBlocked = AppFirewallManager::isUidBlocked,
+                    onFlowSnapshot = FirewallDnsTrafficMetrics::flowSnapshot,
                     onDnsDecision = { domain, qType, uid, reason, action ->
                         when (action) {
                             PolicyAction.BLOCK -> FirewallDnsTrafficMetrics.dnsBlocked()
@@ -422,6 +423,7 @@ class DnsFirewallService : VpnService() {
             firestack = firestack,
         )
         activeTunSession = session
+        if (firestack != null) FirewallDnsTrafficMetrics.firestackStarted()
 
         if (firestack != null) {
             // Firestack owns packet ingress/egress on the duplicated TUN descriptor.
@@ -972,6 +974,7 @@ class DnsFirewallService : VpnService() {
 
             // Stop the user-space stack before closing either reference to the TUN fd.
             session.firestack?.close()
+            if (session.firestack != null) FirewallDnsTrafficMetrics.firestackStopped()
             synchronized(writeLock) {
                 try { session.input?.close() } catch (_: IOException) {}
                 try { session.output?.close() } catch (_: IOException) {}
