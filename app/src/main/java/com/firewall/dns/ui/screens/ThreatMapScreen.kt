@@ -154,7 +154,7 @@ fun ThreatMapScreen(
             item { SocPolicyDiagnostics(metrics = tunMetrics) }
             item { SocTunnelPath(metrics = tunMetrics, vpnRunning = vpnRunning) }
             item { LiveMapTelemetry(metrics = tunMetrics, logs = logs, vpnRunning = vpnRunning) }
-            item { SocAppDnsActivity(logs = logs) }
+            item { SocAppDnsActivity(logs = logs, flows = tunMetrics.activeFlows) }
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     MindMapAction("Motor", "red", "⚙") { section = it }
@@ -608,37 +608,50 @@ private fun SocKpi(
 }
 
 @Composable
-private fun SocAppDnsActivity(logs: List<DnsLogEntry>) {
+private fun SocAppDnsActivity(
+    logs: List<DnsLogEntry>,
+    flows: List<com.firewalldns.engine.monitor.ActiveFlowSnapshot>,
+) {
     data class UidActivity(
         val uid: Int,
         val appName: String,
         val blocked: Int,
         val observed: Int,
         val allowed: Int,
-        val total: Int
+        val total: Int,
+        val activeConnections: Int,
+        val bytesSent: Long,
+        val bytesReceived: Long,
     )
-    val appRows = logs.asSequence()
-        .filter { it.uid >= 0 }
-        .groupBy { it.uid }
-        .map { (uid, events) ->
-            UidActivity(
-                uid = uid,
-                appName = events.firstOrNull { it.appName.isNotBlank() }?.appName ?: "Paquete no resuelto",
-                blocked = events.count { it.decisionAction == "BLOCK" || it.isBlocked },
-                observed = events.count { it.decisionAction == "OBSERVE" },
-                allowed = events.count { it.decisionAction != "OBSERVE" && it.decisionAction != "BLOCK" && !it.isBlocked },
-                total = events.size
-            )
-        }
-        .sortedByDescending { it.total }
-        .take(6)
-    val unknownUidCount = logs.count { it.uid < 0 }
+    val logsByUid = logs.filter { it.uid >= 0 }.groupBy { it.uid }
+    val flowsByUid = flows.filter { it.identity.appUid != null }.groupBy { it.identity.appUid!! }
+    val knownUids = (logsByUid.keys + flowsByUid.keys).distinct()
+    val appRows = knownUids.map { uid ->
+        val events = logsByUid[uid].orEmpty()
+        val appFlows = flowsByUid[uid].orEmpty()
+        UidActivity(
+            uid = uid,
+            appName = events.firstOrNull { it.appName.isNotBlank() }?.appName
+                ?: appFlows.firstOrNull { !it.identity.appPackage.isNullOrBlank() }?.identity?.appPackage
+                ?: "Aplicación sin nombre resuelto",
+            blocked = events.count { it.decisionAction == "BLOCK" || it.isBlocked },
+            observed = events.count { it.decisionAction == "OBSERVE" },
+            allowed = events.count { it.decisionAction != "OBSERVE" && it.decisionAction != "BLOCK" && !it.isBlocked },
+            total = events.size,
+            activeConnections = appFlows.size,
+            bytesSent = appFlows.sumOf { it.bytesSent },
+            bytesReceived = appFlows.sumOf { it.bytesReceived },
+        )
+    }.sortedWith(compareByDescending<UidActivity> { it.activeConnections }.thenByDescending { it.total })
+        .take(8)
+    val unknownDnsCount = logs.count { it.uid < 0 }
+    val unknownFlows = flows.filter { it.identity.appUid == null }
     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
         Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("ACTIVIDAD DNS POR UID DE ANDROID", style = MaterialTheme.typography.titleSmall,
+            Text("ACTIVIDAD POR UID DE ANDROID", style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold)
-            if (appRows.isEmpty() && unknownUidCount == 0) {
-                Text("Sin consultas DNS registradas.",
+            if (appRows.isEmpty() && unknownDnsCount == 0 && unknownFlows.isEmpty()) {
+                Text("Sin consultas DNS ni conexiones activas registradas.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
@@ -650,27 +663,40 @@ private fun SocAppDnsActivity(logs: List<DnsLogEntry>) {
                             Text("UID ${row.uid}", style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Text("BLOQ. ${row.blocked}  ·  OBS. ${row.observed}  ·  PERM. ${row.allowed}  ·  TOTAL ${row.total}",
+                        Text(
+                            "DNS · BLOQ. ${row.blocked} · OBS. ${row.observed} · PERM. ${row.allowed} · TOTAL ${row.total}",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        androidx.compose.material3.LinearProgressIndicator(
-                            progress = { if (row.total == 0) 0f else row.blocked.toFloat() / row.total },
-                            modifier = Modifier.fillMaxWidth(),
-                            color = MaterialTheme.colorScheme.error,
-                            trackColor = MaterialTheme.colorScheme.surfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        Text(
+                            "Conexiones activas ${row.activeConnections} · TX ${row.bytesSent} B · RX ${row.bytesReceived} B",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (row.total > 0) {
+                            androidx.compose.material3.LinearProgressIndicator(
+                                progress = { row.blocked.toFloat() / row.total },
+                                modifier = Modifier.fillMaxWidth(),
+                                color = MaterialTheme.colorScheme.error,
+                                trackColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        }
                     }
                 }
-                if (unknownUidCount > 0) {
+                if (unknownDnsCount > 0 || unknownFlows.isNotEmpty()) {
                     androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    Text("SIN UID IDENTIFICABLE: $unknownUidCount consultas",
+                    Text(
+                        "SIN UID IDENTIFICABLE · DNS $unknownDnsCount · CONEXIONES ${unknownFlows.size}",
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
-            Text("Agrupación por UID entregado por Firestack/Android. Un UID puede pertenecer a más de un paquete; las consultas sin UID se mantienen separadas. No incluye anuncios servidos dentro de conexiones cifradas sin dominio DNS visible.",
+            Text(
+                "DNS y flujos se atribuyen usando el UID real que informa Firestack/Android. Un UID puede compartir varios paquetes. Los datos sin UID no se asignan a ninguna aplicación.",
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
@@ -1041,7 +1067,7 @@ private fun LiveActiveFlows(flows: List<com.firewalldns.engine.monitor.ActiveFlo
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            "${flow.identity.appPackage ?: "Aplicación no identificada"} · TX ${flow.bytesSent} B · RX ${flow.bytesReceived} B",
+                            "UID ${flow.identity.appUid ?: "NO IDENTIFICABLE"} · ${flow.identity.appPackage ?: "Aplicación no identificada"} · TX ${flow.bytesSent} B · RX ${flow.bytesReceived} B",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
