@@ -177,34 +177,41 @@ private class FirewallDNSFirestackBridge(
         blocklists: String,
         dstIsAlg: Boolean,
     ): Mark {
-        val decision = parseEndpoint(src)?.let { source ->
-            parseEndpoint(dst)?.let { destination ->
-                runCatching {
-                    flowPolicyAdapter.evaluate(
-                        flowId = cid,
-                        protocolNumber = protocol,
-                        ownerUid = uid,
-                        sourceAddress = source.first,
-                        sourcePort = source.second,
-                        destinationAddress = destination.first,
-                        destinationPort = destination.second,
-                    )
-                }.getOrNull()
-            }
-        }
-        val blocked = decision?.action == PolicyAction.BLOCK
-        return Mark().apply {
-            setPIDCSV(if (blocked) Backend.Block else Backend.Base)
-            setCID(cid)
-            setUID(if (uid >= 0) uid.toString() else Backend.UNKNOWN_UID_STR)
-        }
+        val decision = evaluateFlowCallback(protocol, uid, cid, src, dst)
+        return decisionMark(cid, uid, decision?.action != PolicyAction.ALLOW && decision?.action != PolicyAction.OBSERVE)
     }
 
-    override fun inflow(protocol: Int, uid: Int, cid: String, src: String, dst: String): Mark =
+    override fun inflow(protocol: Int, uid: Int, cid: String, src: String, dst: String): Mark {
+        val decision = evaluateFlowCallback(protocol, uid, cid, src, dst)
+        return decisionMark(cid, uid, decision?.action != PolicyAction.ALLOW && decision?.action != PolicyAction.OBSERVE)
+    }
+
+    private fun evaluateFlowCallback(
+        protocol: Int,
+        uid: Int,
+        cid: String,
+        src: String,
+        dst: String,
+    ) = runCatching {
+        val portless = protocol == 1 || protocol == 58
+        val source = parseEndpoint(src, portless) ?: return null
+        val destination = parseEndpoint(dst, portless) ?: return null
+        flowPolicyAdapter.evaluate(
+            flowId = cid,
+            protocolNumber = protocol,
+            ownerUid = uid,
+            sourceAddress = source.first,
+            sourcePort = source.second,
+            destinationAddress = destination.first,
+            destinationPort = destination.second,
+        )
+    }.getOrNull()
+
+    private fun decisionMark(cid: String, uid: Int, blocked: Boolean): Mark =
         Mark().apply {
-            setPIDCSV(Backend.Base)
+            setPIDCSV(if (blocked) Backend.Block else Backend.Base)
             setCID(cid)
-            setUID(if (uid >= 0) uid.toString() else Backend.UNKNOWN_UID_STR)
+            setUID(if (uid >= 0) uid.toString() else Intra.UNKNOWN_UID_STR)
         }
 
     override fun flowing(mark: Mark) = Unit
@@ -259,11 +266,22 @@ private class FirewallDNSFirestackBridge(
         boundNetworks.clear()
     }
 
-    private fun parseEndpoint(value: String): Pair<String, Int>? = runCatching {
-        val uri = URI("tcp://$value")
-        val host = uri.host ?: return null
-        val port = uri.port
-        require(port in 1..65535)
-        host.removePrefix("[").removeSuffix("]") to port
+    private fun parseEndpoint(value: String, portless: Boolean): Pair<String, Int>? = runCatching {
+        if (portless) {
+            val host = when {
+                value.startsWith("[") && value.contains("]:") -> value.substring(1, value.indexOf("]:"))
+                value.startsWith("[") && value.endsWith("]") -> value.substring(1, value.length - 1)
+                value.contains(":") && value.count { it == ':' } == 1 -> value.substringBefore(':')
+                else -> value
+            }
+            require(host.isNotBlank())
+            host to 0
+        } else {
+            val uri = URI("tcp://$value")
+            val host = uri.host ?: return null
+            val port = uri.port
+            require(port in 1..65535)
+            host.removePrefix("[").removeSuffix("]") to port
+        }
     }.getOrNull()
 }
