@@ -91,6 +91,8 @@ class FirestackTunnelAdapter private constructor(
                 )
                 // Capture DNS over UDP/TCP port 53 for all resolver IPs, including hard-coded ones.
                 Intra.captureDnsPort()
+                // Patched Firestack mode redirects every UDP/TCP port-53 destination to DNS policy.
+                Intra.captureDnsPort()
                 val defaultDns = Intra.newDefaultDNS(
                     Backend.DNS53,
                     formatHostPort(resolver),
