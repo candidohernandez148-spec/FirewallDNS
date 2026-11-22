@@ -229,6 +229,7 @@ class RuleEvaluatorTest {
             exactBlock = setOf("tracker.example")
         )
         assertEquals(true, exact.first)
+        assertEquals("Adblock exacto", exact.second)
         assertEquals(false, subdomain.first)
     }
 
@@ -252,6 +253,7 @@ class RuleEvaluatorTest {
             importantExactBlock = setOf("tracker.example")
         )
         assertEquals(true, exact.first)
+        assertEquals("Adblock importante exacto", exact.second)
         assertEquals(false, subdomain.first)
     }
 
