@@ -309,69 +309,75 @@ fun FirewallApp(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        FirewallShieldIcon()
-                        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                            Text(
-                                when (selectedDestination) {
-                                    0 -> "FirewallDNS"
-                                    1 -> "Monitor DNS"
-                                    2 -> "Centro de amenazas"
-                                    3 -> "Protección"
-                                    4 -> "Mapa de conocimiento"
-                                    else -> "FirewallDNS"
-                                },
-                                fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                            Text(
-                                if (stats.isRunning) "SISTEMA ACTIVO · ${stats.engine}"
-                                else "SISTEMA EN ESPERA",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = if (stats.isRunning) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+            if (selectedDestination != 4) {
+                TopAppBar(
+                    title = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            FirewallShieldIcon()
+                            Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                Text(
+                                    when (selectedDestination) {
+                                        0 -> "FirewallDNS"
+                                        1 -> "Monitor DNS"
+                                        2 -> "Centro de amenazas"
+                                        3 -> "Protección"
+                                        4 -> "Mapa de conocimiento"
+                                        else -> "FirewallDNS"
+                                    },
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                Text(
+                                    if (stats.isRunning) "SISTEMA ACTIVO · ${stats.engine}"
+                                    else "SISTEMA EN ESPERA",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (stats.isRunning) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
-                    }
-                },
-                actions = {
-                    Text(
-                        if (stats.isRunning) "ON" else "OFF",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold
+                    },
+                    actions = {
+                        Text(
+                            if (stats.isRunning) "ON" else "OFF",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Switch(
+                            checked = stats.isRunning,
+                            onCheckedChange = onToggleVpn,
+                            modifier = Modifier.padding(start = 4.dp, end = 8.dp)
+                        )
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        titleContentColor = MaterialTheme.colorScheme.onSurface
                     )
-                    Switch(
-                        checked = stats.isRunning,
-                        onCheckedChange = onToggleVpn,
-                        modifier = Modifier.padding(start = 4.dp, end = 8.dp)
-                    )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
-            )
+            }
+
         },
         bottomBar = {
-            NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surface,
-                tonalElevation = 3.dp
-            ) {
-                destinations.forEachIndexed { index, destination ->
-                    NavigationBarItem(
-                        selected = selectedDestination == index,
-                        onClick = { navigationScope.launch { pagerState.animateScrollToPage(index) } },
-                        icon = { Icon(destination.second, contentDescription = destination.first) },
-                        label = { Text(destination.first, maxLines = 1) },
-                        alwaysShowLabel = true
-                    )
+            if (selectedDestination != 4) {
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 3.dp
+                ) {
+                    destinations.forEachIndexed { index, destination ->
+                        NavigationBarItem(
+                            selected = selectedDestination == index,
+                            onClick = { navigationScope.launch { pagerState.animateScrollToPage(index) } },
+                            icon = { Icon(destination.second, contentDescription = destination.first) },
+                            label = { Text(destination.first, maxLines = 1) },
+                            alwaysShowLabel = true
+                        )
+                    }
                 }
             }
+
         }
     ) { padding ->
         HorizontalPager(
