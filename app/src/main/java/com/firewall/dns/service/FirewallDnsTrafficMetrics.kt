@@ -89,7 +89,6 @@ object FirewallDnsTrafficMetrics {
         val upstreamProtectTcpFailure: Long,
         val noDnsResponse: Long,
         val dnsResponsesBuilt: Long,
-        val packetsWritten: Long,
         val writeErrors: Long,
         val workerErrors: Long,
         val fragmentsAccepted: Long,
@@ -393,35 +392,35 @@ object FirewallDnsTrafficMetrics {
         packetsRead = packetsRead.get(),
         packetsWritten = packetsWritten.get(),
 
-        tunRxBytes = tunRxBytes.get().get(),
-        tunTxBytes = tunRxBytes.get().get(),
-        tunInvalidPackets = 
-        tunUnknownL3Packets = 
-        tunUnknownL4Packets = 
-        tunDrops = 
-        ipPacketsReceived = 
-        ipPacketsSent = 
-        ipInvalidPackets = 
-        ipReceiveErrors = 
-        ipSendErrors = 
-        ipForwardDrops = 
-        ipForwardErrors = 
-        tcpSegmentsReceived = 
-        tcpSegmentsSent = 
-        tcpEstablished = 
-        tcpConnectFailures = 
-        tcpRetransmits = 
-        tcpTimeouts = 
-        tcpDrops = 
-        udpPacketsReceived = 
-        udpPacketsSent = 
-        udpReceiveErrors = 
-        udpSendErrors = 
-        udpDrops = 
-        icmpV4Received = 
-        icmpV4Sent = 
-        icmpV6Received = 
-        icmpV6Sent =
+        tunRxBytes = tunRxBytes.get(),
+        tunTxBytes = tunTxBytes.get(),
+        tunInvalidPackets = tunInvalidPackets.get(),
+        tunUnknownL3Packets = tunUnknownL3Packets.get(),
+        tunUnknownL4Packets = tunUnknownL4Packets.get(),
+        tunDrops = tunDrops.get(),
+        ipPacketsReceived = ipPacketsReceived.get(),
+        ipPacketsSent = ipPacketsSent.get(),
+        ipInvalidPackets = ipInvalidPackets.get(),
+        ipReceiveErrors = ipReceiveErrors.get(),
+        ipSendErrors = ipSendErrors.get(),
+        ipForwardDrops = ipForwardDrops.get(),
+        ipForwardErrors = ipForwardErrors.get(),
+        tcpSegmentsReceived = tcpSegmentsReceived.get(),
+        tcpSegmentsSent = tcpSegmentsSent.get(),
+        tcpEstablished = tcpEstablished.get(),
+        tcpConnectFailures = tcpConnectFailures.get(),
+        tcpRetransmits = tcpRetransmits.get(),
+        tcpTimeouts = tcpTimeouts.get(),
+        tcpDrops = tcpDrops.get(),
+        udpPacketsReceived = udpPacketsReceived.get(),
+        udpPacketsSent = udpPacketsSent.get(),
+        udpReceiveErrors = udpReceiveErrors.get(),
+        udpSendErrors = udpSendErrors.get(),
+        udpDrops = udpDrops.get(),
+        icmpV4Received = icmpV4Received.get(),
+        icmpV4Sent = icmpV4Sent.get(),
+        icmpV6Received = icmpV6Received.get(),
+        icmpV6Sent = icmpV6Sent.get(),
         queueRejected = queueRejected.get(),
         parserRejected = parserRejected.get(),
         ipv4Packets = ipv4Packets.get(),
@@ -462,7 +461,6 @@ object FirewallDnsTrafficMetrics {
         upstreamProtectTcpFailure = upstreamProtectTcpFailure.get(),
         noDnsResponse = noDnsResponse.get(),
         dnsResponsesBuilt = dnsResponsesBuilt.get(),
-        packetsWritten = packetsWritten.get(),
         writeErrors = writeErrors.get(),
         workerErrors = workerErrors.get(),
         fragmentsAccepted = fragmentsAccepted.get(),
