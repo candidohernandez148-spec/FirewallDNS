@@ -20,7 +20,6 @@ import com.firewalldns.engine.core.NetworkFlowDecision
 import com.firewalldns.engine.monitor.FlowMonitorSnapshot
 import com.firewalldns.engine.runtime.EngineRuntime
 import java.net.URI
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -140,8 +139,6 @@ private class FirewallDNSFirestackBridge(
     private val onFlowSnapshot: (FlowMonitorSnapshot) -> Unit,
 ) : Bridge, AutoCloseable {
 
-    private val boundNetworks = ConcurrentHashMap<Int, Network>()
-    private val protectedDescriptors = ConcurrentHashMap.newKeySet<Int>()
     private val closed = AtomicBoolean(false)
 
     override fun bind4(who: String, addrport: String, fd: Long) = bindToPhysicalNetwork(fd)
@@ -157,8 +154,7 @@ private class FirewallDNSFirestackBridge(
                 network.bindSocket(duplicate.fileDescriptor)
             }
         }
-        if (result.isSuccess) boundNetworks[descriptor] = network
-        else throw IllegalStateException("Unable to bind Firestack socket to physical network", result.exceptionOrNull())
+        if (result.isFailure) throw IllegalStateException("Unable to bind Firestack socket to physical network", result.exceptionOrNull())
     }
 
     override fun protect(who: String, fd: Long) {
@@ -167,11 +163,9 @@ private class FirewallDNSFirestackBridge(
     }
 
     private fun protectSocket(descriptor: Int) {
-        if (protectedDescriptors.contains(descriptor)) return
         val protected = vpnService.protect(descriptor)
         runCatching { onSocketProtectionResult(protected) }
         if (!protected) throw IllegalStateException("VpnService.protect failed for Firestack socket")
-        protectedDescriptors.add(descriptor)
     }
 
     override fun preflow(protocol: Int, uid: Int, cid: String, src: String, dst: String): PreMark =
@@ -294,8 +288,6 @@ private class FirewallDNSFirestackBridge(
 
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
-        boundNetworks.clear()
-        protectedDescriptors.clear()
     }
 
     private fun parseEndpoint(value: String, portless: Boolean): Pair<String, Int>? = runCatching {
