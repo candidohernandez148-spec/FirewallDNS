@@ -77,6 +77,21 @@ class AndroidFlowPolicyAdapterTest {
         assertFalse(adapter.close("udp-1"))
     }
 
+    @Test fun appliesExistingPerAppFirewallBlockBeforeFlowRuleFallback() {
+        val engine = EngineRuntime()
+        val adapter = AndroidFlowPolicyAdapter(
+            engine = engine,
+            isUidBlocked = { it == 12001 },
+            nowEpochMillis = { 300L },
+        )
+        val decision = adapter.evaluate(
+            "tcp-app-block", 6, 12001, "10.10.10.2", 40000, "203.0.113.9", 443,
+        )
+        assertEquals(PolicyAction.BLOCK, decision.action)
+        assertEquals("app_uid_blocked", decision.reason)
+        assertEquals(1L, engine.flowMonitor.snapshot().blocked)
+    }
+
     @Test fun mapsIcmpWithoutInventingTransportPorts() {
         val engine = EngineRuntime()
         val adapter = AndroidFlowPolicyAdapter(engine, nowEpochMillis = { 1L })
