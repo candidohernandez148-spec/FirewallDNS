@@ -551,7 +551,7 @@ private fun SocHeader(
                 Text("FirewallDNS · Túnel de red", style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold)
                 Text(
-                    if (vpnRunning) "Protección activa · Firestack \${if (metrics.firestackActive > 0) "conectado" else "sin confirmación"}"
+                    if (vpnRunning) "Protección activa · Firestack ${if (metrics.firestackActive > 0) "conectado" else "sin confirmación"}"
                     else "Protección detenida · telemetría histórica",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -574,12 +574,12 @@ private fun SocKpiGrid(metrics: FirewallDnsTrafficMetrics.Snapshot) {
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
         Text("RESUMEN OPERATIVO", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            SocKpi("PAQUETES TUN", metrics.packetsRead.toString(), "IPv4 \${metrics.ipv4Packets} · IPv6 \${metrics.ipv6Packets}", Color(0xFF2776B8), Modifier.weight(1f))
-            SocKpi("FLUJOS ACTIVOS", metrics.flowsActive.toString(), "Abiertos \${metrics.flowsOpened}", Color(0xFF247A62), Modifier.weight(1f))
+            SocKpi("PAQUETES TUN", metrics.packetsRead.toString(), "IPv4 ${metrics.ipv4Packets} · IPv6 ${metrics.ipv6Packets}", Color(0xFF2776B8), Modifier.weight(1f))
+            SocKpi("FLUJOS ACTIVOS", metrics.flowsActive.toString(), "Abiertos ${metrics.flowsOpened}", Color(0xFF247A62), Modifier.weight(1f))
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            SocKpi("DNS BLOQUEADOS", metrics.dnsBlocked.toString(), "Observados \${metrics.dnsObserved}", Color(0xFF9B454F), Modifier.weight(1f))
-            SocKpi("DNS PERMITIDOS", metrics.dnsAllowed.toString(), "Rechazados \${metrics.dnsRejected}", Color(0xFF6551A1), Modifier.weight(1f))
+            SocKpi("DNS BLOQUEADOS", metrics.dnsBlocked.toString(), "Observados ${metrics.dnsObserved}", Color(0xFF9B454F), Modifier.weight(1f))
+            SocKpi("DNS PERMITIDOS", metrics.dnsAllowed.toString(), "Rechazados ${metrics.dnsRejected}", Color(0xFF6551A1), Modifier.weight(1f))
         }
     }
 }
@@ -626,7 +626,7 @@ private fun SocTunnelPath(
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Surface(shape = RoundedCornerShape(9.dp),
                         color = if (vpnRunning) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant) {
-                        Text("\${index + 1}", Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                        Text("${index + 1}", Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
                             fontWeight = FontWeight.Bold)
                     }
                     Column(Modifier.weight(1f).padding(start = 9.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
