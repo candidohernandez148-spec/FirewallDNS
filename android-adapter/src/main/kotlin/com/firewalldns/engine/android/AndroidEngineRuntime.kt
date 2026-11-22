@@ -20,8 +20,8 @@ import com.firewalldns.engine.threat.ThreatAnalyzer
 class AndroidEngineRuntime(
     vpnService: VpnService,
     enableThreatAnalysis: Boolean = true,
-    onSocketProtectionResult: (DnsSocketProtectionProtocol, Boolean) -> Unit = { _, _ -> },
-    physicalNetworkProvider: () -> Network? = { null },
+    private val onSocketProtectionResult: (DnsSocketProtectionProtocol, Boolean) -> Unit = { _, _ -> },
+    private val physicalNetworkProvider: () -> Network? = { null },
 ) {
     /** Single policy/threat/monitor authority exposed to the Android host. */
     val engine: EngineRuntime = EngineRuntime(
