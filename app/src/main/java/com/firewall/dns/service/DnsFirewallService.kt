@@ -536,7 +536,6 @@ class DnsFirewallService : VpnService() {
     }
 
     override fun onDestroy() {
-        if (diagnosticInstance === this) diagnosticInstance = null
         physicalNetworkCallback?.let { callback ->
             runCatching { connectivityManager.unregisterNetworkCallback(callback) }
         }
