@@ -126,6 +126,7 @@ class DnsFirewallService : VpnService() {
                 runtime.evictIdleFlows()
                 // Detailed active-flow snapshots are sampled off packet callbacks for the topology UI.
                 FirewallDnsTrafficMetrics.flowSnapshot(runtime.flowMonitor.snapshot(includeFlows = true))
+                FirewallDnsTrafficMetrics.engineMonitorSnapshot(runtime.metrics())
             }
         }
     }
