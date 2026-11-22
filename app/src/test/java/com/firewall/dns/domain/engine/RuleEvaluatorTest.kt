@@ -85,4 +85,49 @@ class RuleEvaluatorTest {
         assertEquals("Excepción @@||", result.second)
     }
 
+
+    @Test
+    fun parsesDnsSafeDomainRulesAndImportantOption() {
+        assertEquals(
+            RuleEvaluator.AdblockParseResult("tracker.example", false),
+            RuleEvaluator.parseAdblockLine("||tracker.example^"),
+        )
+        assertEquals(
+            RuleEvaluator.AdblockParseResult("tracker.example", false),
+            RuleEvaluator.parseAdblockLine("||tracker.example^$important"),
+        )
+        assertEquals(
+            RuleEvaluator.AdblockParseResult("tracker.example", true),
+            RuleEvaluator.parseAdblockLine("@@||tracker.example^$important"),
+        )
+        assertEquals(
+            RuleEvaluator.AdblockParseResult("tracker.example", false),
+            RuleEvaluator.parseAdblockLine("tracker.example"),
+        )
+        assertEquals(
+            RuleEvaluator.AdblockParseResult("tracker.example", false),
+            RuleEvaluator.parseAdblockLine("0.0.0.0 tracker.example # local sinkhole"),
+        )
+    }
+
+    @Test
+    fun rejectsAdblockOptionsThatCannotBeEnforcedByDnsOnlyFiltering() {
+        listOf(
+            "||tracker.example^$third-party",
+            "||tracker.example^$domain=publisher.example",
+            "||tracker.example^$badfilter",
+            "||tracker.example^$dnsrewrite=NOERROR",
+            "@@||tracker.example^$important,domain=publisher.example",
+        ).forEach { rule ->
+            assertEquals("Must reject unsupported DNS semantics: $rule", null, RuleEvaluator.parseAdblockLine(rule))
+        }
+    }
+
+    @Test
+    fun rejectsUrlAndWildcardRulesInsteadOfOverblockingWholeDomains() {
+        assertEquals(null, RuleEvaluator.parseAdblockLine("||example.com/ads.js"))
+        assertEquals(null, RuleEvaluator.parseAdblockLine("||*.example.com^"))
+        assertEquals(null, RuleEvaluator.parseAdblockLine("example.com/path"))
+    }
+
 }
