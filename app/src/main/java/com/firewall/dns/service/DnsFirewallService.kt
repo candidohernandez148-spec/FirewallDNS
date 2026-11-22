@@ -123,6 +123,7 @@ class DnsFirewallService : VpnService() {
     @Volatile private var selectedPhysicalNetwork: android.net.Network? = null
     @Volatile private var physicalNetworkCallback: ConnectivityManager.NetworkCallback? = null
     private val upstreamRefreshLock = Any()
+    private val networkHandoverRecoveryScheduled = AtomicBoolean(false)
 
     companion object {
         @Volatile private var diagnosticInstance: DnsFirewallService? = null
@@ -961,16 +962,35 @@ class DnsFirewallService : VpnService() {
         upstreamConfigGeneration.incrementAndGet()
         upstreamSnapshot = UpstreamSnapshot(replacement, discovered.toList(), physicalNetwork, linkMtu)
         FirewallDnsTrafficMetrics.upstreamResolversChanged(discovered)
-        // Rebind Firestack's default DNS transport to the resolver from this exact
-        // physical-network generation without restarting the TUN/netstack.
+        // Rebind DNS to the resolver from this exact physical-network generation.
+        // Sockets created on the previous Android Network cannot be rebound in place:
+        // restart Firestack's netstack on the same TUN to retire stale TCP/UDP flows.
+        val physicalNetworkChanged = current != null && physicalNetwork != current.physicalNetwork
         activeTunSession?.firestack?.let { stack ->
-            if (stack.updatePhysicalNetworkResolver(discovered.joinToString(","), linkMtu)) {
+            val resolverUpdated = stack.updatePhysicalNetworkResolver(discovered.joinToString(","), linkMtu)
+            val stackReady = resolverUpdated && (
+                !physicalNetworkChanged || stack.restartForPhysicalNetworkChange(linkMtu)
+            )
+            if (stackReady) {
                 firestackResolverGeneration.set(upstreamConfigGeneration.get())
             } else {
                 FirewallDnsTrafficMetrics.upstreamFailure()
+                if (physicalNetworkChanged) scheduleFirestackNetworkRecovery()
             }
         }
         dnsCache.clear()
+    }
+
+    /** Rebuild the active TUN session if Firestack cannot restart after a network handover. */
+    private fun scheduleFirestackNetworkRecovery() {
+        if (!networkHandoverRecoveryScheduled.compareAndSet(false, true)) return
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                if (isRunning) startVpn()
+            } finally {
+                networkHandoverRecoveryScheduled.set(false)
+            }
+        }
     }
 
     private fun resolvePackageName(uid: Int): String? =
