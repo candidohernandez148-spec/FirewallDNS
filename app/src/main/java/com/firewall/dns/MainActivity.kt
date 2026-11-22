@@ -55,7 +55,6 @@ import com.firewall.dns.ui.screens.SecurityCenterScreen
 import com.firewall.dns.ui.screens.SocDashboardScreen
 import com.firewall.dns.ui.screens.ThreatMapScreen
 import com.firewall.dns.ui.screens.ProtectionHubScreen
-import com.firewall.dns.ui.screens.IntegratedDiagnosticsScreen
 import com.firewall.dns.ui.theme.FirewallTheme
 import com.firewall.dns.ui.viewmodel.FirewallViewModel
 import com.firewall.dns.work.BlocklistUpdateScheduler
@@ -300,8 +299,7 @@ fun FirewallApp(
         "Monitor" to Icons.Default.Search,
         "Amenazas" to Icons.Default.Warning,
         "Protección" to Icons.Default.Lock,
-        "Mapa" to Icons.Default.Share,
-        "Diagnóstico" to Icons.Default.Search
+        "Mapa" to Icons.Default.Share
     )
 
     Scaffold(
@@ -321,7 +319,6 @@ fun FirewallApp(
                                     2 -> "Centro de amenazas"
                                     3 -> "Protección"
                                     4 -> "Mapa de conocimiento"
-                                    else -> "Diagnóstico del motor"
                                 },
                                 fontWeight = FontWeight.Bold,
                                 style = MaterialTheme.typography.titleMedium
@@ -442,14 +439,6 @@ fun FirewallApp(
                     smartModeEnabled = smartModeEnabled,
                     observationModeEnabled = observationModeEnabled,
                     onSetRule = viewModel::setCustomRule
-                )
-                5 -> IntegratedDiagnosticsScreen(
-                    vpnRunning = stats.isRunning,
-                    engine = stats.engine,
-                    observedEvents = activityLogs.size,
-                    metrics = tunMetrics,
-                    onToggleVpn = onToggleVpn,
-                    onOpenVpnSettings = onOpenVpnSettings
                 )
             }
         }
