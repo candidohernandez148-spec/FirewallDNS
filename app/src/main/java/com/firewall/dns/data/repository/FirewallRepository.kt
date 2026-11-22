@@ -231,7 +231,7 @@ object FirewallRepository {
             summary = snapshot.summary
         )
         // Sincroniza el evaluador determinista antes de publicar el snapshot completo.
-        SmartDecisionEngine.updateBlocklistKnowledge(published.blocked)
+        SmartDecisionEngine.updateBlocklistKnowledge(published.blocked + published.exactBlocked)
         activeBlocklistSnapshot = published
         updateRulesCount()
     }
@@ -533,9 +533,11 @@ object FirewallRepository {
     private fun updateRulesCount() {
         // Este indicador cuenta solo reglas externas (listas descargadas + reglas manuales).
         // Los dominios semilla integrados se aplican siempre, pero no se presentan como listas cargadas.
-        val downloadedRules = activeBlocklistSnapshot.blocked - defaultDomains.toSet()
+        val downloadedRules = (activeBlocklistSnapshot.blocked - defaultDomains.toSet())
+            .union(activeBlocklistSnapshot.exactBlocked)
         val externalRuleCount = downloadedRules
             .union(activeBlocklistSnapshot.exceptions)
+            .union(activeBlocklistSnapshot.exactExceptions)
             .union(customBlockSet)
             .union(customAllowSet)
             .size
