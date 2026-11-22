@@ -19,6 +19,9 @@ import com.firewall.dns.domain.model.DnsLogEntry
 import com.firewall.dns.domain.model.FirewallStats
 import com.firewall.dns.domain.model.TrafficPoint
 import com.firewall.dns.service.NetworkDns
+import com.firewalldns.engine.core.FlowProtocol
+import com.firewalldns.engine.core.NetworkFlowPolicyEngine
+import com.firewalldns.engine.core.NetworkFlowRule
 import com.firewalldns.engine.core.PolicyAction
 import com.firewalldns.engine.core.PolicyRule
 import com.firewalldns.engine.core.RuleSource
@@ -68,6 +71,8 @@ object FirewallRepository {
     val customBlockList: StateFlow<List<String>> = _customBlockList.asStateFlow()
 
     private val _customAllowList = MutableStateFlow<List<String>>(emptyList())
+    private val _networkFlowRules = MutableStateFlow<List<NetworkFlowRule>>(emptyList())
+    val networkFlowRules: StateFlow<List<NetworkFlowRule>> = _networkFlowRules.asStateFlow()
     val customAllowList: StateFlow<List<String>> = _customAllowList.asStateFlow()
 
     private val _excludedPackages = MutableStateFlow<Set<String>>(emptySet())
@@ -160,6 +165,9 @@ object FirewallRepository {
             customAllowSet.clear()
             customAllowSet.addAll(prefsDataSource.getCustomAllowSet())
             _customAllowList.value = customAllowSet.sorted()
+            _networkFlowRules.value = prefsDataSource.getNetworkFlowRules().filter { rule ->
+                runCatching { NetworkFlowPolicyEngine(listOf(rule)) }.isSuccess
+            }
 
             _excludedPackages.value = prefsDataSource.getExcludedPackages()
             _blockedApps.value = prefsDataSource.getBlockedApps()
@@ -400,6 +408,49 @@ object FirewallRepository {
                     reason = "blocklist_exact_match"))
             }
         }
+    }
+
+    /** Snapshot consumed by the shared TUN flow-policy engine. */
+    fun engineFlowPolicyRules(): List<NetworkFlowRule> = _networkFlowRules.value.toList()
+
+    fun addNetworkFlowRule(
+        destinationCidr: String,
+        protocol: FlowProtocol?,
+        destinationPort: Int?,
+        appPackage: String?,
+        action: PolicyAction
+    ): Result<Unit> {
+        val cidr = destinationCidr.trim().takeIf { it.isNotBlank() }
+            ?: return Result.failure(IllegalArgumentException("Indica una IP o red CIDR."))
+        val cleanPackage = appPackage?.trim()?.takeIf { it.isNotBlank() }
+        val cleanPort = destinationPort
+        val rule = NetworkFlowRule(
+            id = "user-flow-" + java.util.UUID.randomUUID().toString(),
+            action = action,
+            source = RuleSource.USER,
+            reason = "user_flow_rule",
+            protocol = protocol,
+            appPackage = cleanPackage,
+            destinationCidr = cidr,
+            destinationPort = cleanPort,
+            priority = 100_000
+        )
+        return runCatching {
+            // Reuse the production compiler for validation before persisting anything.
+            NetworkFlowPolicyEngine(listOf(rule))
+            val updated = _networkFlowRules.value + rule
+            _networkFlowRules.value = updated
+            prefsDataSource.saveNetworkFlowRules(updated)
+            _cacheInvalidateEvent.tryEmit(Unit)
+        }
+    }
+
+    fun removeNetworkFlowRule(id: String) {
+        val updated = _networkFlowRules.value.filterNot { it.id == id }
+        if (updated.size == _networkFlowRules.value.size) return
+        _networkFlowRules.value = updated
+        prefsDataSource.saveNetworkFlowRules(updated)
+        _cacheInvalidateEvent.tryEmit(Unit)
     }
 
     fun isSmartModeEnabled(): Boolean = _smartModeEnabled.value
