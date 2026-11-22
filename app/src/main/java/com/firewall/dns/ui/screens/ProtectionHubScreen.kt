@@ -6,7 +6,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.awaitFirstDown
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.activity.compose.BackHandler
 import androidx.compose.material3.FilterChip
@@ -63,28 +65,25 @@ fun ProtectionHubScreen(
     BackHandler(enabled = section > 0) { section = (section - 1).coerceAtLeast(0) }
     Column(Modifier.fillMaxSize().pointerInput(section) {
         val backEdgePx = 32.dp.toPx()
-        var startedAtBackEdge = false
-        var horizontalDrag = 0f
-        detectHorizontalDragGestures(
-            onDragStart = { start -> startedAtBackEdge = start.x <= backEdgePx },
-            onHorizontalDrag = { change, dragAmount ->
-                if (startedAtBackEdge && section > 0) {
+        val backThresholdPx = 72.dp.toPx()
+        val touchSlop = viewConfiguration.touchSlop
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            val startedAtBackEdge = down.position.x <= backEdgePx
+            var totalDrag = 0f
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                totalDrag = change.position.x - down.position.x
+                if (startedAtBackEdge && section > 0 && totalDrag > touchSlop) {
                     change.consume()
-                    horizontalDrag += dragAmount
                 }
-            },
-            onDragEnd = {
-                if (startedAtBackEdge && horizontalDrag > 72f && section > 0) {
-                    section = (section - 1).coerceAtLeast(0)
-                }
-                startedAtBackEdge = false
-                horizontalDrag = 0f
-            },
-            onDragCancel = {
-                startedAtBackEdge = false
-                horizontalDrag = 0f
+                if (!change.pressed) break
             }
-        )
+            if (startedAtBackEdge && section > 0 && totalDrag >= backThresholdPx) {
+                section = (section - 1).coerceAtLeast(0)
+            }
+        }
     }) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Centro de protección", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
