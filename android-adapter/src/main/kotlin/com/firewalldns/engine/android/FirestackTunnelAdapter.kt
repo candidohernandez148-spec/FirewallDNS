@@ -236,7 +236,7 @@ private class FirewallDNSFirestackBridge(
             setUID(if (uid >= 0) uid.toString() else Intra.UNKNOWN_UID_STR)
         }
 
-    override fun flowing(mark: Mark) = Unit
+    override fun flowing(mark: Mark?) = Unit
 
     override fun postflow(summary: FlowSummary?) {
         val flowSummary = summary ?: return
