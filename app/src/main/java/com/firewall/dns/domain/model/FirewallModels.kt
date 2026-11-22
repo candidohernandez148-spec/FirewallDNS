@@ -12,7 +12,9 @@ data class DnsLogEntry(
     val queryType: String,
     val isBlocked: Boolean,
     val reason: String,
-    val appName: String
+    val appName: String,
+    val uid: Int = -1,
+    val decisionAction: String = if (isBlocked) "BLOCK" else "ALLOW"
 )
 
 data class FirewallStats(
