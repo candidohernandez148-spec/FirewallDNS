@@ -186,16 +186,14 @@ object RuleEvaluator {
         return DecisionResult(false, "Permitido", RuleSource.CACHE, cacheTtlMs = 30_000L)
     }
 
-    private companion object {
-        val HOST_SINK_ADDRESSES = setOf(
-            "0.0.0.0",
-            "127.0.0.1",
-            "::",
-            "::1",
-            "0:0:0:0:0:0:0:0",
-            "0:0:0:0:0:0:0:1"
-        )
-    }
+    private val HOST_SINK_ADDRESSES = setOf(
+        "0.0.0.0",
+        "127.0.0.1",
+        "::",
+        "::1",
+        "0:0:0:0:0:0:0:0",
+        "0:0:0:0:0:0:0:1"
+    )
 
     private fun matchesDomainOrParent(domain: String, set: Set<String>): Boolean {
         var current = domain
