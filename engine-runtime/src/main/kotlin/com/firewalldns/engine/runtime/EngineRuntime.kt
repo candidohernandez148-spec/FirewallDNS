@@ -4,7 +4,11 @@ import com.firewalldns.engine.core.NetworkFlowDecision
 import com.firewalldns.engine.core.NetworkFlowPolicyEngine
 import com.firewalldns.engine.core.NetworkFlowRequest
 import com.firewalldns.engine.core.NetworkFlowRule
+import com.firewalldns.engine.core.DomainNormalizer
+import com.firewalldns.engine.core.PolicyDecision
+import com.firewalldns.engine.core.PolicyRequest
 import com.firewalldns.engine.core.PolicyEngine
+import com.firewalldns.engine.core.PolicyAction
 import com.firewalldns.engine.core.PolicyRule
 import com.firewalldns.engine.dns.DnsEvaluation
 import com.firewalldns.engine.dns.DnsPolicyAdapter
@@ -23,7 +27,7 @@ import com.firewalldns.engine.threat.ThreatAnalyzer
  */
 class EngineRuntime(
     initialRules: Collection<PolicyRule> = emptyList(),
-    threatAnalyzer: ThreatAnalyzer = ThreatAnalyzer(),
+    private val threatAnalyzer: ThreatAnalyzer = ThreatAnalyzer(),
     val monitor: EngineMonitor = EngineMonitor(),
     val flowMonitor: FlowConnectionMonitor = FlowConnectionMonitor(),
 ) {
@@ -56,6 +60,28 @@ class EngineRuntime(
         request: NetworkFlowRequest,
         nowEpochMillis: Long = System.currentTimeMillis(),
     ): NetworkFlowDecision = networkFlowPolicy.evaluate(request, nowEpochMillis)
+
+    /** Domain-level DNS decision for packet stacks that expose decoded questions. */
+    fun evaluateDomain(
+        domain: String,
+        appPackage: String? = null,
+        nowEpochMillis: Long = System.currentTimeMillis(),
+    ): PolicyDecision {
+        val normalized = DomainNormalizer.normalize(domain)
+            ?: return PolicyDecision(PolicyAction.ALLOW, "invalid_domain_input", policyRevision = policyRevision)
+        val policy = policyEngine.evaluate(PolicyRequest(normalized, appPackage), nowEpochMillis)
+        val effective = if (policy.reason == "no_matching_rule") {
+            val assessment = threatAnalyzer.analyze(normalized)
+            policy.copy(
+                action = assessment.action,
+                reason = assessment.reason,
+                ruleId = assessment.indicatorId,
+                source = assessment.source,
+            )
+        } else policy
+        monitor.recordDecision(normalized, appPackage, effective, nowEpochMillis)
+        return effective
+    }
 
     /** Evaluates one DNS packet; OBSERVE always forwards and BLOCK synthesizes NXDOMAIN. */
     fun evaluateDns(
