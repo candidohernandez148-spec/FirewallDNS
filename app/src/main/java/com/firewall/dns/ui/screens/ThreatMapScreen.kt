@@ -101,7 +101,7 @@ fun ThreatMapScreen(
     val nodes = remember(logs, customBlock, customAllow, tunMetrics, vpnRunning,
         smartModeEnabled, observationModeEnabled, catalog) {
         listOf(
-            MindMapNode("core", "FIREWALL DNS", "Servicio VPN", if (vpnRunning) "ACTIVO" else "DETENIDO",
+            MindMapNode("core", "FIREWALLDNS", "Servicio VPN", if (vpnRunning) "ACTIVO" else "DETENIDO",
                 0f, 0f, 0f, Color(0xFF42D9FF)),
             MindMapNode("tun", "MOTOR DE RED", "Firestack/gVisor", tunMetrics.flowsActive.toString(),
                 -0.88f, -0.55f, -0.18f, Color(0xFF58D6B0)),
@@ -132,39 +132,43 @@ fun ThreatMapScreen(
         else -> "core"
     }
     if (section == "map") {
-        Column(
+        LazyColumn(
             Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(9.dp)
         ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("MAPA MENTAL · FIREWALLDNS", style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold)
-                    Text(if (vpnRunning) "Motor activo · telemetría real" else "Motor detenido · últimos datos disponibles",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Text(" ● ", color = if (vpnRunning) Color(0xFF35C995) else MaterialTheme.colorScheme.outline)
-                Text(if (vpnRunning) "ON" else "OFF", style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold)
-            }
-            ThreeDimensionalMindMap(nodes = nodes, selectedNode = selectedNode) { id ->
-                section = when (id) {
-                    "tun" -> "red"
-                    "dns" -> "dns"
-                    "threats" -> "amenazas"
-                    "rules" -> "reglas"
-                    "apps" -> "apps"
-                    else -> "map"
+            item { SocHeader(vpnRunning = vpnRunning, metrics = tunMetrics) }
+            item {
+                ThreeDimensionalMindMap(nodes = nodes, selectedNode = selectedNode) { id ->
+                    section = when (id) {
+                        "tun" -> "red"
+                        "dns" -> "dns"
+                        "threats" -> "amenazas"
+                        "rules" -> "reglas"
+                        "apps" -> "apps"
+                        else -> "map"
+                    }
                 }
             }
-            LiveMapTelemetry(metrics = tunMetrics, logs = logs, vpnRunning = vpnRunning)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                MindMapAction("Motor", "red", "⚙") { section = it }
-                MindMapAction("DNS", "dns", "⇄") { section = it }
-                MindMapAction("Amenazas", "amenazas", "⚠") { section = it }
-                MindMapAction("Reglas", "reglas", "☷") { section = it }
-                MindMapAction("Apps", "apps", "▦") { section = it }
+            item { SocKpiGrid(metrics = tunMetrics) }
+            item { SocTunnelPath(metrics = tunMetrics, vpnRunning = vpnRunning) }
+            item { LiveMapTelemetry(metrics = tunMetrics, logs = logs, vpnRunning = vpnRunning) }
+            item {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    MindMapAction("Motor", "red", "⚙") { section = it }
+                    MindMapAction("DNS", "dns", "⇄") { section = it }
+                    MindMapAction("Amenazas", "amenazas", "⚠") { section = it }
+                    MindMapAction("Reglas", "reglas", "☷") { section = it }
+                    MindMapAction("Apps", "apps", "▦") { section = it }
+                }
+            }
+            item {
+                Text(
+                    "CENTRO DE OPERACIONES · Datos provenientes de métricas y eventos del servicio. La animación 3D representa la arquitectura, no paquetes individuales.",
+                    Modifier.fillMaxWidth().padding(horizontal = 5.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     } else {
@@ -414,13 +418,13 @@ private fun ThreeDimensionalMindMap(
         colors = CardDefaults.cardColors(containerColor = background)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("TOPOLOGÍA DEL MOTOR", Modifier.weight(1f),
+                Text("TOPOLOGÍA SOC · FIREWALLDNS", Modifier.weight(1f),
                     style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 Text("3D · EN MOVIMIENTO", style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary)
             }
             Canvas(
-                Modifier.fillMaxWidth().height(360.dp)
+                Modifier.fillMaxWidth().height(320.dp)
                     .pointerInput(Unit) {
                         detectTapGestures { tap ->
                             val hit = nodes.map { node ->
@@ -521,6 +525,124 @@ private fun ThreeDimensionalMindMap(
             }
             Text("Animación 3D de la arquitectura y sus rutas funcionales. Los puntos luminosos son un efecto visual, no paquetes capturados. Las cifras se alimentan de la telemetría real.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun SocHeader(
+    vpnRunning: Boolean,
+    metrics: FirewallDnsTrafficMetrics.Snapshot,
+) {
+    Card(
+        Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (vpnRunning) Color(0xFF102D2B) else MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text("SECURITY OPERATIONS CENTER", style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold, color = if (vpnRunning) Color(0xFF8BE8C5) else MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("FirewallDNS · Túnel de red", style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold)
+                Text(
+                    if (vpnRunning) "Protección activa · Firestack \${if (metrics.firestackActive > 0) "conectado" else "sin confirmación"}"
+                    else "Protección detenida · telemetría histórica",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = if (vpnRunning) Color(0xFF176B52) else MaterialTheme.colorScheme.surface
+            ) {
+                Text(if (vpnRunning) "● EN LÍNEA" else "○ OFFLINE",
+                    Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
+                    style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SocKpiGrid(metrics: FirewallDnsTrafficMetrics.Snapshot) {
+    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        Text("RESUMEN OPERATIVO", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            SocKpi("PAQUETES TUN", metrics.packetsRead.toString(), "IPv4 \${metrics.ipv4Packets} · IPv6 \${metrics.ipv6Packets}", Color(0xFF2776B8), Modifier.weight(1f))
+            SocKpi("FLUJOS ACTIVOS", metrics.flowsActive.toString(), "Abiertos \${metrics.flowsOpened}", Color(0xFF247A62), Modifier.weight(1f))
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            SocKpi("DNS BLOQUEADOS", metrics.dnsBlocked.toString(), "Observados \${metrics.dnsObserved}", Color(0xFF9B454F), Modifier.weight(1f))
+            SocKpi("DNS PERMITIDOS", metrics.dnsAllowed.toString(), "Rechazados \${metrics.dnsRejected}", Color(0xFF6551A1), Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun SocKpi(
+    label: String,
+    value: String,
+    detail: String,
+    tint: Color,
+    modifier: Modifier = Modifier,
+) {
+    Card(modifier, shape = RoundedCornerShape(15.dp),
+        colors = CardDefaults.cardColors(containerColor = tint.copy(alpha = .16f))) {
+        Column(Modifier.fillMaxWidth().padding(11.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface)
+            Text(detail, style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun SocTunnelPath(
+    metrics: FirewallDnsTrafficMetrics.Snapshot,
+    vpnRunning: Boolean,
+) {
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("RECORRIDO DEL TÚNEL", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Text("Contadores acumulados reportados por el servicio; no representan paquetes simultáneos.",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val stages = listOf(
+                Triple("ENTRADA TUN", metrics.packetsRead, "Paquetes recibidos"),
+                Triple("CLASIFICACIÓN IP", metrics.ipv4Packets + metrics.ipv6Packets, "IPv4 + IPv6"),
+                Triple("POLÍTICA DNS", metrics.dnsBlocked + metrics.dnsObserved + metrics.dnsAllowed, "Bloquear · observar · permitir"),
+                Triple("FLUJOS", metrics.flowsOpened, "Conexiones abiertas"),
+                Triple("SALIDA TUN", metrics.packetsWritten, "Paquetes escritos")
+            )
+            stages.forEachIndexed { index, stage ->
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Surface(shape = RoundedCornerShape(9.dp),
+                        color = if (vpnRunning) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant) {
+                        Text("\${index + 1}", Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                            fontWeight = FontWeight.Bold)
+                    }
+                    Column(Modifier.weight(1f).padding(start = 9.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                        Text(stage.first, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        Text(stage.third, style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text(stage.second.toString(), style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold)
+                }
+                if (index != stages.lastIndex) {
+                    androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .5f))
+                }
+            }
+            Text("La etapa DNS contabiliza solo las consultas DNS; el resto del tráfico IP continúa por los flujos gestionados por el motor.",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
