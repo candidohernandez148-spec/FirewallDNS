@@ -13,7 +13,7 @@ La integración debe conservar el filtrado DNS que ya funciona en Wi-Fi y datos 
 - Firestack usa gVisor/netstack para TCP/UDP sobre TUN y expone `intra.Connect(fd, linkmtu, tunmtu, ifaddrs, fakedns, defaultDNS, bridge)`.
 - Rethink app: `https://github.com/celzero/rethink-app`, especialmente `GoVpnAdapter.kt` y `BraveVPNService.kt`, como referencia de integración Android.
 - gVisor networking guide: `https://gvisor.dev/docs/architecture_guide/networking/`
-- smoltcp actual de FirewallDNS: se conserva para pruebas nativas y se evalúa su uso especializado; no se mantendrán dos pilas TCP de producción compitiendo por los mismos paquetes.
+- smoltcp/Rust de FirewallDNS: se conserva exclusivamente para pruebas nativas y diagnósticos aislados; no participa en el plano de datos de la VPN productiva.
 
 ## Arquitectura objetivo
 
@@ -79,10 +79,10 @@ This does **not** decrypt DoH/DoT/DoQ or arbitrary encrypted DNS on ports 443/85
 - Límites de sesiones, colas, buffers, timeouts y presión de memoria.
 - Pruebas de batería, CPU y estabilidad prolongada.
 
-### Fase E — Retirada de duplicados y consolidación (parcial)
+### Fase E — Retirada de duplicados y consolidación (completada en código)
 
 - Comparar smoltcp y Firestack con pruebas y benchmarks.
-- Mantener smoltcp solo donde aporte valor probado (por ejemplo, harness de pruebas o un protocolo especializado); no ejecutar dos pilas generales para el mismo TUN.
+- Retirar smoltcp del camino productivo; conservarlo únicamente como harness de pruebas y diagnóstico, sin lector TUN ni fallback en ejecución.
 - Consolidar métricas, mapa, Monitor, Amenazas y Diagnóstico en el mismo origen de eventos.
 - Documentar capacidades reales y límites visibles en la aplicación.
 
@@ -100,8 +100,8 @@ This does **not** decrypt DoH/DoT/DoQ or arbitrary encrypted DNS on ports 443/85
 ## Estado integrado en `main`
 
 - Firestack está fijado a `c27887056230769ee897b7c7b92976b96d3c9a6d` y se compila como AAR Android ARM64 desde fuente durante CI.
-- `FirestackTunnelAdapter` conecta `Intra.connect` al descriptor duplicado del TUN establecido por el único `DnsFirewallService`; el servicio no mantiene un segundo lector TUN cuando Firestack está activo.
-- Si Firestack no arranca, se cierra la ruta completa antes de establecer el TUN DNS selectivo de respaldo.
+- `FirestackTunnelAdapter` conecta `Intra.connect` al descriptor duplicado del TUN establecido por el único `DnsFirewallService`; el servicio no mantiene lector TUN Kotlin, ruta smoltcp ni motor DNS alternativo.
+- Si Firestack no arranca, se cierra el descriptor TUN y el servicio no declara protección activa ni establece un túnel DNS alternativo. No hay motor de respaldo en producción.
 - El `Bridge` Android protege sockets y los enlaza a la instancia física `Network` seleccionada; cada resultado se contabiliza. No se cachean descriptores FD reutilizables.
 - La selección de red, lista de resolvers y MTU se toman de snapshots físicos; el cambio Wi-Fi/LTE actualiza DNS y MTU sin reiniciar TUN, y los fallos de rebind quedan pendientes para reintento.
 - Cuando Android cambia la identidad de la red física (por ejemplo, Wi-Fi → Telcel LTE), FirewallDNS actualiza el resolver y reinicia el netstack de Firestack sobre el mismo descriptor TUN. Los sockets existentes enlazados a la red anterior se cierran para que las aplicaciones reconecten por la nueva red; no se crea otra VPN ni otra interfaz TUN. Si el reinicio del netstack falla, el servicio programa la reconstrucción controlada de la sesión TUN.
@@ -111,7 +111,7 @@ This does **not** decrypt DoH/DoT/DoQ or arbitrary encrypted DNS on ports 443/85
 - `EncryptedDnsGuard` bloquea DoT TCP/853 y DoQ UDP/853, 784 y 8853; bloquea dominios DoH conocidos correlacionados con flujos y deja dominios probables en OBSERVAR. No descifra TLS ni garantiza detectar DoH por IP sin dominio correlacionado.
 - `FlowConnectionMonitor` mantiene límites estrictos, métricas de bytes, UID/aplicación, protocolo, regla y generación de red; serializa cierre, actividad y expiración para evitar carreras.
 - Inicio, Diagnóstico y métricas exponen el estado Firestack, flujos, protección/enlace de sockets y fallos de red.
-- CI de la revisión integrada en PR #94 completó correctamente la compilación del AAR Firestack, las pruebas Go, las pruebas Kotlin/Rust, la compilación Release, la verificación de firma y el empaquetado de `libgojni.so` + `libfirewalldns_native.so`. También pasó la compilación Debug. La revalidación automática tras el merge en `main` está en curso.
+- La compilación de `main` posterior a PR #95 pasó. La rama `refactor/single-firewalldns-engine` retira el lector TUN Kotlin y smoltcp del camino productivo; su CI debe confirmar compilación Debug/Release y pruebas. La validación física sigue pendiente.
 - La validación final en dispositivo sigue pendiente: Samsung A34 5G, Wi-Fi, Telcel LTE, cambios de red, TCP/UDP, DNS con IP fija, DoT/DoQ/DoH y estabilidad prolongada.
 
 ## Validación y límites actuales
@@ -123,6 +123,6 @@ This does **not** decrypt DoH/DoT/DoQ or arbitrary encrypted DNS on ports 443/85
 ## Línea base anterior a la integración (histórico)
 
 - El servicio productivo inicial era principalmente DNS y registraba bloqueos/permitidos UDP.
-- El código smoltcp/Rust/JNI existente demostraba límites y operaciones nativas en pruebas, pero no constituía por sí solo un plano TCP/UDP general productivo.
+- El código smoltcp/Rust/JNI se mantiene solo como banco de pruebas y diagnóstico; no constituye un plano de datos productivo.
 - El fallo de DNS/TCP upstream observado en Telcel era un problema distinto del reenvío TCP general de la pila Firestack.
 - Esta sección es histórica; el estado vigente de integración está descrito arriba.
