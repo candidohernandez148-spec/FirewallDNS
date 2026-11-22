@@ -122,8 +122,12 @@ class DnsFirewallService : VpnService() {
             while (isActive) {
                 delay(1_000L)
                 val runtime = sharedEngine?.engine ?: continue
-                if (!isRunning || activeTunSession?.firestack == null) continue
+                val firestack = activeTunSession?.firestack
+                if (!isRunning || firestack == null) continue
                 runtime.evictIdleFlows()
+                // Native Firestack statistics are snapshots from the existing gVisor stack.
+                // Firestack internally caches Stat() for up to 30 seconds.
+                firestack.nativeStats()?.let(FirewallDnsTrafficMetrics::firestackNativeSnapshot)
                 // Active-flow and engine-queue snapshots are real runtime metrics.
                 FirewallDnsTrafficMetrics.flowSnapshot(runtime.flowMonitor.snapshot(includeFlows = true))
                 FirewallDnsTrafficMetrics.engineMonitorSnapshot(runtime.metrics())
