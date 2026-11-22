@@ -383,7 +383,7 @@ private class FirewallDNSFirestackBridge(
     override fun inflow(protocol: Int, uid: Int, cid: String?, src: String?, dst: String?): Mark {
         val safeCid = cid.orEmpty()
         val decision = evaluateFlowCallback(protocol, uid, safeCid, src.orEmpty(), dst.orEmpty())
-        runCatching { onFlowSnapshot(engine.flowMonitor.snapshot()) }
+        runCatching { onFlowSnapshot(engine.flowMonitor.snapshot(includeFlows = false)) }
         return decisionMark(safeCid, uid, decision.action != PolicyAction.ALLOW && decision.action != PolicyAction.OBSERVE)
     }
 
@@ -396,6 +396,7 @@ private class FirewallDNSFirestackBridge(
         domainDecision: NetworkFlowDecision? = null,
         originalDestinations: List<String> = emptyList(),
     ): NetworkFlowDecision = runCatching {
+        require(cid.length in 1..MAX_FLOW_ID_LENGTH) { "Invalid Firestack flow identifier" }
         val portless = protocol == 1 || protocol == 58
         val source = requireNotNull(parseFirestackEndpoint(src, portless)) { "Invalid Firestack source endpoint" }
         val destination = requireNotNull(parseFirestackEndpoint(dst, portless)) { "Invalid Firestack destination endpoint" }
@@ -436,7 +437,7 @@ private class FirewallDNSFirestackBridge(
         if (id.isBlank()) return
         flowPolicyAdapter.recordBytes(id, flowSummary.getTx().coerceAtLeast(0), flowSummary.getRx().coerceAtLeast(0))
         flowPolicyAdapter.close(id)
-        runCatching { onFlowSnapshot(engine.flowMonitor.snapshot()) }
+        runCatching { onFlowSnapshot(engine.flowMonitor.snapshot(includeFlows = false)) }
     }
 
     override fun onPrequery(who: String?, fid: String?, uid: String?, domain: String?, qtyp: Long): DomainOpts? = null
