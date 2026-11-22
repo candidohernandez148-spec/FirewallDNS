@@ -103,6 +103,7 @@ class DnsFirewallService : VpnService() {
     private data class UpstreamSnapshot(
         val client: DnsUpstreamFailoverClient,
         val resolvers: List<String>,
+        val physicalNetwork: android.net.Network?,
     )
     /**
      * Client and resolver labels are one immutable publication. Keeping them
@@ -787,18 +788,25 @@ class DnsFirewallService : VpnService() {
             listOf(NetworkDns.EMERGENCY_DNS)
         }
         val current = upstreamSnapshot
-        if (current != null && discovered == current.resolvers) return
+        // A resolver list can be identical on two different networks. Network
+        // identity is part of the generation because sockets must bind to the
+        // same physical network that supplied those resolver addresses.
+        if (current != null &&
+            discovered == current.resolvers &&
+            physicalNetwork == current.physicalNetwork
+        ) return
         val replacement = runCatching {
             runtime.createDnsFailover(
-                discovered.map { address ->
+                upstreams = discovered.map { address ->
                     DnsUpstreamConfig(address, timeoutMillis = 2_000)
-                }
+                },
+                physicalNetwork = physicalNetwork,
             )
         }.getOrNull() ?: return
 
-        // Publish client and resolver labels together. In-flight exchanges retain
-        // their old immutable snapshot; diagnostics can never mix two network generations.
-        upstreamSnapshot = UpstreamSnapshot(replacement, discovered.toList())
+        // Publish client, resolver labels and physical Network as one generation.
+        // In-flight exchanges keep the old client pinned to its original Network.
+        upstreamSnapshot = UpstreamSnapshot(replacement, discovered.toList(), physicalNetwork)
         FirewallDnsTrafficMetrics.upstreamResolversChanged(discovered)
         dnsCache.clear()
     }
