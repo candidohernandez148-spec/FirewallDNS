@@ -64,6 +64,13 @@ object FirewallDnsTrafficMetrics {
         val dnsBlocked: Long,
         val dnsObserved: Long,
         val dnsAllowed: Long,
+        val dnsResponseCallbacks: Long,
+        val dnsResponseComplete: Long,
+        val dnsResponseOtherStatus: Long,
+        val dnsResponseCached: Long,
+        val dnsResponseLatencySamples: Long,
+        val dnsResponseLatencyMsTotal: Long,
+        val dnsResponseLastStatus: Long,
         val cacheHits: Long,
         val cacheMisses: Long,
         val engineEventsDropped: Long,
@@ -169,6 +176,13 @@ object FirewallDnsTrafficMetrics {
     private val dnsBlocked = AtomicLong()
     private val dnsObserved = AtomicLong()
     private val dnsAllowed = AtomicLong()
+    private val dnsResponseCallbacks = AtomicLong()
+    private val dnsResponseComplete = AtomicLong()
+    private val dnsResponseOtherStatus = AtomicLong()
+    private val dnsResponseCached = AtomicLong()
+    private val dnsResponseLatencySamples = AtomicLong()
+    private val dnsResponseLatencyMsTotal = AtomicLong()
+    private val dnsResponseLastStatus = AtomicLong(-1L)
     private val cacheHits = AtomicLong()
     private val cacheMisses = AtomicLong()
     private val dnsPolicyDecisions = AtomicLong()
@@ -244,6 +258,22 @@ object FirewallDnsTrafficMetrics {
     internal fun dnsBlocked() { dnsBlocked.incrementAndGet() }
     internal fun dnsObserved() { dnsObserved.incrementAndGet() }
     internal fun dnsAllowed() { dnsAllowed.incrementAndGet() }
+    /**
+     * Firestack OnResponse summaries are aggregate-only. The listener may be
+     * invoked more than once for a query, so this counts callbacks, not unique queries.
+     * Firestack backend status 1 is Complete in the pinned SDK revision.
+     */
+    internal fun dnsResponse(status: Int, cached: Boolean, latencySeconds: Double) {
+        dnsResponseCallbacks.incrementAndGet()
+        if (status == 1) dnsResponseComplete.incrementAndGet()
+        else dnsResponseOtherStatus.incrementAndGet()
+        if (cached) dnsResponseCached.incrementAndGet()
+        dnsResponseLastStatus.set(status.toLong())
+        if (latencySeconds.isFinite() && latencySeconds >= 0.0 && latencySeconds <= 3600.0) {
+            dnsResponseLatencyMsTotal.addAndGet((latencySeconds * 1000.0).toLong())
+            dnsResponseLatencySamples.incrementAndGet()
+        }
+    }
     internal fun cacheHit() { cacheHits.incrementAndGet() }
     internal fun cacheMiss() { cacheMisses.incrementAndGet() }
 
@@ -400,6 +430,13 @@ object FirewallDnsTrafficMetrics {
         dnsBlocked = dnsBlocked.get(),
         dnsObserved = dnsObserved.get(),
         dnsAllowed = dnsAllowed.get(),
+        dnsResponseCallbacks = dnsResponseCallbacks.get(),
+        dnsResponseComplete = dnsResponseComplete.get(),
+        dnsResponseOtherStatus = dnsResponseOtherStatus.get(),
+        dnsResponseCached = dnsResponseCached.get(),
+        dnsResponseLatencySamples = dnsResponseLatencySamples.get(),
+        dnsResponseLatencyMsTotal = dnsResponseLatencyMsTotal.get(),
+        dnsResponseLastStatus = dnsResponseLastStatus.get(),
         cacheHits = cacheHits.get(),
         cacheMisses = cacheMisses.get(),
         engineEventsDropped = engineEventsDropped.get(),
