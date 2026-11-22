@@ -231,7 +231,7 @@ object FirewallRepository {
             summary = snapshot.summary
         )
         // Sincroniza el evaluador determinista antes de publicar el snapshot completo.
-        SmartDecisionEngine.updateBlocklistKnowledge(published.blocked + published.exactBlocked)
+        SmartDecisionEngine.updateBlocklistKnowledge(published.blocked)
         activeBlocklistSnapshot = published
         updateRulesCount()
     }
