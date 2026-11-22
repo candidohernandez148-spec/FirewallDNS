@@ -129,6 +129,12 @@ fun IntegratedDiagnosticsScreen(
             put("flowBytesSent", metrics.flowBytesSent)
             put("flowBytesReceived", metrics.flowBytesReceived)
             put("flowCapacityRejected", metrics.flowCapacityRejected)
+            put("firestackProtectAttempts", metrics.firestackProtectAttempts)
+            put("firestackProtectSuccess", metrics.firestackProtectSuccess)
+            put("firestackProtectFailure", metrics.firestackProtectFailure)
+            put("firestackBindAttempts", metrics.firestackBindAttempts)
+            put("firestackBindSuccess", metrics.firestackBindSuccess)
+            put("firestackBindFailure", metrics.firestackBindFailure)
         })
         put("notVerified", listOf(
             "fragmented traffic injection through production TUN (counters are exposed, active injection is not yet automated)",
@@ -253,6 +259,8 @@ fun IntegratedDiagnosticsScreen(
                 Metric("Flujos bloqueados", metrics.flowsBlocked)
                 Metric("Bytes enviados / recibidos", metrics.flowBytesSent, metrics.flowBytesReceived)
                 Metric("Rechazos por límite de telemetría", metrics.flowCapacityRejected)
+                Metric("VpnService.protect correctos / fallidos", metrics.firestackProtectSuccess, metrics.firestackProtectFailure)
+                Metric("Bind a red física correctos / fallidos", metrics.firestackBindSuccess, metrics.firestackBindFailure)
             }
         }
         Card {
