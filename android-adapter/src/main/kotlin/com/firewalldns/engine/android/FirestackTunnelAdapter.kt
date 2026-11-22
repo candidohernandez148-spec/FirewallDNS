@@ -34,6 +34,7 @@ class FirestackTunnelAdapter private constructor(
     private val tunReference: ParcelFileDescriptor,
     private val tunnel: Tunnel,
     private val bridge: FirewallDNSFirestackBridge,
+    private val tunMtu: Int,
     private var currentLinkMtu: Int,
 ) : AutoCloseable {
 
@@ -49,6 +50,39 @@ class FirestackTunnelAdapter private constructor(
             true
         }.getOrDefault(false)
         return updateLinkMtu(linkMtu) && dnsUpdated
+    }
+
+    /**
+     * Applies a resolver/network update atomically from the adapter's point of view.
+     * Existing sockets are retired only when Android reports a new physical Network.
+     */
+    @Synchronized
+    fun reconfigurePhysicalNetwork(
+        resolver: String,
+        linkMtu: Int,
+        networkChanged: Boolean,
+    ): Boolean = updateAndRestartFirestackNetwork(
+        updateResolver = { updatePhysicalNetworkResolver(resolver, linkMtu) },
+        networkChanged = networkChanged,
+        restartStack = { restartForPhysicalNetworkChange(linkMtu) },
+    )
+
+    /**
+     * Recreates Firestack's userspace network stack on the same TUN descriptor
+     * after an underlying Android Network handover. Existing sockets are pinned
+     * to the old Network and cannot be rebound; restarting flushes those stale
+     * flows while preserving the one VPN service and one TUN interface.
+     */
+    @Synchronized
+    fun restartForPhysicalNetworkChange(linkMtu: Int): Boolean {
+        if (closed.get() || linkMtu !in 576..9000) return false
+        val restarted = runCatching {
+            // Firestack settings.Ns46: keep the same dual-stack IPv4/IPv6 mode.
+            tunnel.restart(tunReference.fd.toLong(), linkMtu.toLong(), tunMtu.toLong(), 6L)
+            tunnel.isConnected()
+        }.getOrDefault(false)
+        if (restarted) currentLinkMtu = linkMtu
+        return restarted
     }
 
     @Synchronized
@@ -131,7 +165,7 @@ class FirestackTunnelAdapter private constructor(
                 )
                 createdTunnel = tunnel
                 check(tunnel.isConnected()) { "Firestack returned a disconnected TUN stack" }
-                return FirestackTunnelAdapter(tunReference, tunnel, bridge, linkMtu)
+                return FirestackTunnelAdapter(tunReference, tunnel, bridge, mtu, linkMtu)
             } catch (error: Throwable) {
                 runCatching { createdTunnel?.disconnect() }
                 runCatching { bridge?.close() }
@@ -151,6 +185,17 @@ class FirestackTunnelAdapter private constructor(
                 }
             }.joinToString(",")
     }
+}
+
+internal fun updateAndRestartFirestackNetwork(
+    updateResolver: () -> Boolean,
+    networkChanged: Boolean,
+    restartStack: () -> Boolean,
+): Boolean {
+    val resolverUpdated = runCatching(updateResolver).getOrDefault(false)
+    if (!resolverUpdated) return false
+    if (!networkChanged) return true
+    return runCatching(restartStack).getOrDefault(false)
 }
 
 private fun isNumericIpLiteral(value: String): Boolean {
