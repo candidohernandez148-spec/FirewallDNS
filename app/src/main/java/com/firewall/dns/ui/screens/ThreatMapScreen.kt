@@ -147,8 +147,8 @@ fun ThreatMapScreen(
                 Text(if (vpnRunning) "ON" else "OFF", style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold)
             }
-            ThreeDimensionalMindMap(nodes = nodes, selectedNode = selectedNode, onSelectNode = { })
-            Text("Explora cada área desde sus accesos. Los valores proceden del servicio; las conexiones del mapa representan relaciones entre módulos.",
+            LiveTrafficFlowMap(metrics = tunMetrics, logs = logs, vpnRunning = vpnRunning)
+            Text("Solo se muestran contadores, flujos y eventos entregados por el servicio. Las conexiones visibles son registros reales; no se generan paquetes de demostración.",
                 Modifier.fillMaxWidth().padding(horizontal = 5.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -264,6 +264,93 @@ fun ThreatMapScreen(
                     if (observedApps.isEmpty()) item { Text("No hay aplicaciones identificadas en el historial.") }
                 }
             }
+        }
+    }
+}
+
+
+@Composable
+private fun LiveTrafficFlowMap(
+    metrics: FirewallDnsTrafficMetrics.Snapshot,
+    logs: List<DnsLogEntry>,
+    vpnRunning: Boolean,
+) {
+    val flows = metrics.activeFlows
+    Column(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+            Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("RECORRIDO DEL TRÁFICO", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Text(if (vpnRunning) "EN VIVO" else "DETENIDO", color = if (vpnRunning) Color(0xFF22C55E) else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    FlowStage("ENTRADA", "TUN", metrics.packetsRead.toString(), Modifier.weight(1f))
+                    Text("›", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    FlowStage("INSPECCIÓN", "DNS", (metrics.dnsUdpPackets + metrics.dnsTcp).toString(), Modifier.weight(1f))
+                    Text("›", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    FlowStage("DECISIÓN", "B/O/P", "${metrics.dnsBlocked}/${metrics.dnsObserved}/${metrics.dnsAllowed}", Modifier.weight(1f))
+                    Text("›", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    FlowStage("SALIDA", "Flujos", metrics.flowsActive.toString(), Modifier.weight(1f))
+                }
+                Text("Contadores acumulados del servicio · B bloqueado · O observado · P permitido", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+            Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("CONEXIONES ACTIVAS REALES", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Text("${flows.size}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                }
+                if (flows.isEmpty()) {
+                    Text("No hay flujos activos registrados en este instante.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    flows.take(4).forEach { flow ->
+                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(flow.identity.protocol.name, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                Text(" · ${flow.action}", style = MaterialTheme.typography.labelSmall, color = when (flow.action.uppercase()) { "BLOCK" -> MaterialTheme.colorScheme.error; "OBSERVE" -> MaterialTheme.colorScheme.tertiary; else -> MaterialTheme.colorScheme.primary })
+                                Spacer(Modifier.weight(1f))
+                                Text("TX ${flow.bytesSent} B · RX ${flow.bytesReceived} B", style = MaterialTheme.typography.labelSmall)
+                            }
+                            Text("${flow.identity.sourceAddress}:${flow.identity.sourcePort}  →  ${flow.identity.destinationAddress}:${flow.identity.destinationPort}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                            Text("${flow.identity.appPackage ?: "Aplicación no identificada"} · ${flow.reason}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        if (flow != flows.take(4).last()) androidx.compose.material3.HorizontalDivider()
+                    }
+                    if (flows.size > 4) Text("Se muestran 4 de ${flows.size}; entra en Motor para consultar la lista completa.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+            Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("ÚLTIMOS EVENTOS DNS", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Text("${logs.size} registrados", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (logs.isEmpty()) {
+                    Text("Sin eventos DNS registrados. No se muestran eventos ficticios.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    logs.take(3).forEach { event ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            val observed = event.reason.startsWith("OBSERVE:", true)
+                            Text(when { event.isBlocked -> "BLOQUEADO"; observed -> "OBSERVADO"; else -> "PERMITIDO" }, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = when { event.isBlocked -> MaterialTheme.colorScheme.error; observed -> MaterialTheme.colorScheme.tertiary; else -> MaterialTheme.colorScheme.primary })
+                            Text(" · ${event.domain}", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                            Text(event.timestamp, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FlowStage(heading: String, subtitle: String, value: String, modifier: Modifier = Modifier) {
+    Surface(modifier = modifier, shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+        Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(heading, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            Text(value, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text(subtitle, style = MaterialTheme.typography.labelSmall, maxLines = 1)
         }
     }
 }
