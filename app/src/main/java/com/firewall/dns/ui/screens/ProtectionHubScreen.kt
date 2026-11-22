@@ -100,6 +100,7 @@ fun ProtectionHubScreen(
                 stats = stats,
                 apps = apps,
                 logs = logs,
+                activeFlows = tunMetrics.activeFlows,
                 excludedPackages = excludedPackages,
                 blockedApps = blockedApps,
                 onToggleBlockedApp = onToggleBlockedApp,
