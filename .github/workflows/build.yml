@@ -1,5 +1,9 @@
 name: Build Debug (FirewallDNS TUN + smoltcp)
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 on:
   workflow_dispatch:
   pull_request:
@@ -8,6 +12,10 @@ on:
       - "android-adapter/**"
       - "dns-engine/**"
       - "engine-runtime/**"
+      - "engine-core/**"
+      - "engine-monitor/**"
+      - "threat-engine/**"
+      - "third_party/patches/**"
       - "app/**"
       - "build.gradle.kts"
       - "settings.gradle.kts"
@@ -16,9 +24,31 @@ on:
 
 jobs:
   build:
+    needs: firestack-aar
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download pinned Firestack AAR
+        uses: actions/download-artifact@v4
+        with:
+          name: firestack-intra-aar
+          path: build/firestack-aar
+
+      - name: Install Firestack AAR for Android adapter
+        run: |
+          MAVEN_DIR="build/firestack-maven/com/celzero/firestack/intra/1.0.0"
+          mkdir -p "$MAVEN_DIR"
+          cp build/firestack-aar/tun2socks.aar "$MAVEN_DIR/intra-1.0.0.aar"
+          cat > "$MAVEN_DIR/intra-1.0.0.pom" <<'POM'
+          <project xmlns="http://maven.apache.org/POM/4.0.0">
+            <modelVersion>4.0.0</modelVersion>
+            <groupId>com.celzero.firestack</groupId>
+            <artifactId>intra</artifactId>
+            <version>1.0.0</version>
+            <packaging>aar</packaging>
+          </project>
+          POM
 
       - uses: actions/setup-java@v4
         with:
@@ -53,7 +83,7 @@ jobs:
           gradle-version: "8.14"
 
       - name: Ejecutar pruebas unitarias
-        run: gradle testDebugUnitTest test --no-daemon --stacktrace
+        run: gradle :engine-core:test :engine-monitor:test :threat-engine:test :dns-engine:test :engine-runtime:test :android-adapter:testDebugUnitTest :app:testDebugUnitTest --no-daemon --stacktrace
 
       - name: Compilar APK FirewallDNS
         run: gradle :app:assembleDebug --no-daemon --stacktrace
@@ -65,10 +95,65 @@ jobs:
           APK="app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
           unzip -l "$APK" | grep -q 'lib/arm64-v8a/libfirewalldns_native.so'
-          echo "APK FirewallDNS Debug: motor Rust/JNI ARM64 incluido"
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libgojni.so'
+          echo "APK FirewallDNS Debug: motor Rust/JNI y Firestack/gVisor ARM64 incluidos"
 
       - uses: actions/upload-artifact@v4
         with:
           name: FirewallDNS-debug-apks
           path: |
             app/build/outputs/apk/debug/*.apk
+
+  firestack-aar:
+    name: Build pinned Firestack Android AAR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout Firestack source
+        uses: actions/checkout@v4
+        with:
+          repository: celzero/firestack
+          ref: c27887056230769ee897b7c7b92976b96d3c9a6d
+          path: third_party/firestack
+
+      - name: Apply FirewallDNS DNS interception patch
+        run: git -C third_party/firestack apply "$GITHUB_WORKSPACE/third_party/patches/firestack-capture-dns-port.patch"
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.27.3"
+          cache-dependency-path: third_party/firestack/go.sum
+
+      - name: Verify Firestack DNS capture patch
+        working-directory: third_party/firestack
+        env:
+          GOTOOLCHAIN: local
+        run: go test ./intra/dnsx -run TestFirewallDNSPortModeInterceptsAnyResolverAddress -count=1
+
+      - name: Set up Android SDK and NDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Install Firestack NDK toolchain
+        run: |
+          sdkmanager --install "ndk;28.2.13676358"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+
+      - name: Build Firestack intra AAR
+        working-directory: third_party/firestack
+        env:
+          GOTOOLCHAIN: local
+        run: |
+          go test ./intra/dnsx -run TestFirewallDNSPortModeInterceptsAnyResolverAddress -count=1
+          make intra
+          test -s build/intra/tun2socks.aar
+          unzip -l build/intra/tun2socks.aar | grep -q 'jni/arm64-v8a/libgojni.so'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firestack-intra-aar
+          path: third_party/firestack/build/intra/tun2socks.aar
+          if-no-files-found: error
+

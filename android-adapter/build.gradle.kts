@@ -24,6 +24,7 @@ android {
 }
 
 dependencies {
+    implementation("com.celzero.firestack:intra:1.0.0")
     api(project(":dns-engine"))
     api(project(":engine-runtime"))
     testImplementation("junit:junit:4.13.2")

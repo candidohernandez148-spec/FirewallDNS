@@ -2,10 +2,57 @@ package com.firewall.dns.service
 
 import com.firewalldns.engine.android.DnsSocketProtectionProtocol
 import com.firewalldns.engine.android.SmoltcpDnsTcpMetrics
+import com.firewalldns.engine.monitor.FlowMonitorSnapshot
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class FirewallDnsTrafficMetricsTest {
+    @Test
+    fun firestackSocketBindingAndProtectionFailuresAreSeparated() {
+        val before = FirewallDnsTrafficMetrics.snapshot()
+        FirewallDnsTrafficMetrics.firestackSocketProtectionResult(true)
+        FirewallDnsTrafficMetrics.firestackSocketProtectionResult(false)
+        FirewallDnsTrafficMetrics.firestackSocketBindingResult(true)
+        FirewallDnsTrafficMetrics.firestackSocketBindingResult(false)
+        val after = FirewallDnsTrafficMetrics.snapshot()
+        assertEquals(2L, after.firestackProtectAttempts - before.firestackProtectAttempts)
+        assertEquals(1L, after.firestackProtectSuccess - before.firestackProtectSuccess)
+        assertEquals(1L, after.firestackProtectFailure - before.firestackProtectFailure)
+        assertEquals(2L, after.firestackBindAttempts - before.firestackBindAttempts)
+        assertEquals(1L, after.firestackBindSuccess - before.firestackBindSuccess)
+        assertEquals(1L, after.firestackBindFailure - before.firestackBindFailure)
+    }
+
+    @Test
+    fun firestackAndFlowTelemetryAreExposedInSnapshots() {
+        val before = FirewallDnsTrafficMetrics.snapshot()
+        FirewallDnsTrafficMetrics.firestackStarted()
+        FirewallDnsTrafficMetrics.flowSnapshot(
+            FlowMonitorSnapshot(
+                active = 3,
+                opened = 12,
+                closed = 9,
+                blocked = 4,
+                bytesSent = 1024,
+                bytesReceived = 2048,
+                capacityRejected = 2,
+                flows = emptyList(),
+            ),
+        )
+        val after = FirewallDnsTrafficMetrics.snapshot()
+        assertEquals(1L, after.firestackActive)
+        assertEquals(3L, after.flowsActive)
+        assertEquals(12L, after.flowsOpened)
+        assertEquals(9L, after.flowsClosed)
+        assertEquals(4L, after.flowsBlocked)
+        assertEquals(1024L, after.flowBytesSent)
+        assertEquals(2048L, after.flowBytesReceived)
+        assertEquals(2L, after.flowCapacityRejected)
+        FirewallDnsTrafficMetrics.firestackStopped()
+        assertEquals(0L, FirewallDnsTrafficMetrics.snapshot().firestackActive)
+        assertEquals(0L, FirewallDnsTrafficMetrics.snapshot().flowsActive)
+    }
+
     @Test
     fun stoppedTransportClearsLiveAvailabilityAndSessionCount() {
         FirewallDnsTrafficMetrics.smoltcpStarted()

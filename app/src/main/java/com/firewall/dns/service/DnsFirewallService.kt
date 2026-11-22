@@ -25,6 +25,8 @@ import com.firewall.dns.domain.engine.AppFirewallManager
 import com.firewall.dns.domain.engine.DnsPacketEngine
 import com.firewall.dns.domain.engine.TunTransportPacketParser
 import com.firewalldns.engine.android.AndroidEngineRuntime
+import com.firewalldns.engine.android.AndroidFlowPolicyAdapter
+import com.firewalldns.engine.android.FirestackTunnelAdapter
 import com.firewalldns.engine.android.FragmentReassemblerConfig
 import com.firewalldns.engine.android.IpFragmentReassembler
 import com.firewalldns.engine.android.NativeTcpDnsTransport
@@ -42,6 +44,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
@@ -62,8 +66,9 @@ class DnsFirewallService : VpnService() {
 
     private class TunSession(
         val descriptor: ParcelFileDescriptor,
-        val input: FileInputStream,
-        val output: FileOutputStream
+        val input: FileInputStream?,
+        val output: FileOutputStream?,
+        val firestack: FirestackTunnelAdapter? = null,
     ) {
         val active = AtomicBoolean(true)
         val inFlightWorkers = AtomicInteger(0)
@@ -100,9 +105,15 @@ class DnsFirewallService : VpnService() {
 
     private lateinit var connectivityManager: ConnectivityManager
     @Volatile private var sharedEngine: AndroidEngineRuntime? = null
+    @Volatile private var sharedFlowPolicyAdapter: AndroidFlowPolicyAdapter? = null
+    private val physicalNetworkGeneration = AtomicLong(0L)
+    private val upstreamConfigGeneration = AtomicLong(0L)
+    private val firestackResolverGeneration = AtomicLong(-1L)
     private data class UpstreamSnapshot(
         val client: DnsUpstreamFailoverClient,
         val resolvers: List<String>,
+        val physicalNetwork: android.net.Network?,
+        val linkMtu: Int,
     )
     /**
      * Client and resolver labels are one immutable publication. Keeping them
@@ -253,6 +264,15 @@ class DnsFirewallService : VpnService() {
                 if (isRunning) startVpn()
             }
         }
+        serviceScope.launch {
+            while (isActive) {
+                delay(5_000L)
+                val runtime = sharedEngine?.engine ?: continue
+                if (!isRunning || activeTunSession?.firestack == null) continue
+                runtime.evictIdleFlows()
+                FirewallDnsTrafficMetrics.flowSnapshot(runtime.flowMonitor.snapshot())
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -276,7 +296,7 @@ class DnsFirewallService : VpnService() {
     }
 
     private fun notificationText(): String =
-        "FirewallDNS TUN: filtra consultas DNS; el tráfico TCP/UDP general y DoH/DoT no se inspeccionan en esta etapa"
+        "FirewallDNS TUN: filtra DNS y controla conexiones TCP/UDP/ICMP por aplicación, IP y puerto; DoH/DoT/DoQ no se descifran"
 
     private fun buildNotification() = NotificationCompat.Builder(this, CHANNEL_ID)
         .setContentTitle("Firewall DNS activo")
@@ -319,8 +339,16 @@ class DnsFirewallService : VpnService() {
         getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification())
     }
 
-    private fun startVpn() = synchronized(vpnLock) {
-        closeInterfaceSync()
+    private fun normalizePhysicalLinkMtu(reported: Int): Int =
+        reported.takeIf { it in 576..9000 }?.coerceAtLeast(1280) ?: 1500
+
+    private fun currentPhysicalLinkMtu(network: android.net.Network? = selectedPhysicalNetwork): Int {
+        val connectivity = getSystemService(android.net.ConnectivityManager::class.java)
+        val reported = network?.let { connectivity?.getLinkProperties(it)?.mtu } ?: 0
+        return normalizePhysicalLinkMtu(reported)
+    }
+
+    private fun buildVpnBuilder(fullTunnel: Boolean): Builder {
         val upstream = FirewallRepository.getUpstreamDns()
         val builder = Builder()
             .setSession("FirewallDNS")
@@ -331,32 +359,114 @@ class DnsFirewallService : VpnService() {
             .addAddress("fd00:10:10::2", 128)
             .addDnsServer("fd00:10:10::1")
             .addRoute("fd00:10:10::1", 128)
-        TRAPPED_IPV4_DNS.filter { it != upstream }.forEach { builder.addRoute(it, 32) }
-        TRAPPED_IPV6_DNS.forEach { builder.addRoute(it, 128) }
+
+        if (fullTunnel) {
+            builder.addRoute("0.0.0.0", 0)
+            builder.addRoute("::", 0)
+        } else {
+            TRAPPED_IPV4_DNS.filter { it != upstream }.forEach { builder.addRoute(it, 32) }
+            TRAPPED_IPV6_DNS.forEach { builder.addRoute(it, 128) }
+        }
 
         (FirewallRepository.excludedPackages.value + packageName).forEach { pkg ->
             try {
                 builder.addDisallowedApplication(pkg)
             } catch (_: PackageManager.NameNotFoundException) {}
         }
+        return builder
+    }
 
-        val established = builder.establish()
-        if (established == null) {
+    private fun startVpn() = synchronized(vpnLock) {
+        closeInterfaceSync()
+        val fullTunnelDescriptor = buildVpnBuilder(fullTunnel = true).establish()
+        if (fullTunnelDescriptor == null) {
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return
         }
+
         installSharedEngine()
+        val engineRuntime = sharedEngine
+        val flowAdapter = sharedFlowPolicyAdapter
+        val startNetworkState = synchronized(upstreamRefreshLock) {
+            upstreamSnapshot to upstreamConfigGeneration.get()
+        }
+        val startingSnapshot = startNetworkState.first
+        val startingUpstreamGeneration = startNetworkState.second
+        val resolver = startingSnapshot?.resolvers?.takeIf { it.isNotEmpty() }?.joinToString(",") ?: NetworkDns.EMERGENCY_DNS
+        val linkMtu = startingSnapshot?.linkMtu ?: currentPhysicalLinkMtu()
+        val firestack = if (engineRuntime != null && flowAdapter != null) {
+            runCatching {
+                FirestackTunnelAdapter.connect(
+                    vpnService = this,
+                    tunDescriptor = fullTunnelDescriptor,
+                    mtu = 1500,
+                    linkMtu = linkMtu,
+                    resolver = resolver,
+                    engine = engineRuntime.engine,
+                    flowPolicyAdapter = flowAdapter,
+                    physicalNetworkProvider = { selectedPhysicalNetwork },
+                    isUidBlocked = AppFirewallManager::isUidBlocked,
+                    onFlowSnapshot = FirewallDnsTrafficMetrics::flowSnapshot,
+                    onSocketProtectionResult = FirewallDnsTrafficMetrics::firestackSocketProtectionResult,
+                    onSocketBindingResult = FirewallDnsTrafficMetrics::firestackSocketBindingResult,
+                    onDnsDecision = { domain, qType, uid, reason, action ->
+                        when (action) {
+                            PolicyAction.BLOCK -> FirewallDnsTrafficMetrics.dnsBlocked()
+                            PolicyAction.OBSERVE -> FirewallDnsTrafficMetrics.dnsObserved()
+                            PolicyAction.ALLOW -> FirewallDnsTrafficMetrics.dnsAllowed()
+                        }
+                        FirewallRepository.addLog(
+                            domain = domain,
+                            qType = DnsPacketEngine.queryTypeToString(qType),
+                            isBlocked = action == PolicyAction.BLOCK,
+                            reason = reason,
+                            appName = resolveAppName(uid ?: Process.INVALID_UID),
+                        )
+                    },
+                )
+            }.getOrNull()
+        } else null
+
+        if (firestack != null) firestackResolverGeneration.set(startingUpstreamGeneration)
+
+        val established = if (firestack != null) {
+            fullTunnelDescriptor
+        } else {
+            // Never leave a full-device route without a functioning packet stack.
+            runCatching { fullTunnelDescriptor.close() }
+            buildVpnBuilder(fullTunnel = false).establish()
+        }
+        if (established == null) {
+            firestack?.close()
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return
+        }
+
         isRunning = true
-        FirewallRepository.setRunning(true, "FirewallDNS TUN (DNS)")
+        FirewallRepository.setRunning(
+            true,
+            if (firestack != null) "FirewallDNS TUN (Firestack/gVisor)" else "FirewallDNS TUN (DNS fallback)",
+        )
         val session = TunSession(
-            established,
-            FileInputStream(established.fileDescriptor),
-            FileOutputStream(established.fileDescriptor)
+            descriptor = established,
+            input = if (firestack == null) FileInputStream(established.fileDescriptor) else null,
+            output = if (firestack == null) FileOutputStream(established.fileDescriptor) else null,
+            firestack = firestack,
         )
         activeTunSession = session
+        if (firestack != null) FirewallDnsTrafficMetrics.firestackStarted()
+        // Reconcile any network change that occurred while the stack was starting.
+        refreshSharedUpstream()
 
-        val engineRuntime = sharedEngine
+        if (firestack != null) {
+            // Firestack owns packet ingress/egress on the duplicated TUN descriptor.
+            // The legacy reader and smoltcp DNS/TCP laboratory must not compete for packets.
+            updateForegroundNotification()
+            return
+        }
+
         val upstreamClient = upstreamSnapshot?.client
         if (engineRuntime != null && upstreamClient != null) {
             val nativeTransport = runCatching {
@@ -481,7 +591,7 @@ class DnsFirewallService : VpnService() {
             val buffer = ByteArray(4096)
             try {
                 while (session.active.get() && isRunning && !Thread.currentThread().isInterrupted) {
-                    val length = session.input.read(buffer)
+                    val length = session.input?.read(buffer) ?: break
                     if (length < 0) break
                     if (length > 0 && session.active.get()) {
                         FirewallDnsTrafficMetrics.packetRead()
@@ -633,12 +743,12 @@ class DnsFirewallService : VpnService() {
                 }
                 dnsResponse = when (upstreamResult) {
                     is DnsUpstreamResult.Success -> upstreamResult.response.message
-                    is DnsUpstreamResult.Failure -> forwardDnsQuery(dnsPayload)
+                    is DnsUpstreamResult.Failure -> forwardDnsQuery(dnsPayload, queryUpstream)
                     DnsUpstreamResult.Cancelled -> {
                         upstreamWasCancelled = true
                         null
                     }
-                    null -> forwardDnsQuery(dnsPayload)
+                    null -> forwardDnsQuery(dnsPayload, queryUpstream)
                 }
                 if (dnsResponse != null) {
                     FirewallDnsTrafficMetrics.upstreamSuccess()
@@ -680,7 +790,8 @@ class DnsFirewallService : VpnService() {
             // Una respuesta de una sesión anterior nunca debe entrar en el TUN nuevo.
             if (!session.active.get()) return
             try {
-                session.output.write(data)
+                val output = session.output ?: return
+                output.write(data)
                 FirewallDnsTrafficMetrics.responseWritten()
             } catch (_: IOException) {
                 packetWriteErrors.incrementAndGet()
@@ -706,10 +817,28 @@ class DnsFirewallService : VpnService() {
     private fun installSharedEngine() {
         if (!BuildConfig.USE_SHARED_ENGINE) {
             sharedEngine = null
+            sharedFlowPolicyAdapter = null
             upstreamSnapshot = null
             FirewallDnsTrafficMetrics.upstreamResolversChanged(emptyList())
             return
         }
+
+        // Keep the exact EngineRuntime instance already held by Firestack's Bridge.
+        // Replacing the host reference alone would leave live DNS/flow callbacks on
+        // a stale ruleset after blocklist or smart-protection settings change.
+        val existing = sharedEngine
+        if (existing != null) {
+            existing.engine.replaceRules(FirewallRepository.enginePolicyRules())
+            existing.engine.replaceThreatAnalyzer(
+                if (FirewallRepository.isSmartModeEnabled()) {
+                    com.firewalldns.engine.threat.ThreatAnalyzer()
+                } else {
+                    com.firewalldns.engine.threat.ThreatAnalyzer(emptyList(), emptyList())
+                },
+            )
+            return
+        }
+
         val runtime = runCatching {
             AndroidEngineRuntime(
                 this,
@@ -723,6 +852,11 @@ class DnsFirewallService : VpnService() {
             }
         }.getOrNull()
         sharedEngine = runtime
+        sharedFlowPolicyAdapter = runtime?.createFlowPolicyAdapter(
+            resolvePackage = ::resolvePackageName,
+            isUidBlocked = AppFirewallManager::isUidBlocked,
+            networkGeneration = { physicalNetworkGeneration.get() },
+        )
         synchronized(upstreamRefreshLock) {
             upstreamSnapshot = null
             refreshSharedUpstreamLocked()
@@ -742,7 +876,7 @@ class DnsFirewallService : VpnService() {
         val callback = object : ConnectivityManager.NetworkCallback() {
             private fun refresh() {
                 serviceScope.launch(Dispatchers.IO) {
-                    if (isRunning) refreshSharedUpstream()
+                    if (sharedEngine != null) refreshSharedUpstream()
                 }
             }
 
@@ -777,6 +911,8 @@ class DnsFirewallService : VpnService() {
         // a network handover must never pair DNS from Wi-Fi with sockets on cellular.
         val networkSnapshot = NetworkDns.activeSnapshot(this)
         val physicalNetwork = networkSnapshot.network
+        val linkMtu = normalizePhysicalLinkMtu(networkSnapshot.linkMtu)
+        if (selectedPhysicalNetwork != physicalNetwork) physicalNetworkGeneration.incrementAndGet()
         selectedPhysicalNetwork = physicalNetwork
         // Android asks VpnService to publish explicitly bound underlying networks.
         runCatching {
@@ -787,24 +923,58 @@ class DnsFirewallService : VpnService() {
             listOf(NetworkDns.EMERGENCY_DNS)
         }
         val current = upstreamSnapshot
-        if (current != null && discovered == current.resolvers) return
+        // A resolver list can be identical on two different networks. Network
+        // identity is part of the generation because sockets must bind to the
+        // same physical network that supplied those resolver addresses.
+        if (current != null &&
+            discovered == current.resolvers &&
+            physicalNetwork == current.physicalNetwork
+        ) {
+            val stack = activeTunSession?.firestack
+            val generation = upstreamConfigGeneration.get()
+            val needsResolverRebind = stack != null && firestackResolverGeneration.get() != generation
+            val updateSucceeded = when {
+                stack == null -> true
+                needsResolverRebind -> stack.updatePhysicalNetworkResolver(discovered.joinToString(","), linkMtu)
+                linkMtu != current.linkMtu -> stack.updateLinkMtu(linkMtu)
+                else -> true
+            }
+            if (updateSucceeded) {
+                if (needsResolverRebind) firestackResolverGeneration.set(generation)
+                upstreamSnapshot = current.copy(linkMtu = linkMtu)
+            } else {
+                FirewallDnsTrafficMetrics.upstreamFailure()
+            }
+            return
+        }
         val replacement = runCatching {
             runtime.createDnsFailover(
-                discovered.map { address ->
+                upstreams = discovered.map { address ->
                     DnsUpstreamConfig(address, timeoutMillis = 2_000)
-                }
+                },
+                physicalNetwork = physicalNetwork,
             )
         }.getOrNull() ?: return
 
-        // Publish client and resolver labels together. In-flight exchanges retain
-        // their old immutable snapshot; diagnostics can never mix two network generations.
-        upstreamSnapshot = UpstreamSnapshot(replacement, discovered.toList())
+        // Publish client, resolver labels, physical Network and MTU as one generation.
+        // In-flight exchanges keep the old client pinned to its original Network.
+        upstreamConfigGeneration.incrementAndGet()
+        upstreamSnapshot = UpstreamSnapshot(replacement, discovered.toList(), physicalNetwork, linkMtu)
         FirewallDnsTrafficMetrics.upstreamResolversChanged(discovered)
+        // Rebind Firestack's default DNS transport to the resolver from this exact
+        // physical-network generation without restarting the TUN/netstack.
+        activeTunSession?.firestack?.let { stack ->
+            if (stack.updatePhysicalNetworkResolver(discovered.joinToString(","), linkMtu)) {
+                firestackResolverGeneration.set(upstreamConfigGeneration.get())
+            } else {
+                FirewallDnsTrafficMetrics.upstreamFailure()
+            }
+        }
         dnsCache.clear()
     }
 
     private fun resolvePackageName(uid: Int): String? =
-        if (uid < 0) null else runCatching { packageManager.getPackagesForUid(uid)?.firstOrNull() }.getOrNull()
+        if (uid < 0) null else runCatching { packageManager.getPackagesForUid(uid)?.singleOrNull() }.getOrNull()
 
     private fun resolveAppName(uid: Int): String {
         if (uid == Process.INVALID_UID || uid < 0) return "Sistema / DNS"
@@ -821,11 +991,17 @@ class DnsFirewallService : VpnService() {
         }
     }
 
-    private fun forwardDnsQuery(dnsPayload: ByteArray): ByteArray? {
+    private fun forwardDnsQuery(
+        dnsPayload: ByteArray,
+        networkGeneration: UpstreamSnapshot?,
+    ): ByteArray? {
         var socket: DatagramSocket? = null
         return try {
             socket = DatagramSocket()
             socket.soTimeout = 3500
+            // Keep the legacy UDP fallback on the same physical Network and
+            // resolver generation as the primary exchange.
+            networkGeneration?.physicalNetwork?.bindSocket(socket)
             val wasProtected = try {
                 protect(socket)
             } catch (error: Throwable) {
@@ -834,7 +1010,8 @@ class DnsFirewallService : VpnService() {
             }
             FirewallDnsTrafficMetrics.socketProtectionResult(DnsSocketProtectionProtocol.UDP, wasProtected)
             if (!wasProtected) return null
-            val addr = InetAddress.getByName(FirewallRepository.getUpstreamDns())
+            val resolver = networkGeneration?.resolvers?.firstOrNull() ?: NetworkDns.EMERGENCY_DNS
+            val addr = InetAddress.getByName(resolver)
             // A connected UDP socket accepts datagrams only from this upstream endpoint.
             socket.connect(addr, 53)
             socket.send(DatagramPacket(dnsPayload, dnsPayload.size))
@@ -858,6 +1035,10 @@ class DnsFirewallService : VpnService() {
         sharedEngine = null
         upstreamSnapshot = null
         selectedPhysicalNetwork = null
+        physicalNetworkGeneration.incrementAndGet()
+        upstreamConfigGeneration.incrementAndGet()
+        firestackResolverGeneration.set(-1L)
+        sharedFlowPolicyAdapter = null
         FirewallDnsTrafficMetrics.upstreamResolversChanged(emptyList())
 
         val session = activeTunSession
@@ -866,8 +1047,12 @@ class DnsFirewallService : VpnService() {
             // Invalidar primero: workers antiguos ya no pueden escribir respuestas.
             session.active.set(false)
 
-            // Serializar con writePacket para no cerrar el descriptor a mitad de write().
+            // Stop the user-space stack before closing either reference to the TUN fd.
+            session.firestack?.close()
+            if (session.firestack != null) FirewallDnsTrafficMetrics.firestackStopped()
             synchronized(writeLock) {
+                try { session.input?.close() } catch (_: IOException) {}
+                try { session.output?.close() } catch (_: IOException) {}
                 try { session.descriptor.close() } catch (_: IOException) {}
             }
 
@@ -902,8 +1087,6 @@ class DnsFirewallService : VpnService() {
             FirewallDnsTrafficMetrics.smoltcpStopped()
             session.tcpCoordinator = null
             session.tcpOwner = null
-            try { session.input.close() } catch (_: IOException) {}
-            try { session.output.close() } catch (_: IOException) {}
         }
     }
 

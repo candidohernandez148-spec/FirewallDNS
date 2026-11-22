@@ -5,6 +5,7 @@ import com.firewalldns.engine.core.PolicyEngine
 import com.firewalldns.engine.core.PolicyRule
 import com.firewalldns.engine.core.RuleSource
 import com.firewalldns.engine.monitor.EngineMonitor
+import com.firewalldns.engine.threat.ThreatAnalyzer
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -49,6 +50,26 @@ class DnsPolicyAdapterTest {
         )
         assertEquals("ads-doubleclick", result.decision.ruleId)
         assertEquals(PolicyAction.BLOCK, result.decision.action)
+    }
+
+    @Test fun threatAnalyzerCanBeHotSwappedAndInvalidatesCachedDecisions() {
+        val adapter = DnsPolicyAdapter(
+            PolicyEngine(),
+            threatAnalyzer = ThreatAnalyzer(emptyList(), emptyList()),
+        )
+        assertIs<DnsEvaluation.Forward>(adapter.evaluate(query("ads.doubleclick.net"), nowEpochMillis = 1))
+
+        adapter.replaceThreatAnalyzer(ThreatAnalyzer())
+        val blocked = assertIs<DnsEvaluation.Blocked>(
+            adapter.evaluate(query("ads.doubleclick.net"), nowEpochMillis = 2),
+        )
+        assertEquals("ads-doubleclick", blocked.decision.ruleId)
+
+        adapter.replaceThreatAnalyzer(ThreatAnalyzer(emptyList(), emptyList()))
+        val allowed = assertIs<DnsEvaluation.Forward>(
+            adapter.evaluate(query("ads.doubleclick.net"), nowEpochMillis = 3),
+        )
+        assertEquals(PolicyAction.OBSERVE, allowed.decision.action)
     }
 
     @Test fun weakDomainHeuristicsOnlyObserveAndTrustedDomainsAreAllowed() {

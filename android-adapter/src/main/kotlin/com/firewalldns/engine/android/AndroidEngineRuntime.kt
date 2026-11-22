@@ -18,27 +18,46 @@ import com.firewalldns.engine.threat.ThreatAnalyzer
  * This does not create a TUN reader, packet stack, or replace the host VPN.
  */
 class AndroidEngineRuntime(
-    vpnService: VpnService,
+    private val vpnService: VpnService,
     enableThreatAnalysis: Boolean = true,
-    onSocketProtectionResult: (DnsSocketProtectionProtocol, Boolean) -> Unit = { _, _ -> },
-    physicalNetworkProvider: () -> Network? = { null },
+    private val onSocketProtectionResult: (DnsSocketProtectionProtocol, Boolean) -> Unit = { _, _ -> },
+    private val physicalNetworkProvider: () -> Network? = { null },
 ) {
     /** Single policy/threat/monitor authority exposed to the Android host. */
     val engine: EngineRuntime = EngineRuntime(
         threatAnalyzer = if (enableThreatAnalysis) ThreatAnalyzer() else ThreatAnalyzer(emptyList(), emptyList())
     )
 
-    private val socketProtector = AndroidDnsSocketProtector(vpnService, onSocketProtectionResult, physicalNetworkProvider)
+    private val protectionResult = onSocketProtectionResult
+
+    /** Creates the one flow-policy adapter shared by all packet-stack callbacks. */
+    fun createFlowPolicyAdapter(
+        resolvePackage: (Int) -> String? = { null },
+        isUidBlocked: (Int) -> Boolean = { false },
+        networkGeneration: () -> Long = { 0L },
+    ): AndroidFlowPolicyAdapter = AndroidFlowPolicyAdapter(
+        engine = engine,
+        resolvePackage = resolvePackage,
+        isUidBlocked = isUidBlocked,
+        networkGeneration = networkGeneration,
+    )
 
     /**
-     * Builds a bounded sequential failover client whose UDP and TCP sockets
-     * are protected by the active Android VpnService before connect().
+     * Builds a failover client pinned to the exact physical Network that supplied
+     * its resolver list. The Network is captured for this client generation so an
+     * in-flight exchange cannot silently bind to a newer Wi-Fi/mobile network.
      */
     fun createDnsFailover(
         upstreams: List<DnsUpstreamConfig>,
         maxAttempts: Int = upstreams.size,
+        physicalNetwork: Network? = physicalNetworkProvider(),
     ): DnsUpstreamFailoverClient {
         require(upstreams.isNotEmpty()) { "At least one DNS upstream is required" }
+        val socketProtector = AndroidDnsSocketProtector(
+            vpnService = vpnService,
+            onProtectionResult = protectionResult,
+            physicalNetworkProvider = { physicalNetwork },
+        )
         return DnsUpstreamFailoverClient(
             upstreams = upstreams.map { config -> DnsUpstreamClient(config, socketProtector) },
             maxAttempts = maxAttempts,

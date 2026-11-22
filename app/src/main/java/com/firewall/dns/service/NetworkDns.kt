@@ -30,11 +30,11 @@ object NetworkDns {
     )
 
     private fun isUsableDns(addr: InetAddress, allowIpv6: Boolean): Boolean {
-        if (addr.isLoopbackAddress || addr.isAnyLocalAddress) return false
+        if (addr.isLoopbackAddress || addr.isAnyLocalAddress || addr.isLinkLocalAddress) return false
         if (addr is Inet6Address) {
-            if (!allowIpv6 || addr.isLinkLocalAddress || addr.isSiteLocalAddress) return false
-            val firstByte = addr.address[0].toInt() and 0xFE
-            if (firstByte == 0xFC) return false // Excluye IPv6 ULA privada (fc00::/7)
+            if (!allowIpv6 || addr.isSiteLocalAddress) return false
+            // ULA resolvers (fc00::/7) are valid on private Wi-Fi networks;
+            // keep them because sockets are pinned to the exact physical Network.
         }
         return true
     }
@@ -179,6 +179,7 @@ object NetworkDns {
         val resolvers: List<String>,
         val transport: String,
         val validated: Boolean,
+        val linkMtu: Int,
     )
 
     /** Resolver addresses and Network identity are read from one network generation. */
@@ -187,7 +188,8 @@ object NetworkDns {
         val cm = context.getSystemService(ConnectivityManager::class.java)
         val network = activeNetwork(context)
         val capabilities = network?.let { cm.getNetworkCapabilities(it) }
-        val resolvers = fromLink(network?.let { cm.getLinkProperties(it) }, allowIpv6)
+        val linkProperties = network?.let { cm.getLinkProperties(it) }
+        val resolvers = fromLink(linkProperties, allowIpv6)
             .split(',')
             .map(String::trim)
             .filter(String::isNotEmpty)
@@ -204,9 +206,10 @@ object NetworkDns {
             resolvers = resolvers,
             transport = transport,
             validated = capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true,
+            linkMtu = linkProperties?.mtu ?: 0,
         )
     } catch (_: Throwable) {
-        ActiveDnsSnapshot(null, emptyList(), "Sin red física", false)
+        ActiveDnsSnapshot(null, emptyList(), "Sin red física", false, 0)
     }
 
     fun activeServers(context: Context, allowIpv6: Boolean = true): List<String> =

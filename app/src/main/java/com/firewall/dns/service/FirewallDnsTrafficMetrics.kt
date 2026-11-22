@@ -3,11 +3,12 @@ package com.firewall.dns.service
 import com.firewalldns.engine.android.DnsSocketProtectionProtocol
 import com.firewalldns.engine.android.FragmentReassemblerMetrics
 import com.firewalldns.engine.android.SmoltcpDnsTcpMetrics
+import com.firewalldns.engine.monitor.FlowMonitorSnapshot
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Aggregate-only counters for the production DNS-only TUN path.
+ * Aggregate-only counters for the production Firestack TUN and DNS policy paths.
  *
  * No packet bytes, IP addresses, domains, UIDs, or package names are retained.
  * Counters are process-local and can be sampled without blocking packet workers.
@@ -73,6 +74,20 @@ object FirewallDnsTrafficMetrics {
         val fragmentAssembliesExpired: Long,
         val fragmentPendingAssemblies: Long,
         val fragmentBufferedBytes: Long,
+        val firestackActive: Long,
+        val flowsActive: Long,
+        val flowsOpened: Long,
+        val flowsClosed: Long,
+        val flowsBlocked: Long,
+        val flowBytesSent: Long,
+        val flowBytesReceived: Long,
+        val flowCapacityRejected: Long,
+        val firestackProtectAttempts: Long,
+        val firestackProtectSuccess: Long,
+        val firestackProtectFailure: Long,
+        val firestackBindAttempts: Long,
+        val firestackBindSuccess: Long,
+        val firestackBindFailure: Long,
     )
 
     private val packetsRead = AtomicLong()
@@ -134,6 +149,20 @@ object FirewallDnsTrafficMetrics {
     private val fragmentAssembliesExpired = AtomicLong()
     private val fragmentPendingAssemblies = AtomicLong()
     private val fragmentBufferedBytes = AtomicLong()
+    private val firestackActive = AtomicLong()
+    private val flowsActive = AtomicLong()
+    private val flowsOpened = AtomicLong()
+    private val flowsClosed = AtomicLong()
+    private val flowsBlocked = AtomicLong()
+    private val flowBytesSent = AtomicLong()
+    private val flowBytesReceived = AtomicLong()
+    private val flowCapacityRejected = AtomicLong()
+    private val firestackProtectAttempts = AtomicLong()
+    private val firestackProtectSuccess = AtomicLong()
+    private val firestackProtectFailure = AtomicLong()
+    private val firestackBindAttempts = AtomicLong()
+    private val firestackBindSuccess = AtomicLong()
+    private val firestackBindFailure = AtomicLong()
 
     internal fun packetRead() { packetsRead.incrementAndGet() }
     internal fun queueRejected() { queueRejected.incrementAndGet() }
@@ -197,6 +226,28 @@ object FirewallDnsTrafficMetrics {
     internal fun responseWritten() { packetsWritten.incrementAndGet() }
     internal fun writeError() { writeErrors.incrementAndGet() }
     internal fun workerError() { workerErrors.incrementAndGet() }
+    internal fun firestackSocketProtectionResult(success: Boolean) {
+        firestackProtectAttempts.incrementAndGet()
+        if (success) firestackProtectSuccess.incrementAndGet() else firestackProtectFailure.incrementAndGet()
+    }
+    internal fun firestackSocketBindingResult(success: Boolean) {
+        firestackBindAttempts.incrementAndGet()
+        if (success) firestackBindSuccess.incrementAndGet() else firestackBindFailure.incrementAndGet()
+    }
+    internal fun firestackStarted() { firestackActive.set(1L) }
+    internal fun firestackStopped() {
+        firestackActive.set(0L)
+        flowsActive.set(0L)
+    }
+    internal fun flowSnapshot(snapshot: FlowMonitorSnapshot) {
+        flowsActive.set(snapshot.active.toLong())
+        flowsOpened.set(snapshot.opened)
+        flowsClosed.set(snapshot.closed)
+        flowsBlocked.set(snapshot.blocked)
+        flowBytesSent.set(snapshot.bytesSent)
+        flowBytesReceived.set(snapshot.bytesReceived)
+        flowCapacityRejected.set(snapshot.capacityRejected)
+    }
     internal fun smoltcpStarted() { smoltcpTransportAvailable.set(1L) }
     internal fun smoltcpStopped() {
         smoltcpTransportAvailable.set(0L)
@@ -286,5 +337,19 @@ object FirewallDnsTrafficMetrics {
         fragmentAssembliesExpired = fragmentAssembliesExpired.get(),
         fragmentPendingAssemblies = fragmentPendingAssemblies.get(),
         fragmentBufferedBytes = fragmentBufferedBytes.get(),
+        firestackActive = firestackActive.get(),
+        flowsActive = flowsActive.get(),
+        flowsOpened = flowsOpened.get(),
+        flowsClosed = flowsClosed.get(),
+        flowsBlocked = flowsBlocked.get(),
+        flowBytesSent = flowBytesSent.get(),
+        flowBytesReceived = flowBytesReceived.get(),
+        flowCapacityRejected = flowCapacityRejected.get(),
+        firestackProtectAttempts = firestackProtectAttempts.get(),
+        firestackProtectSuccess = firestackProtectSuccess.get(),
+        firestackProtectFailure = firestackProtectFailure.get(),
+        firestackBindAttempts = firestackBindAttempts.get(),
+        firestackBindSuccess = firestackBindSuccess.get(),
+        firestackBindFailure = firestackBindFailure.get(),
     )
 }
