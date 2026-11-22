@@ -276,7 +276,7 @@ private fun LiveTrafficFlowMap(
     vpnRunning: Boolean,
 ) {
     val flows = metrics.activeFlows
-    Column(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().height(440.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
             Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
