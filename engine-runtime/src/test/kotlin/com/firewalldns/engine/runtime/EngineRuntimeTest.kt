@@ -1,5 +1,8 @@
 package com.firewalldns.engine.runtime
 
+import com.firewalldns.engine.core.FlowProtocol
+import com.firewalldns.engine.core.NetworkFlowRequest
+import com.firewalldns.engine.core.NetworkFlowRule
 import com.firewalldns.engine.core.PolicyAction
 import com.firewalldns.engine.core.PolicyRule
 import com.firewalldns.engine.core.RuleSource
@@ -72,6 +75,32 @@ class EngineRuntimeTest {
             runtime.evaluateDns(query("example.com"), nowEpochMillis = 100),
         )
         assertEquals("explicit_allow", result.decision.reason)
+    }
+
+    @Test fun runtimeExposesNetworkFlowPolicyForTheTunAdapter() {
+        val runtime = EngineRuntime()
+        runtime.replaceFlowRules(
+            listOf(
+                NetworkFlowRule(
+                    id = "block-app-https",
+                    action = PolicyAction.BLOCK,
+                    source = RuleSource.USER,
+                    reason = "app_network_rule",
+                    protocol = FlowProtocol.TCP,
+                    appUid = 10234,
+                    destinationPort = 443,
+                ),
+            ),
+        )
+
+        val result = runtime.evaluateFlow(
+            NetworkFlowRequest(FlowProtocol.TCP, 10234, "com.example.app", "198.51.100.20", 443),
+            nowEpochMillis = 100,
+        )
+
+        assertEquals(PolicyAction.BLOCK, result.action)
+        assertEquals("block-app-https", result.ruleId)
+        assertEquals(1L, runtime.flowPolicyRevision)
     }
 
     private fun query(domain: String): ByteArray {
