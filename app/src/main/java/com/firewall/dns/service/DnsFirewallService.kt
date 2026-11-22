@@ -105,6 +105,7 @@ class DnsFirewallService : VpnService() {
     @Volatile private var sharedEngine: AndroidEngineRuntime? = null
     @Volatile private var sharedFlowPolicyAdapter: AndroidFlowPolicyAdapter? = null
     private val physicalNetworkGeneration = AtomicLong(0L)
+    private val firestackResolverGeneration = AtomicLong(-1L)
     private data class UpstreamSnapshot(
         val client: DnsUpstreamFailoverClient,
         val resolvers: List<String>,
@@ -890,11 +891,20 @@ class DnsFirewallService : VpnService() {
             discovered == current.resolvers &&
             physicalNetwork == current.physicalNetwork
         ) {
-            if (linkMtu != current.linkMtu) {
-                activeTunSession?.firestack?.let { stack ->
-                    if (!stack.updateLinkMtu(linkMtu)) FirewallDnsTrafficMetrics.upstreamFailure()
-                }
+            val stack = activeTunSession?.firestack
+            val generation = physicalNetworkGeneration.get()
+            val needsResolverRebind = stack != null && firestackResolverGeneration.get() != generation
+            val updateSucceeded = when {
+                stack == null -> true
+                needsResolverRebind -> stack.updatePhysicalNetworkResolver(discovered.joinToString(","), linkMtu)
+                linkMtu != current.linkMtu -> stack.updateLinkMtu(linkMtu)
+                else -> true
+            }
+            if (updateSucceeded) {
+                if (needsResolverRebind) firestackResolverGeneration.set(generation)
                 upstreamSnapshot = current.copy(linkMtu = linkMtu)
+            } else {
+                FirewallDnsTrafficMetrics.upstreamFailure()
             }
             return
         }
@@ -914,7 +924,9 @@ class DnsFirewallService : VpnService() {
         // Rebind Firestack's default DNS transport to the resolver from this exact
         // physical-network generation without restarting the TUN/netstack.
         activeTunSession?.firestack?.let { stack ->
-            if (!stack.updatePhysicalNetworkResolver(discovered.joinToString(","), linkMtu)) {
+            if (stack.updatePhysicalNetworkResolver(discovered.joinToString(","), linkMtu)) {
+                firestackResolverGeneration.set(physicalNetworkGeneration.get())
+            } else {
                 FirewallDnsTrafficMetrics.upstreamFailure()
             }
         }
@@ -984,6 +996,7 @@ class DnsFirewallService : VpnService() {
         upstreamSnapshot = null
         selectedPhysicalNetwork = null
         physicalNetworkGeneration.incrementAndGet()
+        firestackResolverGeneration.set(-1L)
         sharedFlowPolicyAdapter = null
         FirewallDnsTrafficMetrics.upstreamResolversChanged(emptyList())
 
