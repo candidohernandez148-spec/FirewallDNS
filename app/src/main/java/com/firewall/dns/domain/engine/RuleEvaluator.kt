@@ -5,7 +5,8 @@ object RuleEvaluator {
     data class AdblockParseResult(
         val domain: String,
         val isException: Boolean,
-        val isImportant: Boolean = false
+        val isImportant: Boolean = false,
+        val includeSubdomains: Boolean = true
     )
 
     fun canonicalizeDomain(raw: String): String? {
@@ -39,18 +40,11 @@ object RuleEvaluator {
         return cleaned
     }
 
-    /**
-     * Parses only rules whose semantics can be enforced by a DNS-only policy.
-     * URL-, resource-, client-, and request-context-dependent options are
-     * rejected rather than silently widened into global domain blocks.
-     */
+    /** Parses only rule forms whose semantics can be enforced by the DNS policy. */
     fun parseAdblockLine(raw: String): AdblockParseResult? =
         parseAdblockLineEntries(raw).firstOrNull()
 
-    /**
-     * Returns every DNS host from hosts-format lines. Some feeds put several
-     * aliases on one line; retaining only the first silently loses rules.
-     */
+    /** Hosts-format lines can contain multiple exact hostnames. */
     fun parseAdblockLineEntries(raw: String): List<AdblockParseResult> {
         val trimmed = raw.trim()
         if (trimmed.isEmpty() || trimmed.startsWith("!") || trimmed.startsWith("#")) return emptyList()
@@ -78,32 +72,27 @@ object RuleEvaluator {
             if (tokens.any { token -> token.any { it.code == 36 } }) return emptyList()
             return tokens.drop(1).mapNotNull { canonicalizeDomain(it) }
                 .distinct()
-                .map { AdblockParseResult(domain = it, isException = false) }
+                .map {
+                    AdblockParseResult(domain = it, isException = false, includeSubdomains = false)
+                }
         }
 
         val important = parseImportantOption(body) ?: return emptyList()
-        val candidate = when {
-            body.startsWith("||") -> {
-                val rawTarget = body.removePrefix("||")
-                    .substringBefore(36.toChar())
-                    .removeSuffix("^")
-                if (rawTarget.isEmpty() || rawTarget.contains('/') || rawTarget.contains('*') ||
-                    rawTarget.contains('^') || rawTarget.contains(':')
-                ) return emptyList()
-                rawTarget
-            }
-            else -> {
-                val rawTarget = body.substringBefore(36.toChar()).removeSuffix("^")
-                if (rawTarget.isEmpty() || rawTarget.contains('/') || rawTarget.contains('*') ||
-                    rawTarget.contains('^') || rawTarget.contains(':')
-                ) return emptyList()
-                rawTarget
-            }
-        }
+        val includeSubdomains = body.startsWith("||")
+        val pattern = if (includeSubdomains) body.removePrefix("||") else body
+        val rawTarget = pattern.substringBefore(36.toChar()).removeSuffix("^")
+        if (rawTarget.isEmpty() || rawTarget.contains('/') || rawTarget.contains('*') ||
+            rawTarget.contains('^') || rawTarget.contains(':')
+        ) return emptyList()
 
-        val domain = canonicalizeDomain(candidate) ?: return emptyList()
+        val domain = canonicalizeDomain(rawTarget) ?: return emptyList()
         return listOf(
-            AdblockParseResult(domain = domain, isException = isException, isImportant = important)
+            AdblockParseResult(
+                domain = domain,
+                isException = isException,
+                isImportant = important,
+                includeSubdomains = includeSubdomains
+            )
         )
     }
 
@@ -123,10 +112,24 @@ object RuleEvaluator {
         hostExceptions: Set<String>,
         hostBlock: Set<String>,
         importantExceptions: Set<String> = emptySet(),
-        importantBlock: Set<String> = emptySet()
+        importantBlock: Set<String> = emptySet(),
+        exactExceptions: Set<String> = emptySet(),
+        exactBlock: Set<String> = emptySet(),
+        importantExactExceptions: Set<String> = emptySet(),
+        importantExactBlock: Set<String> = emptySet()
     ): Pair<Boolean, String> {
         val decision = evaluateDecision(
-            domain, customAllow, customBlock, hostExceptions, hostBlock, importantExceptions, importantBlock
+            domain,
+            customAllow,
+            customBlock,
+            hostExceptions,
+            hostBlock,
+            importantExceptions,
+            importantBlock,
+            exactExceptions,
+            exactBlock,
+            importantExactExceptions,
+            importantExactBlock
         )
         return decision.blocked to decision.reason
     }
@@ -138,7 +141,11 @@ object RuleEvaluator {
         hostExceptions: Set<String>,
         hostBlock: Set<String>,
         importantExceptions: Set<String> = emptySet(),
-        importantBlock: Set<String> = emptySet()
+        importantBlock: Set<String> = emptySet(),
+        exactExceptions: Set<String> = emptySet(),
+        exactBlock: Set<String> = emptySet(),
+        importantExactExceptions: Set<String> = emptySet(),
+        importantExactBlock: Set<String> = emptySet()
     ): DecisionResult {
         val clean = domain.trim().trimEnd('.').lowercase()
 
@@ -150,18 +157,18 @@ object RuleEvaluator {
             return DecisionResult(true, "Regla propia", RuleSource.MANUAL_BLOCK)
         }
 
-        // AdGuard DNS important exceptions override important blocks; important
-        // blocks override normal list exceptions and normal list blocks.
-        if (matchesDomainOrParent(clean, importantExceptions)) {
+        // Important exceptions outrank important blocks; important blocks
+        // outrank ordinary exceptions and ordinary blocks.
+        if (matchesDomainOrParent(clean, importantExceptions) || clean in importantExactExceptions) {
             return DecisionResult(false, "Excepción importante @@||", RuleSource.LIST_EXCEPTION)
         }
-        if (matchesDomainOrParent(clean, importantBlock)) {
+        if (matchesDomainOrParent(clean, importantBlock) || clean in importantExactBlock) {
             return DecisionResult(true, "Adblock importante ||^", RuleSource.LIST_BLOCK)
         }
-        if (matchesDomainOrParent(clean, hostExceptions)) {
+        if (matchesDomainOrParent(clean, hostExceptions) || clean in exactExceptions) {
             return DecisionResult(false, "Excepción @@||", RuleSource.LIST_EXCEPTION)
         }
-        if (matchesDomainOrParent(clean, hostBlock)) {
+        if (matchesDomainOrParent(clean, hostBlock) || clean in exactBlock) {
             return DecisionResult(true, "Adblock ||^", RuleSource.LIST_BLOCK)
         }
         return DecisionResult(false, "Permitido", RuleSource.CACHE, cacheTtlMs = 30_000L)
