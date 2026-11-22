@@ -415,7 +415,7 @@ object FirewallDnsTrafficMetrics {
         icmpV4Sent.set(stats.icmpV4Sent)
         icmpV6Received.set(stats.icmpV6Received)
         icmpV6Sent.set(stats.icmpV6Sent)
-        nativeStatsUpdatedAtEpochMs.set(stats.capturedAtEpochMs)
+        nativeStatsUpdatedAtEpochMs.set(stats.sampledAtEpochMs)
     }
 
     internal fun fragmentSnapshot(metrics: FragmentReassemblerMetrics) {
