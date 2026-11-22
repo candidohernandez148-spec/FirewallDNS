@@ -46,6 +46,9 @@ jobs:
           ref: c27887056230769ee897b7c7b92976b96d3c9a6d
           path: third_party/firestack
 
+      - name: Aplicar parche FirewallDNS para capturar DNS en puerto 53
+        run: git -C third_party/firestack apply "$GITHUB_WORKSPACE/third_party/patches/firestack-capture-dns-port.patch"
+
       - name: Instalar Go para Firestack
         uses: actions/setup-go@v6
         with:
