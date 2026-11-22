@@ -553,7 +553,7 @@ class DnsFirewallService : VpnService() {
             val buffer = ByteArray(4096)
             try {
                 while (session.active.get() && isRunning && !Thread.currentThread().isInterrupted) {
-                    val length = session.input.read(buffer)
+                    val length = session.input?.read(buffer) ?: break
                     if (length < 0) break
                     if (length > 0 && session.active.get()) {
                         FirewallDnsTrafficMetrics.packetRead()
@@ -752,7 +752,8 @@ class DnsFirewallService : VpnService() {
             // Una respuesta de una sesión anterior nunca debe entrar en el TUN nuevo.
             if (!session.active.get()) return
             try {
-                session.output.write(data)
+                val output = session.output ?: return
+                output.write(data)
                 FirewallDnsTrafficMetrics.responseWritten()
             } catch (_: IOException) {
                 packetWriteErrors.incrementAndGet()
@@ -961,8 +962,11 @@ class DnsFirewallService : VpnService() {
             // Invalidar primero: workers antiguos ya no pueden escribir respuestas.
             session.active.set(false)
 
-            // Serializar con writePacket para no cerrar el descriptor a mitad de write().
+            // Stop the user-space stack before closing either reference to the TUN fd.
+            session.firestack?.close()
             synchronized(writeLock) {
+                try { session.input?.close() } catch (_: IOException) {}
+                try { session.output?.close() } catch (_: IOException) {}
                 try { session.descriptor.close() } catch (_: IOException) {}
             }
 
@@ -997,8 +1001,6 @@ class DnsFirewallService : VpnService() {
             FirewallDnsTrafficMetrics.smoltcpStopped()
             session.tcpCoordinator = null
             session.tcpOwner = null
-            try { session.input.close() } catch (_: IOException) {}
-            try { session.output.close() } catch (_: IOException) {}
         }
     }
 
