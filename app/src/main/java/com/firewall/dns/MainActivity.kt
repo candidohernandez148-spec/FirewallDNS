@@ -418,10 +418,12 @@ fun FirewallApp(
                     stats = stats,
                     logs = activityLogs,
                     otherVpnActive = otherVpnActive,
+                    tunMetrics = tunMetrics,
                     onOpenActivity = { navigationScope.launch { pagerState.animateScrollToPage(1) } }
                 )
                 3 -> ProtectionHubScreen(
                     stats = stats,
+                    tunMetrics = tunMetrics,
                     customBlock = customBlock,
                     customAllow = customAllow,
                     blocklistUrls = blocklistUrls,
