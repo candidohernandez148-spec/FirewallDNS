@@ -54,8 +54,18 @@ jobs:
 
       - name: Install Firestack AAR for Android adapter
         run: |
-          mkdir -p android-adapter/libs
-          cp build/firestack-aar/tun2socks.aar android-adapter/libs/tun2socks.aar
+          MAVEN_DIR="build/firestack-maven/com/celzero/firestack/intra/1.0.0"
+          mkdir -p "$MAVEN_DIR"
+          cp build/firestack-aar/tun2socks.aar "$MAVEN_DIR/intra-1.0.0.aar"
+          cat > "$MAVEN_DIR/intra-1.0.0.pom" <<'POM'
+          <project xmlns="http://maven.apache.org/POM/4.0.0">
+            <modelVersion>4.0.0</modelVersion>
+            <groupId>com.celzero.firestack</groupId>
+            <artifactId>intra</artifactId>
+            <version>1.0.0</version>
+            <packaging>aar</packaging>
+          </project>
+          POM
 
       - uses: actions/setup-java@v4
         with:
