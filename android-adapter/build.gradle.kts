@@ -24,6 +24,7 @@ android {
 }
 
 dependencies {
+    implementation(files("libs/tun2socks.aar"))
     api(project(":dns-engine"))
     api(project(":engine-runtime"))
     testImplementation("junit:junit:4.13.2")
