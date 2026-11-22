@@ -10,6 +10,7 @@ import com.firewalldns.engine.dns.DnsEvaluation
 import com.firewalldns.engine.dns.DnsPolicyAdapter
 import com.firewalldns.engine.monitor.EngineEvent
 import com.firewalldns.engine.monitor.EngineMetricsSnapshot
+import com.firewalldns.engine.monitor.FlowConnectionMonitor
 import com.firewalldns.engine.monitor.EngineMonitor
 import com.firewalldns.engine.threat.ThreatAnalyzer
 
@@ -24,6 +25,7 @@ class EngineRuntime(
     initialRules: Collection<PolicyRule> = emptyList(),
     threatAnalyzer: ThreatAnalyzer = ThreatAnalyzer(),
     val monitor: EngineMonitor = EngineMonitor(),
+    val flowMonitor: FlowConnectionMonitor = FlowConnectionMonitor(),
 ) {
     private val policyEngine = PolicyEngine(initialRules)
     private val networkFlowPolicy = NetworkFlowPolicyEngine()
@@ -66,4 +68,8 @@ class EngineRuntime(
     fun drainEvents(maxCount: Int): List<EngineEvent> = monitor.drainEvents(maxCount)
 
     fun metrics(): EngineMetricsSnapshot = monitor.snapshot()
+
+    /** Expires stale flow telemetry without blocking the packet-processing path. */
+    fun evictIdleFlows(nowEpochMillis: Long = System.currentTimeMillis()): Int =
+        flowMonitor.evictIdle(nowEpochMillis)
 }
