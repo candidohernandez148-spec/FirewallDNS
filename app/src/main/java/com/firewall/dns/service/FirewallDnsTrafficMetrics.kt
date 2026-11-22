@@ -4,6 +4,7 @@ import com.firewalldns.engine.android.DnsSocketProtectionProtocol
 import com.firewalldns.engine.android.FragmentReassemblerMetrics
 import com.firewalldns.engine.monitor.ActiveFlowSnapshot
 import com.firewalldns.engine.monitor.FlowMonitorSnapshot
+import com.firewalldns.engine.monitor.EngineMetricsSnapshot
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
@@ -34,6 +35,8 @@ object FirewallDnsTrafficMetrics {
         val dnsAllowed: Long,
         val cacheHits: Long,
         val cacheMisses: Long,
+        val engineEventsDropped: Long,
+        val engineQueuedEvents: Long,
         val upstreamSuccess: Long,
         val upstreamFailure: Long,
         val upstreamResolvers: String,
@@ -108,6 +111,8 @@ object FirewallDnsTrafficMetrics {
     private val dnsAllowed = AtomicLong()
     private val cacheHits = AtomicLong()
     private val cacheMisses = AtomicLong()
+    private val engineEventsDropped = AtomicLong()
+    private val engineQueuedEvents = AtomicLong()
     private val upstreamSuccess = AtomicLong()
     private val upstreamFailure = AtomicLong()
     private val upstreamResolvers = AtomicReference("")
@@ -181,6 +186,14 @@ object FirewallDnsTrafficMetrics {
     internal fun dnsAllowed() { dnsAllowed.incrementAndGet() }
     internal fun cacheHit() { cacheHits.incrementAndGet() }
     internal fun cacheMiss() { cacheMisses.incrementAndGet() }
+    internal fun engineMonitorSnapshot(snapshot: EngineMetricsSnapshot) {
+        // These values come from the shared policy runtime, not inferred UI events.
+        dnsRejected.set(snapshot.rejected)
+        cacheHits.set(snapshot.cacheHits)
+        cacheMisses.set(snapshot.cacheMisses)
+        engineEventsDropped.set(snapshot.eventsDropped)
+        engineQueuedEvents.set(snapshot.queuedEvents.toLong())
+    }
     internal fun upstreamSuccess() { upstreamSuccess.incrementAndGet() }
     internal fun upstreamFailure() { upstreamFailure.incrementAndGet() }
     internal fun upstreamResolversChanged(servers: List<String>) {
@@ -296,6 +309,8 @@ object FirewallDnsTrafficMetrics {
         dnsAllowed = dnsAllowed.get(),
         cacheHits = cacheHits.get(),
         cacheMisses = cacheMisses.get(),
+        engineEventsDropped = engineEventsDropped.get(),
+        engineQueuedEvents = engineQueuedEvents.get(),
         upstreamSuccess = upstreamSuccess.get(),
         upstreamFailure = upstreamFailure.get(),
         upstreamResolvers = upstreamResolvers.get(),
