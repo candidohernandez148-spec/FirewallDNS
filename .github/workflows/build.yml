@@ -122,16 +122,16 @@ jobs:
       - name: Apply FirewallDNS DNS interception patch
         run: git -C third_party/firestack apply "$GITHUB_WORKSPACE/third_party/patches/firestack-capture-dns-port.patch"
 
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.27.3"
+          cache-dependency-path: third_party/firestack/go.sum
+
       - name: Verify Firestack DNS capture patch
         working-directory: third_party/firestack
         env:
           GOTOOLCHAIN: local
         run: go test ./intra -run TestCaptureDnsPortEnablesAllPort53Interception -count=1
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version: "1.27.3"
-          cache-dependency-path: third_party/firestack/go.sum
 
       - name: Set up Android SDK and NDK
         uses: android-actions/setup-android@v3
