@@ -215,6 +215,13 @@ fun ThreatMapScreen(
             }
         }
         item {
+            LiveEngineOperations(
+                metrics = tunMetrics,
+                logs = logs,
+                vpnRunning = vpnRunning,
+            )
+        }
+        item {
             OutlinedTextField(
                 value = query, onValueChange = { query = it },
                 modifier = Modifier.fillMaxWidth(), singleLine = true,
@@ -465,4 +472,155 @@ private fun categoryLabel(category: ThreatKnowledgeGraph.Category): String = whe
     ThreatKnowledgeGraph.Category.ADVERTISING -> "Publicidad"
     ThreatKnowledgeGraph.Category.TRACKING -> "Rastreo"
     ThreatKnowledgeGraph.Category.ANALYTICS -> "Analítica"
+}
+
+
+@Composable
+private fun LiveEngineOperations(
+    metrics: FirewallDnsTrafficMetrics.Snapshot,
+    logs: List<DnsLogEntry>,
+    vpnRunning: Boolean,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text("ACTIVIDAD OPERATIVA EN TIEMPO REAL", style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold)
+            Text(
+                if (vpnRunning) "Lectura de contadores del servicio activo. Los valores son acumulados reales desde que se inició el proceso."
+                else "Servicio detenido. Se muestran los últimos contadores disponibles; no se simula actividad.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        LiveMetricSection("TRÁFICO TUN · PAQUETES", listOf(
+            "Paquetes leídos" to metrics.packetsRead,
+            "Paquetes escritos" to metrics.packetsWritten,
+            "IPv4 recibidos" to metrics.ipv4Packets,
+            "IPv6 recibidos" to metrics.ipv6Packets,
+            "Errores de escritura" to metrics.writeErrors,
+            "Rechazos de cola" to metrics.queueRejected,
+            "Rechazos de parser" to metrics.parserRejected,
+            "Transporte no compatible" to metrics.unsupportedTransport,
+        ))
+        LiveMetricSection("INSPECCIÓN DNS Y DECISIONES", listOf(
+            "Consultas DNS UDP" to metrics.dnsUdpPackets,
+            "Consultas DNS TCP" to metrics.dnsTcp,
+            "DNS malformado" to metrics.malformedDns,
+            "Bloqueadas" to metrics.dnsBlocked,
+            "Observadas" to metrics.dnsObserved,
+            "Permitidas" to metrics.dnsAllowed,
+            "Rechazadas" to metrics.dnsRejected,
+            "Aciertos de caché" to metrics.cacheHits,
+            "Fallos de caché" to metrics.cacheMisses,
+        ))
+        LiveMetricSection("RESOLUCIÓN Y RED FÍSICA", listOf(
+            "Respuestas upstream correctas" to metrics.upstreamSuccess,
+            "Fallos upstream" to metrics.upstreamFailure,
+            "Intentos fallidos upstream" to metrics.upstreamAttemptFailures,
+            "Timeouts upstream" to metrics.upstreamFailureTimeouts,
+            "Cancelaciones upstream" to metrics.upstreamCancelled,
+            "Cambios de resolvers" to metrics.upstreamResolverRefreshes,
+            "Intentos proteger UDP" to metrics.upstreamProtectUdpAttempts,
+            "Intentos proteger TCP" to metrics.upstreamProtectTcpAttempts,
+        ), metrics.upstreamResolvers.ifBlank { "Resolvers: sin datos" })
+        LiveMetricSection("CONEXIONES Y FLUJOS FIRESTACK", listOf(
+            "Flujos activos" to metrics.flowsActive,
+            "Flujos abiertos" to metrics.flowsOpened,
+            "Flujos cerrados" to metrics.flowsClosed,
+            "Flujos bloqueados" to metrics.flowsBlocked,
+            "Bytes enviados" to metrics.flowBytesSent,
+            "Bytes recibidos" to metrics.flowBytesReceived,
+            "Rechazos por capacidad" to metrics.flowCapacityRejected,
+            "Firestack activo (0/1)" to metrics.firestackActive,
+        ))
+        LiveMetricSection("FRAGMENTACIÓN Y PROTECCIÓN DE SOCKETS", listOf(
+            "Fragmentos aceptados" to metrics.fragmentsAccepted,
+            "Paquetes reensamblados" to metrics.packetsReassembled,
+            "Fragmentos inválidos" to metrics.fragmentsDroppedInvalid,
+            "Fragmentos exceden límites" to metrics.fragmentsDroppedLimit,
+            "Ensamblajes pendientes" to metrics.fragmentPendingAssemblies,
+            "Bytes fragmentados en buffer" to metrics.fragmentBufferedBytes,
+            "Protección socket correcta" to metrics.firestackProtectSuccess,
+            "Fallos protección socket" to metrics.firestackProtectFailure,
+            "Vinculación a red correcta" to metrics.firestackBindSuccess,
+            "Fallos vinculación a red" to metrics.firestackBindFailure,
+        ))
+        LiveMetricSection("ESTADO DE ERRORES", listOf(
+            "Errores de workers" to metrics.workerErrors,
+            "Respuestas DNS construidas" to metrics.dnsResponsesBuilt,
+            "Respuestas DNS ausentes" to metrics.noDnsResponse,
+            "RST TCP enviados" to metrics.tcpRstSent,
+            "RST TCP suprimidos" to metrics.tcpRstSuppressed,
+        ))
+        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(15.dp)) {
+            Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("SECUENCIA DNS REGISTRADA", style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold)
+                if (logs.isEmpty()) {
+                    Text("Sin eventos DNS registrados. No se generan eventos de demostración.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    logs.take(12).forEach { event ->
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    when {
+                                        event.isBlocked -> "BLOQUEADO"
+                                        event.reason.startsWith("OBSERVE:", true) -> "OBSERVADO"
+                                        else -> "PERMITIDO"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = when {
+                                        event.isBlocked -> MaterialTheme.colorScheme.error
+                                        event.reason.startsWith("OBSERVE:", true) -> MaterialTheme.colorScheme.tertiary
+                                        else -> MaterialTheme.colorScheme.primary
+                                    }
+                                )
+                                Text(" · ${event.queryType}", style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Text(event.domain, style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold)
+                            Text("${event.appName} · ${event.reason}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (event.timestamp.isNotBlank()) {
+                                Text(event.timestamp, style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        if (event != logs.take(12).last()) {
+                            androidx.compose.material3.HorizontalDivider()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LiveMetricSection(
+    title: String,
+    values: List<Pair<String, Long>>,
+    subtitle: String? = null,
+) {
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(15.dp)) {
+        Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            if (!subtitle.isNullOrBlank()) {
+                Text(subtitle, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            values.forEach { (label, value) ->
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                    Text(value.toString(), style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
 }
