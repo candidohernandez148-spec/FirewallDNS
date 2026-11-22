@@ -47,12 +47,14 @@ import androidx.compose.ui.unit.dp
 import com.firewall.dns.domain.model.AppInfoItem
 import com.firewall.dns.domain.model.FirewallStats
 import com.firewall.dns.domain.model.DnsLogEntry
+import com.firewalldns.engine.monitor.ActiveFlowSnapshot
 
 @Composable
 fun AppsSettingsScreen(
     stats: FirewallStats,
     apps: List<AppInfoItem>,
     logs: List<DnsLogEntry>,
+    activeFlows: List<ActiveFlowSnapshot>,
     excludedPackages: Set<String>,
     blockedApps: Set<String>,
     onToggleBlockedApp: (AppInfoItem) -> Unit,
@@ -66,7 +68,7 @@ fun AppsSettingsScreen(
     var selectedApp by remember { mutableStateOf<AppInfoItem?>(null) }
 
     if (selectedApp != null) {
-        AppActivityDetailScreen(app = selectedApp!!, logs = logs, onBack = { selectedApp = null })
+        AppActivityDetailScreen(app = selectedApp!!, logs = logs, flows = activeFlows, onBack = { selectedApp = null })
     } else LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 9.dp),
         contentPadding = PaddingValues(bottom = 12.dp),
@@ -245,6 +247,7 @@ fun AppsSettingsScreen(
 private fun AppActivityDetailScreen(
     app: AppInfoItem,
     logs: List<DnsLogEntry>,
+    flows: List<ActiveFlowSnapshot>,
     onBack: () -> Unit
 ) {
     var selectedAction by remember { mutableStateOf("TODOS") }
@@ -253,6 +256,7 @@ private fun AppActivityDetailScreen(
     val blocked = appLogs.count { it.decisionAction.equals("BLOCK", ignoreCase = true) }
     val allowed = appLogs.count { it.decisionAction.equals("ALLOW", ignoreCase = true) }
     val observed = appLogs.count { it.decisionAction.equals("OBSERVE", ignoreCase = true) }
+    val appFlows = flows.filter { it.identity.appUid == app.uid }
 
     Column(
         modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 10.dp),
@@ -266,6 +270,24 @@ private fun AppActivityDetailScreen(
             Column(Modifier.weight(1f).padding(start = 12.dp)) {
                 Text(app.label, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text("UID ${app.uid} · ${app.packageName}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Text("Conexiones activas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        if (appFlows.isEmpty()) {
+            Text("No hay flujos TUN activos atribuidos a este UID en la última muestra.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            appFlows.forEach { flow ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f))
+                ) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("${flow.identity.protocol.name} · ${flow.action}", fontWeight = FontWeight.Bold)
+                        Text("${flow.identity.sourceAddress}:${flow.identity.sourcePort} → ${flow.identity.destinationAddress}:${flow.identity.destinationPort}", style = MaterialTheme.typography.bodySmall)
+                        Text("TX ${flow.bytesSent} B · RX ${flow.bytesReceived} B · ${flow.reason}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
             }
         }
         Text("Historial de actividad DNS", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
