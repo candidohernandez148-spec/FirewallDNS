@@ -916,6 +916,8 @@ private fun LiveEngineOperations(
             "Rechazadas" to metrics.dnsRejected,
             "Aciertos de caché" to metrics.cacheHits,
             "Fallos de caché" to metrics.cacheMisses,
+            "Eventos de telemetría descartados" to metrics.engineEventsDropped,
+            "Eventos pendientes en cola" to metrics.engineQueuedEvents,
         ))
         LiveMetricSection("RESOLUCIÓN Y RED FÍSICA", listOf(
             "Respuestas upstream correctas" to metrics.upstreamSuccess,
