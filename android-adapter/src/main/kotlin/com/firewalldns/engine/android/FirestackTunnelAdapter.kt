@@ -1,0 +1,269 @@
+package com.firewalldns.engine.android
+
+import android.net.Network
+import android.net.VpnService
+import android.os.ParcelFileDescriptor
+import com.celzero.firestack.backend.Backend
+import com.celzero.firestack.backend.DNSOpts
+import com.celzero.firestack.backend.DNSSummary
+import com.celzero.firestack.backend.DomainOpts
+import com.celzero.firestack.backend.ServerSummary
+import com.celzero.firestack.backend.Tab
+import com.celzero.firestack.intra.Bridge
+import com.celzero.firestack.intra.FlowSummary
+import com.celzero.firestack.intra.Intra
+import com.celzero.firestack.intra.Mark
+import com.celzero.firestack.intra.PreMark
+import com.celzero.firestack.intra.Tunnel
+import com.firewalldns.engine.core.PolicyAction
+import com.firewalldns.engine.runtime.EngineRuntime
+import java.net.URI
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
+
+/**
+ * Owns the Firestack/gVisor user-space network stack attached to the existing
+ * Android VpnService TUN. It never creates a second VPN or reads the TUN fd.
+ */
+class FirestackTunnelAdapter private constructor(
+    private val vpnService: VpnService,
+    private val tunReference: ParcelFileDescriptor,
+    private val tunnel: Tunnel,
+    private val bridge: FirewallDNSFirestackBridge,
+    private val defaultDnsAddress: String,
+) : AutoCloseable {
+
+    private val closed = AtomicBoolean(false)
+
+    fun updatePhysicalNetworkResolver(resolver: String): Boolean {
+        if (closed.get()) return false
+        val address = formatHostPort(resolver)
+        return runCatching {
+            Intra.addDefaultTransport(tunnel, Backend.DNS53, address, "")
+            true
+        }.getOrDefault(false)
+    }
+
+    fun isConnected(): Boolean = !closed.get() && runCatching { tunnel.isConnected }.getOrDefault(false)
+
+    fun stat() = runCatching { tunnel.stat() }.getOrNull()
+
+    override fun close() {
+        if (!closed.compareAndSet(false, true)) return
+        runCatching { tunnel.disconnect() }
+        runCatching { bridge.close() }
+        runCatching { tunReference.close() }
+    }
+
+    companion object {
+        private const val TUN_IFADDRS = "10.10.10.2/32,fd00:10:10::2/128"
+        private const val FAKE_DNS = "10.10.10.1:53,[fd00:10:10::1]:53"
+
+        fun connect(
+            vpnService: VpnService,
+            tunDescriptor: ParcelFileDescriptor,
+            mtu: Int,
+            resolver: String,
+            engine: EngineRuntime,
+            flowPolicyAdapter: AndroidFlowPolicyAdapter,
+            physicalNetworkProvider: () -> Network?,
+            resolvePackage: (Int) -> String?,
+            onDnsDecision: (String, Int, Int?, String, PolicyAction) -> Unit = { _, _, _, _, _ -> },
+            onSocketProtectionResult: (Boolean) -> Unit = {},
+        ): FirestackTunnelAdapter {
+            require(mtu in 576..9000) { "Invalid TUN MTU" }
+            val tunReference = ParcelFileDescriptor.dup(tunDescriptor.fileDescriptor)
+            var bridge: FirewallDNSFirestackBridge? = null
+            try {
+                bridge = FirewallDNSFirestackBridge(
+                    vpnService = vpnService,
+                    engine = engine,
+                    flowPolicyAdapter = flowPolicyAdapter,
+                    physicalNetworkProvider = physicalNetworkProvider,
+                    resolvePackage = resolvePackage,
+                    onDnsDecision = onDnsDecision,
+                    onSocketProtectionResult = onSocketProtectionResult,
+                )
+                val defaultDns = Intra.newDefaultDNS(
+                    Backend.DNS53,
+                    formatHostPort(resolver),
+                    "",
+                )
+                Intra.defaultDNSAsFallback(false)
+                val tunnel = Intra.connect(
+                    tunReference.fd.toLong(),
+                    mtu.toLong(),
+                    mtu.toLong(),
+                    TUN_IFADDRS,
+                    FAKE_DNS,
+                    defaultDns,
+                    bridge,
+                )
+                check(tunnel.isConnected) { "Firestack returned a disconnected TUN stack" }
+                return FirestackTunnelAdapter(
+                    vpnService,
+                    tunReference,
+                    tunnel,
+                    bridge,
+                    formatHostPort(resolver),
+                )
+            } catch (error: Throwable) {
+                runCatching { bridge?.close() }
+                runCatching { tunReference.close() }
+                throw error
+            }
+        }
+
+        private fun formatHostPort(address: String): String =
+            if (address.startsWith("[") && address.contains("]:")) address
+            else if (address.contains(":")) "[$address]:53"
+            else "$address:53"
+    }
+}
+
+private class FirewallDNSFirestackBridge(
+    private val vpnService: VpnService,
+    private val engine: EngineRuntime,
+    private val flowPolicyAdapter: AndroidFlowPolicyAdapter,
+    private val physicalNetworkProvider: () -> Network?,
+    private val resolvePackage: (Int) -> String?,
+    private val onDnsDecision: (String, Int, Int?, String, PolicyAction) -> Unit,
+    private val onSocketProtectionResult: (Boolean) -> Unit,
+) : Bridge, AutoCloseable {
+
+    private val boundNetworks = ConcurrentHashMap<Int, Network>()
+    private val closed = AtomicBoolean(false)
+
+    override fun bind4(who: String, addrport: String, fd: Long) = bindToPhysicalNetwork(fd)
+    override fun bind6(who: String, addrport: String, fd: Long) = bindToPhysicalNetwork(fd)
+
+    private fun bindToPhysicalNetwork(fd: Long) {
+        if (closed.get()) return
+        val descriptor = fd.toInt()
+        val network = physicalNetworkProvider() ?: return
+        val result = runCatching {
+            ParcelFileDescriptor.fromFd(descriptor).use { duplicate ->
+                network.bindSocket(duplicate.fileDescriptor)
+            }
+        }
+        if (result.isSuccess) boundNetworks[descriptor] = network
+        else throw IllegalStateException("Unable to bind Firestack socket to physical network", result.exceptionOrNull())
+    }
+
+    override fun protect(who: String, fd: Long) {
+        if (closed.get()) throw IllegalStateException("FirewallDNS Firestack bridge is closed")
+        val descriptor = fd.toInt()
+        boundNetworks.remove(descriptor)
+        val protected = vpnService.protect(descriptor)
+        runCatching { onSocketProtectionResult(protected) }
+        if (!protected) throw IllegalStateException("VpnService.protect failed for Firestack socket")
+    }
+
+    override fun preflow(protocol: Int, uid: Int, cid: String, src: String, dst: String): PreMark =
+        PreMark().apply {
+            setUID(if (uid >= 0) uid.toString() else Backend.UNKNOWN_UID_STR)
+            setIsUidSelf(false)
+        }
+
+    override fun flow(
+        protocol: Int,
+        uid: Int,
+        cid: String,
+        src: String,
+        dst: String,
+        origdsts: String,
+        domains: String,
+        probableDomains: String,
+        blocklists: String,
+        dstIsAlg: Boolean,
+    ): Mark {
+        val decision = parseEndpoint(src)?.let { source ->
+            parseEndpoint(dst)?.let { destination ->
+                runCatching {
+                    flowPolicyAdapter.evaluate(
+                        flowId = cid,
+                        protocolNumber = protocol,
+                        ownerUid = uid,
+                        sourceAddress = source.first,
+                        sourcePort = source.second,
+                        destinationAddress = destination.first,
+                        destinationPort = destination.second,
+                    )
+                }.getOrNull()
+            }
+        }
+        val blocked = decision?.action == PolicyAction.BLOCK
+        return Mark().apply {
+            setPIDCSV(if (blocked) Backend.Block else Backend.Base)
+            setCID(cid)
+            setUID(if (uid >= 0) uid.toString() else Backend.UNKNOWN_UID_STR)
+        }
+    }
+
+    override fun inflow(protocol: Int, uid: Int, cid: String, src: String, dst: String): Mark =
+        Mark().apply {
+            setPIDCSV(Backend.Base)
+            setCID(cid)
+            setUID(if (uid >= 0) uid.toString() else Backend.UNKNOWN_UID_STR)
+        }
+
+    override fun flowing(mark: Mark) = Unit
+
+    override fun postflow(summary: FlowSummary) {
+        val id = summary.getID()
+        if (id.isBlank()) return
+        flowPolicyAdapter.recordBytes(id, summary.getTx().coerceAtLeast(0), summary.getRx().coerceAtLeast(0))
+        flowPolicyAdapter.close(id)
+    }
+
+    override fun onPrequery(who: String, fid: String, uid: String, domain: String, qtyp: Long): DomainOpts? = null
+
+    override fun onQuery(who: String, fid: String, uid: String, domain: String, qtyp: Long): DNSOpts {
+        val ownerUid = uid.toIntOrNull()
+        val appPackage = ownerUid?.takeIf { it >= 0 }?.let { runCatching { resolvePackage(it) }.getOrNull() }
+        val decision = engine.evaluateDomain(domain, appPackage)
+        runCatching { onDnsDecision(domain, qtyp.toInt(), ownerUid, decision.reason, decision.action) }
+        return DNSOpts().apply {
+            setUID(uid)
+            setTIDCSV(if (decision.action == PolicyAction.BLOCK) Backend.Block else Backend.Default)
+        }
+    }
+
+    override fun onUpstreamAnswer(
+        who: String,
+        fid: String,
+        summary: DNSSummary,
+        forPref: DNSOpts,
+        unmodifiedipcsv: String,
+    ): DNSOpts? = null
+
+    override fun onResponse(summary: DNSSummary) = Unit
+    override fun onDNSAdded(id: String) = Unit
+    override fun onDNSRemoved(id: String) = Unit
+    override fun onDNSStopped() = Unit
+    override fun onSvcComplete(summary: ServerSummary) = Unit
+    override fun svcRoute(cid: String, src: String, dst: String, origdsts: String, domains: String): Tab =
+        Tab().apply {
+            setCID(cid)
+            setBlock(false)
+        }
+
+    override fun onProxiesStopped() = Unit
+    override fun onProxyAdded(id: String, addr: String) = Unit
+    override fun onProxyRemoved(id: String, addr: String) = Unit
+    override fun onProxyStopped(id: String, addr: String) = Unit
+    override fun onProxyUpdated(id: String, addr: String) = Unit
+
+    override fun close() {
+        if (!closed.compareAndSet(false, true)) return
+        boundNetworks.clear()
+    }
+
+    private fun parseEndpoint(value: String): Pair<String, Int>? = runCatching {
+        val uri = URI("tcp://$value")
+        val host = uri.host ?: return null
+        val port = uri.port
+        require(port in 1..65535)
+        host to port
+    }.getOrNull()
+}
