@@ -377,6 +377,7 @@ class DnsFirewallService : VpnService() {
                     flowPolicyAdapter = flowAdapter,
                     physicalNetworkProvider = { selectedPhysicalNetwork },
                     resolvePackage = ::resolvePackageName,
+                    isUidBlocked = AppFirewallManager::isUidBlocked,
                     onDnsDecision = { domain, qType, uid, reason, action ->
                         when (action) {
                             PolicyAction.BLOCK -> FirewallDnsTrafficMetrics.dnsBlocked()
