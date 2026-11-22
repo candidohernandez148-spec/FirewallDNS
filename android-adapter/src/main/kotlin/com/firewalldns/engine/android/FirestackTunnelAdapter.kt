@@ -90,8 +90,6 @@ class FirestackTunnelAdapter private constructor(
                     onSocketBindingResult = onSocketBindingResult,
                     onFlowSnapshot = onFlowSnapshot,
                 )
-                // Intercept every UDP/TCP DNS query on port 53, including apps with hard-coded resolvers.
-                Intra.captureDnsPort()
                 val defaultDns = Intra.newDefaultDNS(
                     Backend.DNS53,
                     formatHostPort(resolver),
