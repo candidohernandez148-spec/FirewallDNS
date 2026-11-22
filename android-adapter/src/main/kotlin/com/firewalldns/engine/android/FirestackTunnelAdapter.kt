@@ -26,6 +26,15 @@ import com.firewalldns.engine.monitor.FlowMonitorSnapshot
 import com.firewalldns.engine.runtime.EngineRuntime
 import java.util.concurrent.atomic.AtomicBoolean
 
+/**
+ * Stable Android-facing DNS response snapshot. Keeps Firestack SDK types
+ * encapsulated inside this adapter module.
+ */
+data class FirestackDnsResponseSummary(
+    val status: String,
+    val cached: Boolean,
+    val latency: Long,
+)
 
 class FirestackTunnelAdapter private constructor(
     private val tunReference: ParcelFileDescriptor,
@@ -122,7 +131,7 @@ class FirestackTunnelAdapter private constructor(
             physicalNetworkProvider: () -> Network?,
             isUidBlocked: (Int) -> Boolean = { false },
             onDnsDecision: (String, Int, Int?, String, PolicyAction) -> Unit = { _, _, _, _, _ -> },
-            onDnsResponse: (DNSSummary) -> Unit = {},
+            onDnsResponse: (FirestackDnsResponseSummary) -> Unit = {},
             onSocketProtectionResult: (Boolean) -> Unit = {},
             onSocketBindingResult: (Boolean) -> Unit = {},
             onFlowSnapshot: (FlowMonitorSnapshot) -> Unit = {},
@@ -232,7 +241,7 @@ private class FirewallDNSFirestackBridge(
     private val physicalNetworkProvider: () -> Network?,
     private val isUidBlocked: (Int) -> Boolean,
     private val onDnsDecision: (String, Int, Int?, String, PolicyAction) -> Unit,
-    private val onDnsResponse: (DNSSummary) -> Unit,
+    private val onDnsResponse: (FirestackDnsResponseSummary) -> Unit,
     private val onSocketProtectionResult: (Boolean) -> Unit,
     private val onSocketBindingResult: (Boolean) -> Unit,
     private val onFlowSnapshot: (FlowMonitorSnapshot) -> Unit,
@@ -479,7 +488,15 @@ private class FirewallDNSFirestackBridge(
     ): DNSOpts? = null
 
     override fun onResponse(summary: DNSSummary?) {
-        if (summary != null) runCatching { onDnsResponse(summary) }
+        if (summary != null) runCatching {
+            onDnsResponse(
+                FirestackDnsResponseSummary(
+                    status = summary.status,
+                    cached = summary.cached,
+                    latency = summary.latency,
+                ),
+            )
+        }
     }
     override fun onDNSAdded(id: String?) = Unit
     override fun onDNSRemoved(id: String?) = Unit
