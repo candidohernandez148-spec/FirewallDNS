@@ -151,6 +151,7 @@ fun ThreatMapScreen(
                 }
             }
             item { SocKpiGrid(metrics = tunMetrics) }
+            item { SocPolicyDiagnostics(metrics = tunMetrics) }
             item { SocTunnelPath(metrics = tunMetrics, vpnRunning = vpnRunning) }
             item { LiveMapTelemetry(metrics = tunMetrics, logs = logs, vpnRunning = vpnRunning) }
             item {
@@ -601,6 +602,65 @@ private fun SocKpi(
                 color = MaterialTheme.colorScheme.onSurface)
             Text(detail, style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun SocPolicyDiagnostics(metrics: FirewallDnsTrafficMetrics.Snapshot) {
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+        Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("DIAGNÓSTICO DE POLÍTICA DNS", Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(metrics.policyInstallStatus,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = if (metrics.policyInstallStatus == "APLICADAS") Color(0xFF35C995) else MaterialTheme.colorScheme.error)
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.weight(1f)) {
+                    Text("REGLAS EN MOTOR", style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(metrics.policyRuleCount.toString(), style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold)
+                }
+                Column(Modifier.weight(1f)) {
+                    Text("REVISIÓN ACTIVA", style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(metrics.policyRevision.toString(), style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold)
+                }
+                Column(Modifier.weight(1f)) {
+                    Text("FALLOS AL APLICAR", style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(metrics.policyInstallFailures.toString(), style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = if (metrics.policyInstallFailures > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+                }
+            }
+            androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Text("ÚLTIMA DECISIÓN DNS", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+            if (metrics.lastDnsDomain.isBlank()) {
+                Text("Aún no hay una consulta DNS registrada por el motor.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(metrics.lastDnsDomain, Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    Text(metrics.lastDnsAction,
+                        style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
+                        color = when (metrics.lastDnsAction) {
+                            "BLOCK" -> MaterialTheme.colorScheme.error
+                            "OBSERVE" -> MaterialTheme.colorScheme.tertiary
+                            else -> MaterialTheme.colorScheme.primary
+                        })
+                }
+                Text(metrics.lastDnsReason, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text("Este panel refleja reglas instaladas en el runtime y decisiones observadas en callbacks DNS; no cuenta solo las listas guardadas.",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
