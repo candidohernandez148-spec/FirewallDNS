@@ -24,6 +24,12 @@ data class BlocklistSnapshot(
     val blocked: Set<String>,
     val exceptions: Set<String>,
     val threatDomainsByCategory: Map<ThreatFeedCategory, Set<String>>,
+    val importantBlocked: Set<String> = emptySet(),
+    val importantExceptions: Set<String> = emptySet(),
+    val exactBlocked: Set<String> = emptySet(),
+    val exactExceptions: Set<String> = emptySet(),
+    val importantExactBlocked: Set<String> = emptySet(),
+    val importantExactExceptions: Set<String> = emptySet(),
     val summary: String = ""
 )
 
@@ -52,6 +58,12 @@ class BlocklistDataSource(context: Context) {
     fun loadFromDisk(defaultDomains: List<String>): BlocklistSnapshot {
         val blocked = HashSet<String>(defaultDomains)
         val exceptions = HashSet<String>()
+        val importantBlocked = HashSet<String>()
+        val importantExceptions = HashSet<String>()
+        val exactBlocked = HashSet<String>()
+        val exactExceptions = HashSet<String>()
+        val importantExactBlocked = HashSet<String>()
+        val importantExactExceptions = HashSet<String>()
         val categories = ThreatFeedCategory.values().associateWith { HashSet<String>() }.toMutableMap()
         val file = File(filesDir, ADBLOCK_FILE_NAME)
         if (file.exists()) {
@@ -67,8 +79,22 @@ class BlocklistDataSource(context: Context) {
                             }
                         }
                     } else {
-                        RuleEvaluator.parseAdblockLine(line)?.let { parsed ->
-                            if (parsed.isException) exceptions.add(parsed.domain) else blocked.add(parsed.domain)
+                        RuleEvaluator.parseAdblockLineEntries(line).forEach { parsed ->
+                            if (parsed.isException) {
+                                if (parsed.includeSubdomains) {
+                                    exceptions.add(parsed.domain)
+                                    if (parsed.isImportant) importantExceptions.add(parsed.domain)
+                                } else {
+                                    exactExceptions.add(parsed.domain)
+                                    if (parsed.isImportant) importantExactExceptions.add(parsed.domain)
+                                }
+                            } else if (parsed.includeSubdomains) {
+                                blocked.add(parsed.domain)
+                                if (parsed.isImportant) importantBlocked.add(parsed.domain)
+                            } else {
+                                exactBlocked.add(parsed.domain)
+                                if (parsed.isImportant) importantExactBlocked.add(parsed.domain)
+                            }
                         }
                     }
                 }
@@ -77,7 +103,13 @@ class BlocklistDataSource(context: Context) {
         return BlocklistSnapshot(
             blocked = blocked,
             exceptions = exceptions,
-            threatDomainsByCategory = categories.mapValues { it.value.toSet() }
+            threatDomainsByCategory = categories.mapValues { it.value.toSet() },
+            importantBlocked = importantBlocked,
+            importantExceptions = importantExceptions,
+            exactBlocked = exactBlocked,
+            exactExceptions = exactExceptions,
+            importantExactBlocked = importantExactBlocked,
+            importantExactExceptions = importantExactExceptions
         )
     }
 
@@ -101,6 +133,12 @@ class BlocklistDataSource(context: Context) {
 
         val blocked = HashSet<String>(defaultDomains)
         val exceptions = HashSet<String>()
+        val importantBlocked = HashSet<String>()
+        val importantExceptions = HashSet<String>()
+        val exactBlocked = HashSet<String>()
+        val exactExceptions = HashSet<String>()
+        val importantExactBlocked = HashSet<String>()
+        val importantExactExceptions = HashSet<String>()
         val categoryDomains = ThreatFeedCategory.values().associateWith { HashSet<String>() }.toMutableMap()
         var lastError: Exception? = null
         val completedSources = HashSet<String>()
@@ -171,15 +209,33 @@ class BlocklistDataSource(context: Context) {
 
                 val sourceBlocked = HashSet<String>()
                 val sourceExceptions = HashSet<String>()
+                val sourceImportantBlocked = HashSet<String>()
+                val sourceImportantExceptions = HashSet<String>()
+                val sourceExactBlocked = HashSet<String>()
+                val sourceExactExceptions = HashSet<String>()
+                val sourceImportantExactBlocked = HashSet<String>()
+                val sourceImportantExactExceptions = HashSet<String>()
                 var lineCount = 0
                 var parsedRuleCount = 0
                 String(payload, StandardCharsets.UTF_8).lineSequence().forEach { line ->
                     lineCount++
                     if (lineCount > MAX_SOURCE_LINES) throw IllegalStateException("La lista supera 200,000 líneas")
                     if (line.length > MAX_LINE_CHARS) throw IllegalStateException("La lista contiene una línea demasiado larga")
-                    RuleEvaluator.parseAdblockLine(line)?.let { parsed ->
+                    RuleEvaluator.parseAdblockLineEntries(line).forEach { parsed ->
                         parsedRuleCount++
-                        if (parsed.isException) sourceExceptions.add(parsed.domain) else sourceBlocked.add(parsed.domain)
+                        if (parsed.isException && parsed.includeSubdomains) {
+                            sourceExceptions.add(parsed.domain)
+                            if (parsed.isImportant) sourceImportantExceptions.add(parsed.domain)
+                        } else if (parsed.isException) {
+                            sourceExactExceptions.add(parsed.domain)
+                            if (parsed.isImportant) sourceImportantExactExceptions.add(parsed.domain)
+                        } else if (parsed.includeSubdomains) {
+                            sourceBlocked.add(parsed.domain)
+                            if (parsed.isImportant) sourceImportantBlocked.add(parsed.domain)
+                        } else {
+                            sourceExactBlocked.add(parsed.domain)
+                            if (parsed.isImportant) sourceImportantExactBlocked.add(parsed.domain)
+                        }
                     }
                 }
                 ThreatFeedIntegrityPolicy.validateSource(payload.size, parsedRuleCount)?.let { message ->
@@ -190,6 +246,12 @@ class BlocklistDataSource(context: Context) {
                 sourceDigests += ThreatFeedIntegrityPolicy.sha256(payload)
                 blocked.addAll(sourceBlocked)
                 exceptions.addAll(sourceExceptions)
+                importantBlocked.addAll(sourceImportantBlocked)
+                importantExceptions.addAll(sourceImportantExceptions)
+                exactBlocked.addAll(sourceExactBlocked)
+                exactExceptions.addAll(sourceExactExceptions)
+                importantExactBlocked.addAll(sourceImportantExactBlocked)
+                importantExactExceptions.addAll(sourceImportantExactExceptions)
                 val category = ThreatFeedCatalog.categoryForUrl(targetUrl)
                 if (category != ThreatFeedCategory.GENERAL) {
                     categoryDomains.getValue(category).addAll(sourceBlocked)
@@ -222,12 +284,36 @@ class BlocklistDataSource(context: Context) {
                     }
                 }
             }
-            blocked.sorted().forEach { domain ->
+            (blocked - importantBlocked).sorted().forEach { domain ->
                 writer.write("||$domain^")
                 writer.newLine()
             }
-            exceptions.sorted().forEach { domain ->
+            (exactBlocked - importantExactBlocked).sorted().forEach { domain ->
+                writer.write(domain)
+                writer.newLine()
+            }
+            importantBlocked.sorted().forEach { domain ->
+                writer.write("||" + domain + "^" + 36.toChar() + "important")
+                writer.newLine()
+            }
+            importantExactBlocked.sorted().forEach { domain ->
+                writer.write(domain + 36.toChar() + "important")
+                writer.newLine()
+            }
+            (exceptions - importantExceptions).sorted().forEach { domain ->
                 writer.write("@@||$domain^")
+                writer.newLine()
+            }
+            (exactExceptions - importantExactExceptions).sorted().forEach { domain ->
+                writer.write("@@" + domain)
+                writer.newLine()
+            }
+            importantExceptions.sorted().forEach { domain ->
+                writer.write("@@||" + domain + "^" + 36.toChar() + "important")
+                writer.newLine()
+            }
+            importantExactExceptions.sorted().forEach { domain ->
+                writer.write("@@" + domain + 36.toChar() + "important")
                 writer.newLine()
             }
             writer.flush()
@@ -245,12 +331,18 @@ class BlocklistDataSource(context: Context) {
         val categorizedCount = categoryDomains.filterKeys { it != ThreatFeedCategory.GENERAL }.values.sumOf { it.size }
         val fingerprintInput = sourceDigests.sorted().joinToString("\\n").toByteArray(StandardCharsets.UTF_8)
         val fingerprint = ThreatFeedIntegrityPolicy.sha256(fingerprintInput).take(16)
-        val summary = "Listas HTTPS actualizadas: ${uniqueUrls.size} fuentes validadas ($verifiedSignedSources con firma verificada, $unsignedSources sin firma), $totalParsedRules reglas DNS válidas, ${blocked.size} reglas activas, $categorizedCount indicadores categorizados. Huella SHA-256: $fingerprint"
+        val summary = "Listas HTTPS actualizadas: ${uniqueUrls.size} fuentes validadas ($verifiedSignedSources con firma verificada, $unsignedSources sin firma), $totalParsedRules reglas DNS válidas, ${blocked.size + exactBlocked.size} reglas activas, $categorizedCount indicadores categorizados. Huella SHA-256: $fingerprint"
         Result.success(
             BlocklistSnapshot(
                 blocked = blocked,
                 exceptions = exceptions,
                 threatDomainsByCategory = categoryDomains.mapValues { it.value.toSet() },
+                importantBlocked = importantBlocked,
+                importantExceptions = importantExceptions,
+                exactBlocked = exactBlocked,
+                exactExceptions = exactExceptions,
+                importantExactBlocked = importantExactBlocked,
+                importantExactExceptions = importantExactExceptions,
                 summary = summary
             )
         )
