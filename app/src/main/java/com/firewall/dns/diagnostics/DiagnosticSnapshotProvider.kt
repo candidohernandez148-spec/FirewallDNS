@@ -5,7 +5,6 @@ import android.content.ContentValues
 import android.database.Cursor
 import android.database.MatrixCursor
 import android.net.Uri
-import android.os.Bundle
 import com.firewall.dns.data.repository.FirewallRepository
 import com.firewall.dns.service.DnsFirewallService
 import com.firewall.dns.service.FirewallDnsTrafficMetrics
