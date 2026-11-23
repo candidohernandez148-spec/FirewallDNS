@@ -19,9 +19,10 @@ object LocalAiEvidenceBuilder {
         logs: List<DnsLogEntry>,
         blocklist: BlocklistSnapshot,
         customBlocked: Set<String> = emptySet(),
-        customAllowed: Set<String> = emptySet()
+        customAllowed: Set<String> = emptySet(),
+        aiBlocked: Set<String> = emptySet()
     ): String {
-        val normalizedBlocked = (blocklist.blocked + blocklist.exactBlocked + customBlocked)
+        val normalizedBlocked = (blocklist.blocked + blocklist.exactBlocked + customBlocked + aiBlocked)
             .map(String::lowercase).toSet()
         val normalizedAllowed = (blocklist.exceptions + blocklist.exactExceptions + customAllowed)
             .map(String::lowercase).toSet()
@@ -46,6 +47,7 @@ object LocalAiEvidenceBuilder {
         out.appendLine("Dominios de bloqueo activos: ${blocklist.blocked.size + blocklist.exactBlocked.size}")
         out.appendLine("Excepciones de listas: ${blocklist.exceptions.size + blocklist.exactExceptions.size}")
         out.appendLine("Reglas personalizadas BLOCK: ${customBlocked.size}")
+        out.appendLine("Bloqueos previos administrados por IA: ${aiBlocked.size}")
         out.appendLine("Reglas personalizadas ALLOW: ${customAllowed.size}")
         out.appendLine("Categorías de amenazas: ${blocklist.threatDomainsByCategory.entries.joinToString { "${it.key.name}=${it.value.size}" }.ifBlank { "sin categorías" }}")
         out.appendLine()
