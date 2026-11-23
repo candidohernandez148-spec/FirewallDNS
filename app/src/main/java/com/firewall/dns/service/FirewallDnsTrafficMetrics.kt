@@ -6,6 +6,7 @@ import com.firewalldns.engine.monitor.ActiveFlowSnapshot
 import com.firewalldns.engine.monitor.FlowMonitorSnapshot
 import com.firewalldns.engine.monitor.EngineMetricsSnapshot
 import com.firewalldns.engine.android.FirestackNativeStatsSnapshot
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
@@ -248,6 +249,7 @@ object FirewallDnsTrafficMetrics {
     private val fragmentPendingAssemblies = AtomicLong()
     private val fragmentBufferedBytes = AtomicLong()
     private val firestackActive = AtomicLong()
+    private val activeFlowDetailsRequested = AtomicBoolean(false)
     private val activeFlows = AtomicReference<List<ActiveFlowSnapshot>>(emptyList())
     private val flowsActive = AtomicLong()
     private val lastFlowEventAtEpochMs = AtomicLong()
@@ -390,6 +392,14 @@ object FirewallDnsTrafficMetrics {
         flowsActive.set(0L)
         activeFlows.set(emptyList())
     }
+    /** Detail snapshots are needed only while the SOC map is visible; aggregate counters remain live always. */
+    fun setActiveFlowDetailsRequested(requested: Boolean) {
+        activeFlowDetailsRequested.set(requested)
+        if (!requested) activeFlows.set(emptyList())
+    }
+
+    fun shouldCollectActiveFlowDetails(): Boolean = activeFlowDetailsRequested.get()
+
     internal fun flowSnapshot(snapshot: FlowMonitorSnapshot) {
         val signature = "${snapshot.active}:${snapshot.opened}:${snapshot.closed}:${snapshot.blocked}:${snapshot.bytesSent}:${snapshot.bytesReceived}"
         val previousSignature = lastFlowEventSignature.getAndSet(signature)
@@ -397,7 +407,9 @@ object FirewallDnsTrafficMetrics {
             lastFlowEventAtEpochMs.set(System.currentTimeMillis())
         }
         flowsActive.set(snapshot.active.toLong())
-        if (snapshot.flows.isNotEmpty() || snapshot.active == 0) {
+        if (!activeFlowDetailsRequested.get()) {
+            activeFlows.set(emptyList())
+        } else if (snapshot.flows.isNotEmpty() || snapshot.active == 0) {
             activeFlows.set(snapshot.flows)
         }
         flowsOpened.set(snapshot.opened)

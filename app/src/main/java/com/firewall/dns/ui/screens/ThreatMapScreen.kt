@@ -3,10 +3,7 @@ package com.firewall.dns.ui.screens
 import android.graphics.Paint
 import android.graphics.RectF
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
@@ -39,6 +36,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -64,6 +63,8 @@ import com.firewall.dns.service.FirewallDnsTrafficMetrics
 import kotlin.math.cos
 import kotlin.math.abs
 import kotlin.math.sin
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 
 private data class MindMapEdge(val from: String, val to: String)
 
@@ -116,14 +117,21 @@ fun ThreatMapScreen(
     var section by remember { mutableStateOf("map") }
     var selectedMapNode by remember { mutableStateOf("core") }
     val catalog = remember { ThreatKnowledgeGraph.catalogSnapshot() }
-    val observedApps = logs.map { it.appName }
-        .filter { it.isNotBlank() && it != "Sistema / DNS" }.distinct()
-    val appRoutes = remember(logs, tunMetrics.activeFlows) {
-        val logUids = logs.filter { it.uid >= 0 }.map { it.uid }
-        val flowUids = tunMetrics.activeFlows.mapNotNull { it.identity.appUid }
-        (logUids + flowUids).distinct().sorted().map { uid ->
-            val appLogs = logs.filter { it.uid == uid }
-            val appFlows = tunMetrics.activeFlows.filter { it.identity.appUid == uid }
+    DisposableEffect(isVisible) {
+        FirewallDnsTrafficMetrics.setActiveFlowDetailsRequested(isVisible)
+        onDispose { FirewallDnsTrafficMetrics.setActiveFlowDetailsRequested(false) }
+    }
+    val observedApps = logs.asSequence().map { it.appName }
+        .filter { it.isNotBlank() && it != "Sistema / DNS" }.distinct().toList()
+    val logsByUid = remember(logs) { logs.filter { it.uid >= 0 }.groupBy { it.uid } }
+    val flowsByUid = remember(tunMetrics.activeFlows) {
+        tunMetrics.activeFlows.filter { it.identity.appUid != null }
+            .groupBy { it.identity.appUid!! }
+    }
+    val appRoutes = remember(logsByUid, flowsByUid) {
+        (logsByUid.keys + flowsByUid.keys).distinct().sorted().map { uid ->
+            val appLogs = logsByUid[uid].orEmpty()
+            val appFlows = flowsByUid[uid].orEmpty()
             SocApplicationRoute(
                 uid,
                 appLogs.firstOrNull { it.appName.isNotBlank() && it.appName != "Sistema / DNS" }?.appName
@@ -192,7 +200,8 @@ fun ThreatMapScreen(
                     metrics = tunMetrics,
                     activeFlowCount = tunMetrics.flowsActive,
                     appRoutes = appRoutes,
-                    vpnRunning = vpnRunning
+                    vpnRunning = vpnRunning,
+                    isVisible = isVisible,
                 ) { id ->
                     selectedMapNode = id
                 }
@@ -479,37 +488,53 @@ private fun ThreeDimensionalMindMap(
     activeFlowCount: Long,
     appRoutes: List<SocApplicationRoute>,
     vpnRunning: Boolean,
+    isVisible: Boolean,
     onSelectNode: (String) -> Unit
 ) {
-    // Camera orbit animates the 3D architecture, never pretends to be traffic.
-    val orbit = rememberInfiniteTransition(label = "soc-3d-orbit")
-    val rotation by orbit.animateFloat(
-        initialValue = 0f,
-        targetValue = (Math.PI * 2.0).toFloat(),
-        animationSpec = infiniteRepeatable(tween(24000, easing = LinearEasing), RepeatMode.Restart),
-        label = "soc-3d-camera-rotation"
-    )
-    val latestRotation by rememberUpdatedState(rotation)
-    val topologyPulse by orbit.animateFloat(0f, 1f,
-        animationSpec = infiniteRepeatable(tween(2200, easing = LinearEasing), RepeatMode.Restart),
-        label = "soc-topology-edge-pulse"
-    )
-    val activePulse by orbit.animateFloat(
-        initialValue = .88f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(1100), RepeatMode.Reverse),
-        label = "soc-active-node-depth-pulse"
-    )
-    val dnsEventProgress = remember { androidx.compose.animation.core.Animatable(1f) }
-    val flowEventProgress = remember { androidx.compose.animation.core.Animatable(1f) }
-    androidx.compose.runtime.LaunchedEffect(lastDnsDecisionAtEpochMs, vpnRunning) {
-        if (vpnRunning && lastDnsDecisionAtEpochMs > 0L) {
+    // Architecture animation is suspended while the map page is off-screen.
+    val rotation = remember { Animatable(0f) }
+    val topologyPulse = remember { Animatable(0f) }
+    val activePulse = remember { Animatable(.88f) }
+    val latestRotation by rememberUpdatedState(rotation.value)
+    LaunchedEffect(isVisible) {
+        if (isVisible) {
+            coroutineScope {
+                launch {
+                    while (true) {
+                        rotation.animateTo((Math.PI * 2.0).toFloat(), tween(24000, easing = LinearEasing))
+                        rotation.snapTo(0f)
+                    }
+                }
+                launch {
+                    while (true) {
+                        topologyPulse.animateTo(1f, tween(2200, easing = LinearEasing))
+                        topologyPulse.snapTo(0f)
+                    }
+                }
+                launch {
+                    while (true) {
+                        activePulse.animateTo(1f, tween(1100))
+                        activePulse.animateTo(.88f, tween(1100))
+                    }
+                }
+            }
+        } else {
+            rotation.stop()
+            topologyPulse.stop()
+            activePulse.stop()
+            activePulse.snapTo(.88f)
+        }
+    }
+    val dnsEventProgress = remember { Animatable(1f) }
+    val flowEventProgress = remember { Animatable(1f) }
+    LaunchedEffect(lastDnsDecisionAtEpochMs, vpnRunning, isVisible) {
+        if (isVisible && vpnRunning && lastDnsDecisionAtEpochMs > 0L) {
             dnsEventProgress.snapTo(0f)
             dnsEventProgress.animateTo(1f, animationSpec = tween(900, easing = LinearEasing))
         } else dnsEventProgress.snapTo(1f)
     }
-    androidx.compose.runtime.LaunchedEffect(lastFlowEventAtEpochMs, vpnRunning) {
-        if (vpnRunning && lastFlowEventAtEpochMs > 0L) {
+    LaunchedEffect(lastFlowEventAtEpochMs, vpnRunning, isVisible) {
+        if (isVisible && vpnRunning && lastFlowEventAtEpochMs > 0L) {
             flowEventProgress.snapTo(0f)
             flowEventProgress.animateTo(1f, animationSpec = tween(1200, easing = LinearEasing))
         } else flowEventProgress.snapTo(1f)
@@ -564,7 +589,7 @@ private fun ThreeDimensionalMindMap(
                     val radius = minOf(w * .43f, h * .43f)
                     val basePaint = Paint(Paint.ANTI_ALIAS_FLAG)
                     val projected = nodes.associateWith {
-                        projectNode(it, w, h, rotation)
+                        projectNode(it, w, h, rotation.value)
                     }
 
                     // Stable 3D depth rings: spatial decoration only, never shown as traffic.
@@ -611,7 +636,7 @@ private fun ThreeDimensionalMindMap(
                         canvas.drawLine(begin.x, begin.y, finish.x, finish.y, basePaint)
 
                         // Continuous, subtle topology pulse: visual architecture, not packet traffic.
-                        val topologyProgress = (topologyPulse + edgeIndex * .173f) % 1f
+                        val topologyProgress = (topologyPulse.value + edgeIndex * .173f) % 1f
                         val topologyX = begin.x + (finish.x - begin.x) * topologyProgress
                         val topologyY = begin.y + (finish.y - begin.y) * topologyProgress
                         basePaint.style = Paint.Style.FILL
@@ -665,13 +690,13 @@ private fun ThreeDimensionalMindMap(
                         basePaint.color = node.tint.copy(alpha = if (nodeActive) .22f else .055f).toArgb()
                         canvas.drawCircle(
                             point.x, point.y,
-                            nodeRadius * (if (nodeActive) 2.8f else 1.55f) * activePulse,
+                            nodeRadius * (if (nodeActive) 2.8f else 1.55f) * activePulse.value,
                             basePaint
                         )
                         basePaint.color = node.tint.copy(alpha = if (nodeActive) .34f else .12f).toArgb()
                         canvas.drawCircle(
                             point.x, point.y,
-                            nodeRadius * (if (nodeActive) 1.65f else 1.18f) * activePulse,
+                            nodeRadius * (if (nodeActive) 1.65f else 1.18f) * activePulse.value,
                             basePaint
                         )
                         basePaint.color = node.tint.copy(alpha = if (nodeActive) 1f else .14f).toArgb()
@@ -1080,11 +1105,11 @@ private fun SocTunnelPath(
             Text("Contadores acumulados reportados por el servicio; no representan paquetes simultáneos.",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             val stages = listOf(
-                Triple("ENTRADA TUN", "N/D", "Firestack no expone contador de paquetes TUN en esta API"),
-                Triple("CLASIFICACIÓN IP", "N/D", "No hay callbacks de conteo IPv4/IPv6 conectados en esta compilación"),
+                Triple("ENTRADA TUN", metrics.tunRxBytes, "Bytes leídos desde el descriptor TUN"),
+                Triple("CLASIFICACIÓN IP", "${metrics.ipPacketsReceived} / ${metrics.ipPacketsSent}", "Paquetes IPv4 + IPv6 RX / TX"),
                 Triple("POLÍTICA DNS", "${metrics.dnsBlocked + metrics.dnsObserved + metrics.dnsAllowed}", "Bloquear · observar · permitir"),
                 Triple("FLUJOS", "${metrics.flowsOpened}", "Conexiones abiertas por FlowMonitor"),
-                Triple("SALIDA TUN", "N/D", "Firestack no expone contador de paquetes TUN en esta API")
+                Triple("SALIDA TUN", metrics.tunTxBytes, "Bytes escritos hacia el descriptor TUN")
             )
             stages.forEachIndexed { index, stage ->
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

@@ -4,10 +4,23 @@ import java.util.concurrent.atomic.AtomicReference
 
 /**
  * In-memory policy evaluator. Rule replacement is atomic; evaluations read an
- * immutable snapshot and perform no disk/network I/O or lock acquisition.
+ * immutable domain index and perform no disk/network I/O or lock acquisition.
  */
 class PolicyEngine(initialRules: Collection<PolicyRule> = emptyList()) {
-    private data class Snapshot(val revision: Long, val rules: List<CompiledRule>)
+    private data class CompiledRule(
+        val rule: PolicyRule,
+        val normalizedDomain: String,
+    )
+
+    private data class RuleIndex(
+        val exactByDomain: Map<String, List<CompiledRule>>,
+        val subdomainsByDomain: Map<String, List<CompiledRule>>,
+    )
+
+    private data class Snapshot(
+        val revision: Long,
+        val index: RuleIndex,
+    )
 
     private val snapshot = AtomicReference(Snapshot(0, compile(initialRules)))
 
@@ -34,15 +47,31 @@ class PolicyEngine(initialRules: Collection<PolicyRule> = emptyList()) {
                 policyRevision = current.revision,
             )
 
-        val winner = current.rules
-            .asSequence()
-            .filter { it.rule.enabled }
-            .filter { it.rule.expiresAtEpochMillis?.let { expiry -> expiry > nowEpochMillis } ?: true }
-            .filter { compiled ->
-                val requiredPackage = compiled.rule.appPackage
-                requiredPackage == null || requiredPackage == request.appPackage
+        var winner: CompiledRule? = null
+
+        fun consider(candidates: List<CompiledRule>?) {
+            candidates?.forEach { candidate ->
+                val rule = candidate.rule
+                if (rule.expiresAtEpochMillis?.let { it <= nowEpochMillis } == true) return@forEach
+                if (rule.appPackage != null && rule.appPackage != request.appPackage) return@forEach
+                val previous = winner
+                if (previous == null || outranks(candidate, previous)) {
+                    winner = candidate
+                }
             }
-            .firstOrNull { it.matches(domain) }
+        }
+
+        // Exact rules are indexed only at their own host. Suffix rules are
+        // checked along the DNS label chain, avoiding a scan of every blocklist
+        // entry on each cache miss.
+        consider(current.index.exactByDomain[domain])
+        var suffix = domain
+        while (true) {
+            consider(current.index.subdomainsByDomain[suffix])
+            val dot = suffix.indexOf('.')
+            if (dot < 0) break
+            suffix = suffix.substring(dot + 1)
+        }
 
         return winner?.let {
             PolicyDecision(
@@ -60,18 +89,32 @@ class PolicyEngine(initialRules: Collection<PolicyRule> = emptyList()) {
         )
     }
 
-    private data class CompiledRule(
-        val rule: PolicyRule,
-        val normalizedDomain: String,
-    ) {
-        fun matches(domain: String): Boolean =
-            if (rule.includeSubdomains) domain == normalizedDomain || domain.endsWith(".$normalizedDomain")
-            else domain == normalizedDomain
+    /**
+     * Retains the original global ordering: priority, source precedence, domain
+     * specificity, exact-before-subdomain, app scope, then stable rule ID.
+     */
+    private fun outranks(candidate: CompiledRule, current: CompiledRule): Boolean {
+        val left = candidate.rule
+        val right = current.rule
+        if (left.priority != right.priority) return left.priority > right.priority
+        if (left.source.precedence != right.source.precedence) {
+            return left.source.precedence > right.source.precedence
+        }
+        if (candidate.normalizedDomain.length != current.normalizedDomain.length) {
+            return candidate.normalizedDomain.length > current.normalizedDomain.length
+        }
+        if (left.includeSubdomains != right.includeSubdomains) return !left.includeSubdomains
+        if ((left.appPackage != null) != (right.appPackage != null)) return left.appPackage != null
+        return left.id < right.id
     }
 
-    private fun compile(input: Collection<PolicyRule>): List<CompiledRule> {
-        require(input.map { it.id }.distinct().size == input.size) { "Policy rule IDs must be unique" }
-        val compiled = input.map { rule ->
+    private fun compile(input: Collection<PolicyRule>): RuleIndex {
+        val ids = HashSet<String>(input.size)
+        val exact = HashMap<String, MutableList<CompiledRule>>()
+        val subdomains = HashMap<String, MutableList<CompiledRule>>()
+
+        input.forEach { rule ->
+            require(ids.add(rule.id)) { "Policy rule IDs must be unique" }
             require(rule.id.isNotBlank()) { "Policy rule ID must not be blank" }
             require(rule.reason.isNotBlank()) { "Policy rule reason must not be blank" }
             require(rule.source != RuleSource.HEURISTIC || rule.action != PolicyAction.BLOCK) {
@@ -88,15 +131,17 @@ class PolicyEngine(initialRules: Collection<PolicyRule> = emptyList()) {
                     "Invalid Android package name in policy rule '${rule.id}'"
                 }
             }
-            CompiledRule(rule, normalizedDomain)
+
+            if (rule.enabled) {
+                val compiled = CompiledRule(rule, normalizedDomain)
+                val index = if (rule.includeSubdomains) subdomains else exact
+                index.getOrPut(normalizedDomain) { ArrayList() }.add(compiled)
+            }
         }
-        return compiled.sortedWith(
-            compareByDescending<CompiledRule> { it.rule.priority }
-                .thenByDescending { it.rule.source.precedence }
-                .thenByDescending { it.normalizedDomain.length }
-                .thenByDescending { !it.rule.includeSubdomains }
-                .thenByDescending { it.rule.appPackage != null }
-                .thenBy { it.rule.id },
+
+        return RuleIndex(
+            exactByDomain = exact.mapValues { (_, rules) -> rules.toList() },
+            subdomainsByDomain = subdomains.mapValues { (_, rules) -> rules.toList() },
         )
     }
 

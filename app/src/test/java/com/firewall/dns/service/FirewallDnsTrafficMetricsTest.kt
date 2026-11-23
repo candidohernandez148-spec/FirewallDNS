@@ -1,6 +1,9 @@
 package com.firewall.dns.service
 
 import com.firewalldns.engine.android.DnsSocketProtectionProtocol
+import com.firewalldns.engine.core.FlowProtocol
+import com.firewalldns.engine.monitor.ActiveFlowSnapshot
+import com.firewalldns.engine.monitor.FlowIdentity
 import com.firewalldns.engine.monitor.FlowMonitorSnapshot
 import com.firewalldns.engine.monitor.EngineMetricsSnapshot
 import org.junit.Assert.assertEquals
@@ -67,6 +70,53 @@ class FirewallDnsTrafficMetricsTest {
         FirewallDnsTrafficMetrics.firestackStopped()
         assertEquals(0L, FirewallDnsTrafficMetrics.snapshot().firestackActive)
         assertEquals(0L, FirewallDnsTrafficMetrics.snapshot().flowsActive)
+    }
+
+
+    @Test
+    fun activeFlowDetailsAreCollectedOnlyWhenRequestedWithoutStoppingAggregates() {
+        val flow = ActiveFlowSnapshot(
+            identity = FlowIdentity(
+                id = "flow-1",
+                protocol = FlowProtocol.TCP,
+                appUid = 10001,
+                appPackage = "com.example.app",
+                sourceAddress = "10.0.0.2",
+                sourcePort = 45000,
+                destinationAddress = "203.0.113.10",
+                destinationPort = 443,
+                networkGeneration = 1,
+            ),
+            action = "ALLOW",
+            reason = "test",
+            ruleId = null,
+            startedAtEpochMillis = 1,
+            lastActivityEpochMillis = 2,
+            bytesSent = 10,
+            bytesReceived = 20,
+        )
+
+        FirewallDnsTrafficMetrics.setActiveFlowDetailsRequested(false)
+        FirewallDnsTrafficMetrics.flowSnapshot(
+            FlowMonitorSnapshot(1, 1, 0, 0, 10, 20, 0, listOf(flow)),
+        )
+        var snapshot = FirewallDnsTrafficMetrics.snapshot()
+        assertEquals(1L, snapshot.flowsActive)
+        assertEquals(emptyList<ActiveFlowSnapshot>(), snapshot.activeFlows)
+        assertEquals(false, FirewallDnsTrafficMetrics.shouldCollectActiveFlowDetails())
+
+        FirewallDnsTrafficMetrics.setActiveFlowDetailsRequested(true)
+        FirewallDnsTrafficMetrics.flowSnapshot(
+            FlowMonitorSnapshot(1, 1, 0, 0, 10, 20, 0, listOf(flow)),
+        )
+        snapshot = FirewallDnsTrafficMetrics.snapshot()
+        assertEquals(true, FirewallDnsTrafficMetrics.shouldCollectActiveFlowDetails())
+        assertEquals(listOf(flow), snapshot.activeFlows)
+        assertEquals(1L, snapshot.flowsActive)
+
+        FirewallDnsTrafficMetrics.setActiveFlowDetailsRequested(false)
+        assertEquals(emptyList<ActiveFlowSnapshot>(), FirewallDnsTrafficMetrics.snapshot().activeFlows)
+        assertEquals(1L, FirewallDnsTrafficMetrics.snapshot().flowsActive)
     }
 
     @Test
