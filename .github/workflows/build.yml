@@ -81,8 +81,15 @@ jobs:
           test -s "$APK"
           test -s "$DIAGNOSTIC_APK"
           unzip -l "$APK" | grep -q 'lib/arm64-v8a/libgojni.so'
-          echo "APK FirewallDNS Debug: Firestack/gVisor ARM64 incluido"
-          echo "APK FirewallDNS Diagnostic Debug: compilado"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
+          "$BUILD_TOOLS/apksigner" verify "$APK"
+          "$BUILD_TOOLS/apksigner" verify "$DIAGNOSTIC_APK"
+          MAIN_CERT="$("$BUILD_TOOLS/apksigner" verify --print-certs "$APK" | awk -F': ' '/Signer #1 certificate SHA-256 digest/ {print $2; exit}')"
+          DIAGNOSTIC_CERT="$("$BUILD_TOOLS/apksigner" verify --print-certs "$DIAGNOSTIC_APK" | awk -F': ' '/Signer #1 certificate SHA-256 digest/ {print $2; exit}')"
+          test -n "$MAIN_CERT" && test -n "$DIAGNOSTIC_CERT"
+          test "$MAIN_CERT" = "$DIAGNOSTIC_CERT"
+          echo "APK FirewallDNS Debug: Firestack/gVisor ARM64 y firma compartida"
+          echo "APK FirewallDNS Diagnostic Debug: compilado y firmado con el mismo certificado"
 
       - uses: actions/upload-artifact@v4
         with:
