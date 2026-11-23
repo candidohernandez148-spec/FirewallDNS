@@ -781,7 +781,7 @@ private fun NodeRouteInspector(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                "Las conexiones de entrada y salida describen la topología. La ruta resaltada no confirma por sí sola que haya tráfico activo.",
+                "Las conexiones de entrada y salida describen la topología. El resaltado visual de actividad depende de eventos observados y no confirma por sí solo paquetes individuales.",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
