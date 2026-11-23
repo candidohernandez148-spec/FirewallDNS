@@ -9,6 +9,8 @@ import dev.ffmpegkit.llama.LlamaConfig
 import com.firewall.dns.data.repository.FirewallRepository
 import java.io.File
 import java.io.FileOutputStream
+import java.io.RandomAccessFile
+import java.nio.channels.OverlappingFileLockException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
@@ -120,6 +122,21 @@ class LocalAiModelDownloadWorker(context: Context, params: WorkerParameters) : C
 
 class LocalAiAnalysisWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
+        val lockHandle = RandomAccessFile(File(applicationContext.cacheDir, "qwen3-inference.lock"), "rw")
+        val inferenceLock = try { lockHandle.channel.tryLock() } catch (_: OverlappingFileLockException) { null }
+        if (inferenceLock == null) {
+            lockHandle.close()
+            return Result.retry()
+        }
+        try {
+            return runInference()
+        } finally {
+            inferenceLock.release()
+            lockHandle.close()
+        }
+    }
+
+    private suspend fun runInference(): Result {
         val modelFile = LocalAiRuntime.modelFile(applicationContext)
         if (!modelFile.isFile || modelFile.length() < 400L * 1024L * 1024L) {
             LocalAiRuntime.writeState(applicationContext, "Esperando descarga de Qwen3 por Wi-Fi")
