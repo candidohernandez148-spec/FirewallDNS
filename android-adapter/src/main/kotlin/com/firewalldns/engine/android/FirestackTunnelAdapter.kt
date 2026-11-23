@@ -597,6 +597,7 @@ private class FirewallDNSFirestackBridge(
         val dnsSummary = summary ?: return null
         // Only tunnel-originated answers can be attributed to an Android request.
         if (dnsSummary.origin != "tunnel") return null
+        if (!isCnameRelevantQueryType(dnsSummary.qType.toInt())) return null
 
         // Brave-style CNAME uncloaking: inspect aliases already present in the
         // upstream answer. No extra DNS lookup is issued and the original
@@ -664,6 +665,14 @@ private const val MAX_FLOW_DOMAINS = 16
 private const val MAX_DOMAIN_METADATA_CHARS = 4096
 private const val MAX_ENDPOINT_LENGTH = 128
 private const val MAX_FLOW_ID_LENGTH = 128
+
+/**
+ * Only query types whose answer aliases can determine a host/service endpoint
+ * participate. This avoids treating unrelated MX, NS, TXT or mail-routing
+ * names as destinations of the original application connection.
+ */
+internal fun isCnameRelevantQueryType(qType: Int): Boolean =
+    qType == 1 || qType == 5 || qType == 28 || qType == 39 || qType == 64 || qType == 65
 
 internal data class CnameTargetPolicyMatch(
     val domain: String,
