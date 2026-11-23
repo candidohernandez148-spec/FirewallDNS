@@ -110,9 +110,9 @@ class MainActivity : Activity() {
             val collected = mutableListOf<TestResult>()
             beforeMetrics = readProductionMetrics()
             val systemVpnActive = isVpnActive()
-            val firewallDnsActive = systemVpnActive && beforeMetrics["firewallDnsRunning"] == 1L
+            val firewallDnsActive = systemVpnActive && beforeMetrics["firewallDnsRunning"] == 1L && beforeMetrics["firestackActive"] == 1L
             collected += timed("FirewallDNS VPN activa") {
-                if (firewallDnsActive) TestResult("FirewallDNS VPN activa", TestStatus.APPROVED, "La aplicación principal informa el servicio activo y Android informa transporte VPN.")
+                if (firewallDnsActive) TestResult("FirewallDNS VPN activa", TestStatus.APPROVED, "La aplicación principal informa el servicio y Firestack activos; Android informa transporte VPN.")
                 else TestResult("FirewallDNS VPN activa", TestStatus.NOT_VERIFIED, "Activa el servicio VPN de FirewallDNS; otra VPN del sistema no es suficiente.")
             }
             collected += runPolicyTest("Política BLOCK", PolicyAction.BLOCK)
