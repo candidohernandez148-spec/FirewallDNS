@@ -119,6 +119,17 @@ class DnsFirewallService : VpnService() {
             }
         }
         serviceScope.launch {
+            FirewallRepository.closeUidConnectionsEvent.collect { uid ->
+                val session = activeTunSession
+                if (isRunning && session != null) {
+                    // Terminate already-established Firestack flows as well as blocking new ones.
+                    session.firestack.closeUidConnections(uid)
+                    sharedEngine?.engine?.flowMonitor?.snapshot(includeFlows = true)
+                        ?.let(FirewallDnsTrafficMetrics::flowSnapshot)
+                }
+            }
+        }
+        serviceScope.launch {
             while (isActive) {
                 delay(1_000L)
                 val runtime = sharedEngine?.engine ?: continue
