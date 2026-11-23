@@ -69,7 +69,7 @@ import kotlinx.coroutines.launch
 private data class MindMapEdge(val from: String, val to: String)
 
 // Logical architecture only. Arrows describe component relationships and direction,
- // not a packet-by-packet route or proof that every flow traverses every component.
+// not a packet-by-packet route or proof that every flow traverses every component.
 private val architectureEdges = listOf(
     MindMapEdge("apps", "tun_in"),
     MindMapEdge("tun_in", "core"),
@@ -191,7 +191,7 @@ fun ThreatMapScreen(
             MindMapNode("rules", "REGLAS", "Reglas personalizadas de bloqueo / permiso",
                 "${customBlock.size} bloqueo · ${customAllow.size} permiso",
                 -0.45f, 0.45f, 0.90f, Color(0xFFB69CFF)),
-            MindMapNode("upstream", "RESOLVERS", "Servidores DNS upstream configurados / detectados",
+            MindMapNode("upstream", "RESOLVERS", "Cambios detectados en la lista de DNS upstream",
                 tunMetrics.upstreamResolverRefreshes.toString(),
                 0.55f, -0.95f, 0.65f, Color(0xFF68D9A5)),
             MindMapNode("apps", "APLICACIONES", "Apps identificadas en DNS / flujos observados",
@@ -835,7 +835,7 @@ private fun SocArchitectureLayers(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 SocLayerTile("PROTECCIÓN", "DNS · reglas · amenazas",
                     metrics.dnsPolicyDecisions.toString(), Color(0xFFFF667D), Modifier.weight(1f))
-                SocLayerTile("RESOLUCIÓN / SOC", "Flujos · actualizaciones resolvers",
+                SocLayerTile("MONITOREO", "Flujos activos · FlowMonitor",
                     metrics.flowsActive.toString(), Color(0xFF68D9A5), Modifier.weight(1f))
             }
             Text("Los valores muestran métricas disponibles; no representan inventario completo de aplicaciones ni paquetes individuales.",
@@ -1192,7 +1192,7 @@ private fun LiveMapTelemetry(
         Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                MapStatPill("TUN", "N/D", Color(0xFF1C806B))
+                MapStatPill("TUN RX/TX", "${metrics.tunRxBytes} / ${metrics.tunTxBytes}", Color(0xFF1C806B))
                 MapStatPill("DNS", metrics.dnsPolicyDecisions.toString(), Color(0xFF315FA8))
                 MapStatPill("ACTIVOS", metrics.flowsActive.toString(), Color(0xFF7655A8))
                 MapStatPill("VPN", if (vpnRunning) "ON" else "OFF",
