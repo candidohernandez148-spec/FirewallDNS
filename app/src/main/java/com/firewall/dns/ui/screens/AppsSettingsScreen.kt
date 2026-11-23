@@ -69,15 +69,21 @@ fun AppsSettingsScreen(
     onToggleExcludedApp: (String) -> Unit,
     onOpenBatteryOpt: () -> Unit,
     onOpenVpnSettings: () -> Unit,
-    isVisible: Boolean = true
+    isVisible: Boolean = true,
+    onAppDetailVisibilityChanged: (Boolean) -> Unit = {}
 ) {
     val firestackActive = stats.isRunning && stats.engine.contains("Firestack/gVisor", ignoreCase = true)
     var selectedApp by remember { mutableStateOf<AppInfoItem?>(null) }
 
-    BackHandler(enabled = isVisible && selectedApp != null) { selectedApp = null }
+    fun selectApp(app: AppInfoItem?) {
+        selectedApp = app
+        onAppDetailVisibilityChanged(app != null)
+    }
+
+    BackHandler(enabled = isVisible && selectedApp != null) { selectApp(null) }
 
     if (selectedApp != null) {
-        AppActivityDetailScreen(app = selectedApp!!, logs = logs, flows = activeFlows, onBack = { selectedApp = null })
+        AppActivityDetailScreen(app = selectedApp!!, logs = logs, flows = activeFlows, isVisible = isVisible, onBack = { selectApp(null) })
     } else LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 9.dp),
         contentPadding = PaddingValues(bottom = 12.dp),
@@ -178,7 +184,7 @@ fun AppsSettingsScreen(
                 ) {
                     Column(modifier = Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                         Row(
-                            modifier = Modifier.fillMaxWidth().clickable { selectedApp = app },
+                            modifier = Modifier.fillMaxWidth().clickable { selectApp(app) },
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             AppIcon(app)
@@ -257,6 +263,7 @@ private fun AppActivityDetailScreen(
     app: AppInfoItem,
     logs: List<DnsLogEntry>,
     flows: List<ActiveFlowSnapshot>,
+    isVisible: Boolean,
     onBack: () -> Unit
 ) {
     var selectedAction by remember { mutableStateOf("TODOS") }
@@ -268,7 +275,8 @@ private fun AppActivityDetailScreen(
     val appFlows = flows.filter { it.identity.appUid == app.uid }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 10.dp).pointerInput(app.uid) {
+        modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 10.dp).pointerInput(app.uid, isVisible) {
+            if (!isVisible) return@pointerInput
             val backEdgePx = 32.dp.toPx()
             val backThresholdPx = 72.dp.toPx()
             val touchSlop = viewConfiguration.touchSlop
