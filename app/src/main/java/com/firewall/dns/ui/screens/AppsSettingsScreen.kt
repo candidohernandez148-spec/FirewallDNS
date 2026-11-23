@@ -266,7 +266,7 @@ private fun AppActivityDetailScreen(
     val observed = appLogs.count { it.decisionAction.equals("OBSERVE", ignoreCase = true) }
     val appFlows = flows.filter { it.identity.appUid == app.uid }
 
-    Column(
+    LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 10.dp).pointerInput(app.uid) {
             val backEdgePx = 32.dp.toPx()
             val backThresholdPx = 72.dp.toPx()
@@ -292,84 +292,95 @@ private fun AppActivityDetailScreen(
                 }
             }
         },
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(bottom = 18.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        item {
             Text("‹  Aplicaciones", modifier = Modifier.clickable(onClick = onBack), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            AppIcon(app)
-            Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                Text(app.label, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text("UID ${app.uid} · ${app.packageName}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                AppIcon(app)
+                Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                    Text(app.label, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text("UID \${app.uid} · \${app.packageName}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
-        Text("Conexiones activas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        item {
+            Text("Conexiones activas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        }
         if (appFlows.isEmpty()) {
-            Text("No hay flujos TUN activos atribuidos a este UID en la última muestra.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            item {
+                Text("No hay flujos TUN activos atribuidos a este UID en la última muestra.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         } else {
-            Text("${appFlows.size} conexiones activas atribuidas al UID. Se muestran hasta 3.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            appFlows.take(3).forEach { flow ->
+            item {
+                Text("\${appFlows.size} conexiones activas atribuidas al UID. Se muestran hasta 3.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            items(appFlows.take(3)) { flow ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f))
                 ) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("${flow.identity.protocol.name} · ${flow.action}", fontWeight = FontWeight.Bold)
-                        Text("${flow.identity.sourceAddress}:${flow.identity.sourcePort} → ${flow.identity.destinationAddress}:${flow.identity.destinationPort}", style = MaterialTheme.typography.bodySmall)
-                        Text("TX ${flow.bytesSent} B · RX ${flow.bytesReceived} B · ${flow.reason}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("\${flow.identity.protocol.name} · \${flow.action}", fontWeight = FontWeight.Bold)
+                        Text("\${flow.identity.sourceAddress}:\${flow.identity.sourcePort} → \${flow.identity.destinationAddress}:\${flow.identity.destinationPort}", style = MaterialTheme.typography.bodySmall)
+                        Text("TX \${flow.bytesSent} B · RX \${flow.bytesReceived} B · \${flow.reason}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
         }
-        Text("Historial de actividad DNS", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatusChip("BLOCK $blocked", MaterialTheme.colorScheme.error)
-            StatusChip("ALLOW $allowed", MaterialTheme.colorScheme.primary)
-            StatusChip("OBSERVE $observed", MaterialTheme.colorScheme.tertiary)
+        item {
+            Text("Historial de actividad DNS", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf("TODOS", "BLOCK", "ALLOW", "OBSERVE").forEach { action ->
-                FilterChip(
-                    selected = selectedAction == action,
-                    onClick = { selectedAction = action },
-                    label = { Text(action) }
-                )
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StatusChip("BLOCK \${blocked}", MaterialTheme.colorScheme.error)
+                StatusChip("ALLOW \${allowed}", MaterialTheme.colorScheme.primary)
+                StatusChip("OBSERVE \${observed}", MaterialTheme.colorScheme.tertiary)
             }
         }
-        if (app.uid < 0) {
-            Text("Android no proporcionó un UID válido para esta aplicación. No es posible atribuirle eventos con seguridad.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        } else if (visibleLogs.isEmpty()) {
-            Text(
-                if (appLogs.isEmpty()) "Todavía no hay eventos DNS registrados para este UID. La aplicación permanece en el catálogo; su historial aparecerá cuando el motor registre actividad atribuible."
-                else "No hay eventos de esta categoría para la aplicación.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(bottom = 18.dp)
-            ) {
-                items(visibleLogs, key = { it.id }) { entry ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f))
-                    ) {
-                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(entry.decisionAction.uppercase(), fontWeight = FontWeight.Bold, color = when (entry.decisionAction.uppercase()) {
-                                    "BLOCK" -> MaterialTheme.colorScheme.error
-                                    "OBSERVE" -> MaterialTheme.colorScheme.tertiary
-                                    else -> MaterialTheme.colorScheme.primary
-                                })
-                                Text(entry.timestamp, modifier = Modifier.weight(1f), textAlign = TextAlign.End, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Text(entry.domain, fontWeight = FontWeight.SemiBold)
-                            Text("${entry.queryType} · ${entry.reason}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("TODOS", "BLOCK", "ALLOW", "OBSERVE").forEach { action ->
+                    FilterChip(
+                        selected = selectedAction == action,
+                        onClick = { selectedAction = action },
+                        label = { Text(action) }
+                    )
+                }
+            }
+        }
+        when {
+            app.uid < 0 -> item {
+                Text("Android no proporcionó un UID válido para esta aplicación. No es posible atribuirle eventos con seguridad.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            visibleLogs.isEmpty() -> item {
+                Text(
+                    if (appLogs.isEmpty()) "Todavía no hay eventos DNS registrados para este UID. La aplicación permanece en el catálogo; su historial aparecerá cuando el motor registre actividad atribuible."
+                    else "No hay eventos de esta categoría para la aplicación.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            else -> items(visibleLogs, key = { it.id }) { entry ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f))
+                ) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(entry.decisionAction.uppercase(), fontWeight = FontWeight.Bold, color = when (entry.decisionAction.uppercase()) {
+                                "BLOCK" -> MaterialTheme.colorScheme.error
+                                "OBSERVE" -> MaterialTheme.colorScheme.tertiary
+                                else -> MaterialTheme.colorScheme.primary
+                            })
+                            Text(entry.timestamp, modifier = Modifier.weight(1f), textAlign = TextAlign.End, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
+                        Text(entry.domain, fontWeight = FontWeight.SemiBold)
+                        Text("\${entry.queryType} · \${entry.reason}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
