@@ -601,16 +601,18 @@ private class FirewallDNSFirestackBridge(
         // Brave-style CNAME uncloaking: inspect aliases already present in the
         // upstream answer. No extra DNS lookup is issued and the original
         // OnQuery policy decision is left untouched.
+        val ownerUid = dnsSummary.uid.toIntOrNull()?.takeIf { it >= 0 }
+        val appPackage = ownerUid?.let(flowPolicyAdapter::resolvePackageForUid)
         val blockedAlias = findBlockedCnameTarget(
             queriedDomain = dnsSummary.qName,
             targetsCsv = dnsSummary.targets,
-        ) { target -> engine.evaluateDomain(target) } ?: return null
+        ) { target -> engine.evaluateDomain(target, appPackage) } ?: return null
 
         runCatching {
             onDnsDecision(
                 blockedAlias.domain,
                 dnsSummary.qType.toInt(),
-                null, // DNSSummary UID can identify Android's DNS stub, not the originating app.
+                ownerUid, // Non-numeric stub identities remain unknown; no app is invented.
                 "cname_target_blocked:${blockedAlias.decision.reason}",
                 PolicyAction.BLOCK,
             )
