@@ -424,10 +424,19 @@ listOf("Contador TUN DNS UDP", "Contador TUN DNS TCP", "Protect UDP upstream", "
 
     private fun hasGlobalIpv6(): Boolean {
         val manager = getSystemService(ConnectivityManager::class.java)
-        val network = manager.activeNetwork ?: return false
-        return manager.getLinkProperties(network)?.linkAddresses?.any {
+        // When FirewallDNS is active, activeNetwork is the VPN. Inspect the
+        // physical Internet network instead of the VPN's synthetic interface.
+        val physical = manager.allNetworks.firstOrNull { network ->
+            manager.getNetworkCapabilities(network)?.let { capabilities ->
+                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                    !capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+            } == true
+        } ?: return false
+        return manager.getLinkProperties(physical)?.linkAddresses?.any {
             val address = it.address
-            address is Inet6Address && !address.isLinkLocalAddress && !address.isLoopbackAddress
+            address is Inet6Address && !address.isLinkLocalAddress &&
+                !address.isLoopbackAddress && !address.isSiteLocalAddress &&
+                !address.isAnyLocalAddress
         } == true
     }
 
