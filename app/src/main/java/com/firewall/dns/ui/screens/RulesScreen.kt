@@ -97,8 +97,13 @@ fun RulesScreen(
                     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         Text("Protección inteligente", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Text(
-                            "Analiza las consultas en tiempo real con indicadores integrados de publicidad, rastreo y amenazas. No aprende ni guarda patrones derivados de tu actividad.",
+                            "El motor de reglas analiza consultas en tiempo real. La política para IA local ya está conectada al DNS y permite corregir bloqueos; el runtime GGUF aún está pendiente, así que todavía no hay decisiones automáticas generadas por el modelo.",
                             style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            "Dominios bloqueados por política IA: ${aiBlocked.size}",
+                            style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
