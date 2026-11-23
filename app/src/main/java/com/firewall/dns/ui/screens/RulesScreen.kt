@@ -105,11 +105,18 @@ fun RulesScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Text(
-                            "Dominios bloqueados por política IA: ${aiBlocked.size}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Text(aiRuntimeStatus, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        if (aiRuntimeStatus.contains("Descargando", ignoreCase = true) && aiDownloadProgress in 1..99) {
+                            LinearProgressIndicator(progress = { aiDownloadProgress / 100f }, modifier = Modifier.fillMaxWidth())
+                            Text(aiDownloadProgress.toString() + "% del modelo", style = MaterialTheme.typography.labelSmall)
+                        }
+                        if (aiSummary.isNotBlank()) {
+                            Text(aiSummary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Text("Dominios administrados por IA: " + aiBlocked.size, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        OutlinedButton(onClick = onRunLocalAi, modifier = Modifier.fillMaxWidth()) {
+                            Text("Analizar ahora con Qwen3")
+                        }
                     }
                     Switch(checked = smartModeEnabled, onCheckedChange = onToggleSmartMode)
                 }
