@@ -174,16 +174,16 @@ object RuleEvaluator {
         if (clean in importantExactBlock) {
             return DecisionResult(true, "Adblock importante exacto", RuleSource.LIST_BLOCK)
         }
-        // AI ad/tracker blocks yield to explicit user rules and downloaded allow exceptions,
-        // but take effect before ordinary downloaded block rules.
-        if (matchesDomainOrParent(clean, aiBlocked)) {
-            return DecisionResult(true, "IA local: publicidad/rastreo", RuleSource.LIST_BLOCK)
-        }
         if (matchesDomainOrParent(clean, hostExceptions)) {
             return DecisionResult(false, "Excepción @@||", RuleSource.LIST_EXCEPTION)
         }
         if (clean in exactExceptions) {
             return DecisionResult(false, "Excepción exacta", RuleSource.LIST_EXCEPTION)
+        }
+        // AI ad/tracker blocks yield to explicit user rules and downloaded allow exceptions,
+        // but take effect before ordinary downloaded block rules.
+        if (matchesDomainOrParent(clean, aiBlocked)) {
+            return DecisionResult(true, "IA local: publicidad/rastreo", RuleSource.LIST_BLOCK)
         }
         if (matchesDomainOrParent(clean, hostBlock)) {
             return DecisionResult(true, "Adblock ||^", RuleSource.LIST_BLOCK)
