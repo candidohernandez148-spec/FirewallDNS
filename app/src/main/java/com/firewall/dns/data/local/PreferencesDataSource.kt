@@ -41,11 +41,8 @@ class PreferencesDataSource(context: Context) {
     }
 
     init {
-        // Retira los datos de aprendizaje de versiones anteriores: ya no forman parte del producto.
-        prefs.edit().remove("learned_tokens").apply()
-        context.applicationContext.deleteFile("firewalldns_learning.json")
-        context.applicationContext.deleteFile("firewalldns_learning.json.bak")
-        context.applicationContext.deleteDatabase("firewalldns_learning.db")
+        // Preserve any on-device learning artifacts until the local learning engine
+        // can migrate or consume them; initialization must never erase user history.
         if (!prefs.getBoolean(KEY_ADBLOCK_MIGRATED, false)) {
             prefs.edit()
                 .putString(KEY_BLOCKLIST_URLS, DEFAULT_ADBLOCK_URL)
