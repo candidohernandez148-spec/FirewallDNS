@@ -226,7 +226,7 @@ fun ThreatMapScreen(
                 SocArchitectureLayers(observedApps = appRoutes.size, metrics = tunMetrics)
             }
             item { SocKpiGrid(metrics = tunMetrics) }
-            item { SocPolicyDiagnostics(metrics = tunMetrics) }
+            item { SocPolicyStatus(metrics = tunMetrics) }
             item { SocTunnelPath(metrics = tunMetrics, vpnRunning = vpnRunning) }
             item { LiveMapTelemetry(metrics = tunMetrics, logs = logs, vpnRunning = vpnRunning) }
             item { SocAppDnsActivity(logs = logs, flows = tunMetrics.activeFlows) }
@@ -1040,7 +1040,7 @@ private fun SocPolicyDiagnostics(metrics: FirewallDnsTrafficMetrics.Snapshot) {
     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
         Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("DIAGNÓSTICO DE POLÍTICA DNS", Modifier.weight(1f),
+                Text("ESTADO DE POLÍTICA DNS", Modifier.weight(1f),
                     style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                 Text(metrics.policyInstallStatus,
                     style = MaterialTheme.typography.labelSmall,
