@@ -119,13 +119,13 @@ fun ThreatMapScreen(
                 -0.88f, -0.55f, -0.18f, Color(0xFF58D6B0)),
             MindMapNode("nic", "NIC", "Interfaz de red", "${tunMetrics.nicRxPackets} / ${tunMetrics.nicTxPackets}",
                 -0.96f, 0.10f, 0.30f, Color(0xFF68D9A5)),
-            MindMapNode("ip", "IP", "IPv4 / IPv6 · contadores", "${tunMetrics.ipPacketsReceived} / ${tunMetrics.ipPacketsSent}",
+            MindMapNode("ip", "IP", "Contadores agregados IPv4 + IPv6", "${tunMetrics.ipPacketsReceived} / ${tunMetrics.ipPacketsSent}",
                 -0.45f, 0.84f, -0.28f, Color(0xFF78A8FF)),
             MindMapNode("tcp", "TCP", "Segmentos RX / TX", "${tunMetrics.tcpSegmentsReceived} / ${tunMetrics.tcpSegmentsSent}",
                 -0.98f, 0.62f, 0.18f, Color(0xFF42D9FF)),
             MindMapNode("udp", "UDP", "Datagramas RX / TX", "${tunMetrics.udpPacketsReceived} / ${tunMetrics.udpPacketsSent}",
                 -0.30f, 1.02f, 0.24f, Color(0xFF58D6B0)),
-            MindMapNode("icmp", "ICMP", "IPv4 / IPv6", "${tunMetrics.icmpV4Received + tunMetrics.icmpV6Received} RX",
+            MindMapNode("icmp", "ICMP", "Mensajes RX · IPv4 + IPv6", "${tunMetrics.icmpV4Received + tunMetrics.icmpV6Received} RX",
                 0.42f, 1.00f, -0.20f, Color(0xFFFFB454)),
             MindMapNode("fwd", "FWD", "Reenvío IP", "${tunMetrics.ipForwardDrops} drops",
                 0.98f, 0.56f, 0.26f, Color(0xFFB69CFF)),
@@ -1048,10 +1048,10 @@ private fun LiveEngineOperations(
             "Descartes UDP" to metrics.udpDrops,
         ), "No se expone ErrSnd: la versión Firestack revisada asigna incorrectamente ese campo.")
         LiveMetricSection("ICMP · IPv4 / IPv6", listOf(
-            "ICMPv4 · Echo replies recibidos" to metrics.icmpV4Received,
-            "ICMPv4 · Echo requests enviados" to metrics.icmpV4Sent,
-            "ICMPv6 · Echo replies recibidos" to metrics.icmpV6Received,
-            "ICMPv6 · Echo requests enviados" to metrics.icmpV6Sent,
+            "ICMPv4 · mensajes recibidos" to metrics.icmpV4Received,
+            "ICMPv4 · mensajes enviados" to metrics.icmpV4Sent,
+            "ICMPv6 · mensajes recibidos" to metrics.icmpV6Received,
+            "ICMPv6 · mensajes enviados" to metrics.icmpV6Sent,
         ), "Los contadores ICMP sí están separados por familia IP. Los contadores TCP/UDP/IP generales no ofrecen esa separación.")
         LiveMetricSection("INSPECCIÓN DNS Y DECISIONES", listOf(
             "Evaluaciones DNS" to metrics.dnsPolicyDecisions,
