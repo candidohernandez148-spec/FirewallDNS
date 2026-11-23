@@ -171,10 +171,10 @@ fun SocDashboardScreen(
 
         if (!operational || !blocklistsDownloaded || threatMatches > 0) {
             Surface(
-                Modifier.fillMaxWidth(),
+                onClick = onOpenThreats,
+                modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                onClick = onOpenThreats
+                color = MaterialTheme.colorScheme.surfaceVariant
             ) {
                 Row(Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
