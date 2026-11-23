@@ -81,6 +81,16 @@ class FirestackSocketBindingTest {
     }
 
     @Test
+    fun cnameInspectionOnlyRunsForEndpointAndServiceAliasQueryTypes() {
+        listOf(1, 5, 28, 39, 64, 65).forEach {
+            assertEquals(true, isCnameRelevantQueryType(it))
+        }
+        listOf(2, 6, 15, 16, 33, 255).forEach {
+            assertEquals(false, isCnameRelevantQueryType(it))
+        }
+    }
+
+    @Test
     fun blocksOnlyCnameAliasesThatMatchAnExistingBlockDecision() {
         val match = findBlockedCnameTarget(
             queriedDomain = "assets.site.example",
