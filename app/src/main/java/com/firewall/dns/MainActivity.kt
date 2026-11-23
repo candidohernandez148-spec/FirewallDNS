@@ -450,7 +450,8 @@ fun FirewallApp(
                     onToggleBlockedApp = viewModel::toggleBlockedApp,
                     onToggleExcludedApp = viewModel::toggleExcludedApp,
                     onOpenBatteryOpt = onOpenBatteryOpt,
-                    onOpenVpnSettings = onOpenVpnSettings
+                    onOpenVpnSettings = onOpenVpnSettings,
+                    isVisible = selectedDestination == 3
                 )
                 4 -> ThreatMapScreen(
                     logs = activityLogs,
@@ -460,7 +461,8 @@ fun FirewallApp(
                     vpnRunning = stats.isRunning,
                     smartModeEnabled = smartModeEnabled,
                     observationModeEnabled = observationModeEnabled,
-                    onSetRule = viewModel::setCustomRule
+                    onSetRule = viewModel::setCustomRule,
+                    isVisible = selectedDestination == 4
                 )
             }
         }
