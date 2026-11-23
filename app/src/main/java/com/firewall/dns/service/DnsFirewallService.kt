@@ -245,7 +245,10 @@ class DnsFirewallService : VpnService() {
         // Waiting here prevents a startup race where the TUN starts with seed rules
         // before the asynchronous disk load publishes the saved blocklist.
         runBlocking(Dispatchers.IO) { FirewallRepository.awaitInitialBlocklistLoad() }
+        if (!FirewallRepository.getShouldRun()) return
         synchronized(vpnLock) {
+        // A rapid Stop may arrive while the initial blocklist load is awaited.
+        if (!FirewallRepository.getShouldRun()) return
         closeInterfaceSync()
         val tunDescriptor = buildVpnBuilder().establish()
         if (tunDescriptor == null) {
@@ -322,6 +325,12 @@ class DnsFirewallService : VpnService() {
             FirewallRepository.setRunning(false, "")
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
+            return
+        }
+        // Stop can be requested while Firestack is attaching. Do not resurrect the VPN.
+        if (!FirewallRepository.getShouldRun()) {
+            firestack.close()
+            runCatching { tunDescriptor.close() }
             return
         }
 
