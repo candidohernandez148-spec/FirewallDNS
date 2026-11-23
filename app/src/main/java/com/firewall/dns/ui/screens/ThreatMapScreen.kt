@@ -67,7 +67,8 @@ private data class MindMapEdge(val from: String, val to: String)
 
 private val architectureEdges = listOf(
     MindMapEdge("core", "tun"),
-    MindMapEdge("tun", "nic"),
+    MindMapEdge("tun", "firestack"),
+    MindMapEdge("firestack", "nic"),
     MindMapEdge("nic", "ip"),
     MindMapEdge("ip", "tcp"),
     MindMapEdge("ip", "udp"),
@@ -116,8 +117,11 @@ fun ThreatMapScreen(
         listOf(
             MindMapNode("core", "FIREWALLDNS", "Servicio VPN", if (vpnRunning) "ACTIVO" else "DETENIDO",
                 0f, 0f, 0f, Color(0xFF42D9FF)),
-            MindMapNode("tun", "TUN", "Interfaz VPN", "${tunMetrics.tunRxBytes} / ${tunMetrics.tunTxBytes}",
+            MindMapNode("tun", "TUN", "Interfaz VPN · entrada / salida", "${tunMetrics.tunRxBytes} / ${tunMetrics.tunTxBytes}",
                 -0.90f, -0.55f, 0.00f, Color(0xFF58D6B0)),
+            MindMapNode("firestack", "FIRESTACK", "Pila de red gVisor",
+                if (!vpnRunning) "DETENIDO" else if (tunMetrics.firestackActive > 0) "ACTIVO" else "SIN CONFIRMAR",
+                -0.92f, -0.20f, -0.38f, Color(0xFF4EA5FF)),
             MindMapNode("nic", "NIC", "Interfaz de red", "${tunMetrics.nicRxPackets} / ${tunMetrics.nicTxPackets}",
                 -1.00f, 0.10f, 0.40f, Color(0xFF68D9A5)),
             MindMapNode("ip", "IP", "Contadores agregados IPv4 + IPv6", "${tunMetrics.ipPacketsReceived} / ${tunMetrics.ipPacketsSent}",
@@ -144,7 +148,7 @@ fun ThreatMapScreen(
             MindMapNode("upstream", "RESOLVERS", "DNS de red física",
                 tunMetrics.upstreamResolverRefreshes.toString(),
                 0.55f, -0.95f, 0.65f, Color(0xFF68D9A5)),
-            MindMapNode("apps", "APLICACIONES", "Identificadas en historial",
+            MindMapNode("apps", "APLICACIONES", "Apps identificadas por DNS / UID",
                 observedApps.size.toString(), -0.55f, -0.95f, 0.65f, Color(0xFF58D6B0))
         )
     }
@@ -175,7 +179,7 @@ fun ThreatMapScreen(
                     vpnRunning = vpnRunning
                 ) { id ->
                     section = when (id) {
-                        "tun", "nic", "ip", "tcp", "udp", "icmp", "fwd" -> "red"
+                        "tun", "firestack", "nic", "ip", "tcp", "udp", "icmp", "fwd" -> "red"
                         "dns" -> "dns"
                         "threats" -> "amenazas"
                         "rules" -> "reglas"
@@ -183,6 +187,9 @@ fun ThreatMapScreen(
                         else -> "map"
                     }
                 }
+            }
+            item {
+                SocArchitectureLayers(observedApps = observedApps.size, metrics = tunMetrics)
             }
             item { SocKpiGrid(metrics = tunMetrics) }
             item { SocPolicyDiagnostics(metrics = tunMetrics) }
@@ -608,6 +615,7 @@ private fun ThreeDimensionalMindMap(
                         val isSelected = node.id == selectedNode
                         val nodeActive = vpnRunning && when (node.id) {
                             "core", "tun" -> true
+                            "firestack" -> metrics.firestackActive > 0L
                             "nic" -> activeFlowCount > 0L || recent(metrics.nicChangeObservedAtEpochMs)
                             "ip" -> activeFlowCount > 0L || recent(metrics.ipChangeObservedAtEpochMs)
                             "tcp" -> metrics.activeFlows.any { it.identity.protocol.name == "TCP" } || recent(metrics.tcpChangeObservedAtEpochMs)
@@ -647,6 +655,57 @@ private fun ThreeDimensionalMindMap(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+    }
+}
+
+@Composable
+private fun SocArchitectureLayers(
+    observedApps: Int,
+    metrics: FirewallDnsTrafficMetrics.Snapshot,
+) {
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Text("ARQUITECTURA POR CAPAS", style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                SocLayerTile("DISPOSITIVO", "Apps Android / UID", observedApps.toString(),
+                    Color(0xFF58D6B0), Modifier.weight(1f))
+                SocLayerTile("CAPTURA", "TUN · Firestack",
+                    if (metrics.firestackActive > 0L) "ACTIVO" else "N/D",
+                    Color(0xFF4EA5FF), Modifier.weight(1f))
+                SocLayerTile("RED", "IP · TCP · UDP · ICMP", metrics.flowsActive.toString(),
+                    Color(0xFF78A8FF), Modifier.weight(1f))
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                SocLayerTile("PROTECCIÓN", "DNS · reglas · amenazas",
+                    metrics.dnsPolicyDecisions.toString(), Color(0xFFFF667D), Modifier.weight(1f))
+                SocLayerTile("RESOLUCIÓN / SOC", "Resolvers · eventos · flujos",
+                    metrics.upstreamResolverRefreshes.toString(), Color(0xFF68D9A5), Modifier.weight(1f))
+            }
+            Text("Los valores muestran métricas disponibles; no representan inventario completo de aplicaciones ni paquetes individuales.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun SocLayerTile(
+    title: String,
+    detail: String,
+    value: String,
+    tint: Color,
+    modifier: Modifier = Modifier,
+) {
+    Surface(modifier, shape = RoundedCornerShape(11.dp), color = tint.copy(alpha = .12f)) {
+        Column(Modifier.fillMaxWidth().padding(8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(title, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
+                color = tint, maxLines = 1)
+            Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+                maxLines = 1)
+            Text(detail, style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
         }
     }
 }
