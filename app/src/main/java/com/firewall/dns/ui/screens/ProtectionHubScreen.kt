@@ -63,7 +63,11 @@ fun ProtectionHubScreen(
     onOpenBatteryOpt: () -> Unit,
     onOpenVpnSettings: () -> Unit,
     isVisible: Boolean = true,
-    aiBlocked: List<String> = emptyList()
+    aiBlocked: List<String> = emptyList(),
+    aiRuntimeStatus: String = "Preparando IA local",
+    aiDownloadProgress: Int = 0,
+    aiSummary: String = "",
+    onRunLocalAi: () -> Unit = {}
 ) {
     var section by remember { mutableIntStateOf(0) }
     var appDetailOpen by remember { mutableStateOf(false) }
@@ -138,7 +142,11 @@ fun ProtectionHubScreen(
                 onDownloadBlocklist = onDownloadBlocklist,
                 onAddCustomRule = onAddCustomRule,
                 onRemoveCustomRule = onRemoveCustomRule,
-                aiBlocked = aiBlocked
+                aiBlocked = aiBlocked,
+                aiRuntimeStatus = aiRuntimeStatus,
+                aiDownloadProgress = aiDownloadProgress,
+                aiSummary = aiSummary,
+                onRunLocalAi = onRunLocalAi
             )
         } else if (section == 1) {
             AppsSettingsScreen(
