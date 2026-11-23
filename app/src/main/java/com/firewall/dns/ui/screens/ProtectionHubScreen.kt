@@ -61,9 +61,10 @@ fun ProtectionHubScreen(
     onToggleExcludedApp: (String) -> Unit,
     onOpenBatteryOpt: () -> Unit,
     onOpenVpnSettings: () -> Unit,
+    isVisible: Boolean = true,
 ) {
     var section by remember { mutableIntStateOf(0) }
-    BackHandler(enabled = section > 0) { section = (section - 1).coerceAtLeast(0) }
+    BackHandler(enabled = isVisible && section > 0) { section = (section - 1).coerceAtLeast(0) }
     Column(Modifier.fillMaxSize().pointerInput(section) {
         val backEdgePx = 32.dp.toPx()
         val backThresholdPx = 72.dp.toPx()
@@ -141,7 +142,8 @@ fun ProtectionHubScreen(
                 onAppSearchChange = onAppSearchChange,
                 onToggleExcludedApp = onToggleExcludedApp,
                 onOpenBatteryOpt = onOpenBatteryOpt,
-                onOpenVpnSettings = onOpenVpnSettings
+                onOpenVpnSettings = onOpenVpnSettings,
+                isVisible = isVisible
             )
         } else {
             FlowRulesScreen(rules = flowRules, onAdd = onAddFlowRule, onRemove = onRemoveFlowRule)
