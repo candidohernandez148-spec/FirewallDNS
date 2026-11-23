@@ -60,7 +60,11 @@ fun RulesScreen(
     onDownloadBlocklist: () -> Unit,
     onAddCustomRule: (String, Boolean) -> Unit,
     onRemoveCustomRule: (String) -> Unit,
-    aiBlocked: List<String> = emptyList()
+    aiBlocked: List<String> = emptyList(),
+    aiRuntimeStatus: String = "Preparando IA local",
+    aiDownloadProgress: Int = 0,
+    aiSummary: String = "",
+    onRunLocalAi: () -> Unit = {}
 ) {
     var domainInput by remember { mutableStateOf("") }
     var urlInput by remember { mutableStateOf("") }
@@ -97,15 +101,22 @@ fun RulesScreen(
                     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         Text("Protección inteligente", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Text(
-                            "El motor de reglas analiza consultas en tiempo real. La política para IA local ya está conectada al DNS y permite corregir bloqueos; el runtime GGUF aún está pendiente, así que todavía no hay decisiones automáticas generadas por el modelo.",
+                            "Qwen3-0.6B funciona en el dispositivo con llama.cpp. Analiza actividad DNS por lotes fuera del TUN; los bloqueos sugeridos pasan por la política de seguridad y puedes corregirlos.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Text(
-                            "Dominios bloqueados por política IA: ${aiBlocked.size}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Text(aiRuntimeStatus, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        if (aiRuntimeStatus.contains("Descargando", ignoreCase = true) && aiDownloadProgress in 1..99) {
+                            LinearProgressIndicator(progress = { aiDownloadProgress / 100f }, modifier = Modifier.fillMaxWidth())
+                            Text(aiDownloadProgress.toString() + "% del modelo", style = MaterialTheme.typography.labelSmall)
+                        }
+                        if (aiSummary.isNotBlank()) {
+                            Text(aiSummary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Text("Dominios administrados por IA: " + aiBlocked.size, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        OutlinedButton(onClick = onRunLocalAi, modifier = Modifier.fillMaxWidth()) {
+                            Text("Analizar ahora con Qwen3")
+                        }
                     }
                     Switch(checked = smartModeEnabled, onCheckedChange = onToggleSmartMode)
                 }

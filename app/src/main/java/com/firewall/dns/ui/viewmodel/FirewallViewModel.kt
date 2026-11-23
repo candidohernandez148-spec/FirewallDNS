@@ -8,6 +8,9 @@ import com.firewall.dns.domain.ai.LocalAiDomainSuggestion
 import com.firewall.dns.domain.ai.LocalAiPolicyOutcome
 import com.firewall.dns.domain.ai.LocalAiRecommendationParser
 import com.firewall.dns.domain.ai.LocalAiAnalysisApplication
+import com.firewall.dns.domain.ai.LocalAiRuntime
+import com.firewall.dns.domain.ai.LocalAiRuntimeState
+import com.firewall.dns.domain.ai.LocalAiRuntimeScheduler
 import com.firewalldns.engine.core.FlowProtocol
 import com.firewalldns.engine.core.NetworkFlowRule
 import com.firewalldns.engine.core.PolicyAction
@@ -48,6 +51,9 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
     val smartModeEnabled: StateFlow<Boolean> = FirewallRepository.smartModeEnabled
     val observationModeEnabled: StateFlow<Boolean> = FirewallRepository.observationModeEnabled
     val blockedApps: StateFlow<Set<String>> = FirewallRepository.blockedApps
+
+    private val _localAiRuntimeState = MutableStateFlow(LocalAiRuntime.readState(application))
+    val localAiRuntimeState: StateFlow<LocalAiRuntimeState> = _localAiRuntimeState.asStateFlow()
 
     private val _tunMetrics = MutableStateFlow(FirewallDnsTrafficMetrics.snapshot())
     val tunMetrics: StateFlow<FirewallDnsTrafficMetrics.Snapshot> = _tunMetrics.asStateFlow()
@@ -102,7 +108,14 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
 
     init {
         FirewallRepository.init(application)
+        LocalAiRuntimeScheduler.schedule(application)
         loadInstalledApps()
+        viewModelScope.launch {
+            while (true) {
+                _localAiRuntimeState.value = LocalAiRuntime.readState(getApplication())
+                delay(2_000L)
+            }
+        }
         // Muestreo ligero de contadores atómicos; no interviene en el hilo TUN.
         viewModelScope.launch {
             while (true) {
@@ -168,6 +181,11 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
     fun removeNetworkFlowRule(id: String) {
         FirewallRepository.removeNetworkFlowRule(id)
         _toastMessage.tryEmit("Regla de flujo eliminada")
+    }
+
+    fun runLocalAiAnalysis() {
+        LocalAiRuntimeScheduler.runNow(getApplication())
+        _toastMessage.tryEmit("Análisis Qwen3 local solicitado")
     }
 
     fun clearLogs() { FirewallRepository.clearLogs() }
