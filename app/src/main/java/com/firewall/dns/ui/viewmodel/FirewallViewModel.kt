@@ -4,13 +4,6 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.firewall.dns.data.repository.FirewallRepository
-import com.firewall.dns.domain.ai.LocalAiDomainSuggestion
-import com.firewall.dns.domain.ai.LocalAiPolicyOutcome
-import com.firewall.dns.domain.ai.LocalAiRecommendationParser
-import com.firewall.dns.domain.ai.LocalAiAnalysisApplication
-import com.firewall.dns.domain.ai.LocalAiRuntime
-import com.firewall.dns.domain.ai.LocalAiRuntimeState
-import com.firewall.dns.domain.ai.LocalAiRuntimeScheduler
 import com.firewalldns.engine.core.FlowProtocol
 import com.firewalldns.engine.core.NetworkFlowRule
 import com.firewalldns.engine.core.PolicyAction
@@ -43,7 +36,6 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
     val traffic: StateFlow<List<TrafficPoint>> = FirewallRepository.traffic
     val customBlockList: StateFlow<List<String>> = FirewallRepository.customBlockList
     val customAllowList: StateFlow<List<String>> = FirewallRepository.customAllowList
-    val localAiBlockedDomains: StateFlow<List<String>> = FirewallRepository.localAiBlockedDomains
     val networkFlowRules: StateFlow<List<NetworkFlowRule>> = FirewallRepository.networkFlowRules
     val excludedPackages: StateFlow<Set<String>> = FirewallRepository.excludedPackages
     val blocklistUrls: StateFlow<List<String>> = FirewallRepository.blocklistUrls
@@ -52,8 +44,6 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
     val observationModeEnabled: StateFlow<Boolean> = FirewallRepository.observationModeEnabled
     val blockedApps: StateFlow<Set<String>> = FirewallRepository.blockedApps
 
-    private val _localAiRuntimeState = MutableStateFlow(LocalAiRuntime.readState(application))
-    val localAiRuntimeState: StateFlow<LocalAiRuntimeState> = _localAiRuntimeState.asStateFlow()
 
     private val _tunMetrics = MutableStateFlow(FirewallDnsTrafficMetrics.snapshot())
     val tunMetrics: StateFlow<FirewallDnsTrafficMetrics.Snapshot> = _tunMetrics.asStateFlow()
@@ -108,14 +98,7 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
 
     init {
         FirewallRepository.init(application)
-        LocalAiRuntimeScheduler.schedule(application)
         loadInstalledApps()
-        viewModelScope.launch {
-            while (true) {
-                _localAiRuntimeState.value = LocalAiRuntime.readState(getApplication())
-                delay(2_000L)
-            }
-        }
         // Muestreo ligero de contadores atómicos; no interviene en el hilo TUN.
         viewModelScope.launch {
             while (true) {
@@ -150,27 +133,6 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
 
     fun removeCustomRule(domain: String) { FirewallRepository.removeCustomRule(domain) }
 
-    /** Receives structured output from the on-device AI coordinator, outside network callbacks. */
-    fun applyLocalAiSuggestion(suggestion: LocalAiDomainSuggestion): LocalAiPolicyOutcome =
-        FirewallRepository.applyLocalAiSuggestion(suggestion)
-
-    /**
-     * Validates a structured model response and sends each accepted recommendation
-     * through the repository policy gate. The caller must invoke this off the TUN path.
-     */
-    fun applyLocalAiAnalysis(rawResponse: String): LocalAiAnalysisApplication? {
-        val analysis = LocalAiRecommendationParser.parse(rawResponse) ?: return null
-        val outcomes = analysis.recommendations.map { suggestion ->
-            FirewallRepository.applyLocalAiSuggestion(suggestion)
-        }
-        return LocalAiAnalysisApplication(analysis, outcomes)
-    }
-
-    /** Explicit user correction always supersedes an AI-managed domain decision. */
-    fun correctLocalAiDecision(domain: String, block: Boolean) {
-        FirewallRepository.correctLocalAiDecision(domain, block)
-    }
-
     fun addNetworkFlowRule(cidr: String, protocol: FlowProtocol?, port: Int?, appPackage: String?, action: PolicyAction): Boolean {
         val result = FirewallRepository.addNetworkFlowRule(cidr, protocol, port, appPackage, action)
         result.onFailure { error -> _toastMessage.tryEmit(error.message ?: "No se pudo guardar la regla") }
@@ -183,10 +145,6 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
         _toastMessage.tryEmit("Regla de flujo eliminada")
     }
 
-    fun runLocalAiAnalysis() {
-        LocalAiRuntimeScheduler.runNow(getApplication())
-        _toastMessage.tryEmit("Análisis Qwen3 local solicitado")
-    }
 
     fun clearLogs() { FirewallRepository.clearLogs() }
 

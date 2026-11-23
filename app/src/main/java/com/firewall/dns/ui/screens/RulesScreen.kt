@@ -60,11 +60,6 @@ fun RulesScreen(
     onDownloadBlocklist: () -> Unit,
     onAddCustomRule: (String, Boolean) -> Unit,
     onRemoveCustomRule: (String) -> Unit,
-    aiBlocked: List<String> = emptyList(),
-    aiRuntimeStatus: String = "Preparando IA local",
-    aiDownloadProgress: Int = 0,
-    aiSummary: String = "",
-    onRunLocalAi: () -> Unit = {}
 ) {
     var domainInput by remember { mutableStateOf("") }
     var urlInput by remember { mutableStateOf("") }
@@ -99,24 +94,12 @@ fun RulesScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                        Text("Protección inteligente", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("Detección automática", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Text(
-                            "Qwen3-0.6B funciona en el dispositivo con llama.cpp. Analiza actividad DNS por lotes fuera del TUN; los bloqueos sugeridos pasan por la política de seguridad y puedes corregirlos.",
+                            "El motor aplica las listas de seguridad y tus reglas manuales directamente, sin componentes adicionales ni servicios externos.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Text(aiRuntimeStatus, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                        if (aiRuntimeStatus.contains("Descargando", ignoreCase = true) && aiDownloadProgress in 1..99) {
-                            LinearProgressIndicator(progress = { aiDownloadProgress / 100f }, modifier = Modifier.fillMaxWidth())
-                            Text(aiDownloadProgress.toString() + "% del modelo", style = MaterialTheme.typography.labelSmall)
-                        }
-                        if (aiSummary.isNotBlank()) {
-                            Text(aiSummary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Text("Dominios administrados por IA: " + aiBlocked.size, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        OutlinedButton(onClick = onRunLocalAi, modifier = Modifier.fillMaxWidth()) {
-                            Text("Analizar ahora con Qwen3")
-                        }
                     }
                     Switch(checked = smartModeEnabled, onCheckedChange = onToggleSmartMode)
                 }
@@ -331,27 +314,6 @@ fun RulesScreen(
                             shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer)
                         ) { Text("Permitir") }
-                    }
-                    if (aiBlocked.isNotEmpty()) {
-                        Text("Bloqueos sugeridos por IA local", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                        Text(
-                            "Puedes corregir cualquiera: Permitir siempre guarda tu excepción y tiene prioridad sobre la IA.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        aiBlocked.forEach { domain ->
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(domain, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                OutlinedButton(
-                                    onClick = { onAddCustomRule(domain, false) },
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                                ) { Text("Permitir siempre") }
-                            }
-                        }
                     }
                     if (customBlock.isNotEmpty() || customAllow.isNotEmpty()) {
                         Text("Reglas personalizadas activas", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
