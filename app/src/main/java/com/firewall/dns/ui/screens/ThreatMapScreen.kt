@@ -56,6 +56,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import com.firewall.dns.domain.engine.ThreatKnowledgeGraph
 import com.firewall.dns.domain.model.DnsLogEntry
 import com.firewall.dns.service.FirewallDnsTrafficMetrics
@@ -543,6 +547,15 @@ private fun ThreeDimensionalMindMap(
             }
             Canvas(
                 Modifier.fillMaxWidth().height(390.dp)
+                    .semantics {
+                        contentDescription = "Mapa SOC tridimensional. Usa las acciones accesibles para seleccionar un nodo."
+                        customActions = nodes.map { node ->
+                            CustomAccessibilityAction("Seleccionar nodo ${node.label}") {
+                                onSelectNode(node.id)
+                                true
+                            }
+                        }
+                    }
                     .pointerInput(Unit) {
                         detectTapGestures { tap ->
                             val hit = nodes.map { node ->
@@ -550,7 +563,7 @@ private fun ThreeDimensionalMindMap(
                                 val dx = point.x - tap.x
                                 val dy = point.y - tap.y
                                 node to (dx * dx + dy * dy)
-                            }.filter { it.second < 46f * 46f }
+                            }.filter { it.second < (48f * density) * (48f * density) }
                                 .minByOrNull { it.second }
                             hit?.first?.let { onSelectNode(it.id) }
                         }
