@@ -88,15 +88,11 @@ jobs:
           gradle-version: "8.14"
 
 
-      # Reuse the exact signing JKS that produced previous published APKs.
-      # Restore-only: never create or overwrite a cache entry with a new random key.
-      - name: Restaurar identidad de firma anterior
-        uses: actions/cache/restore@v4
-        with:
-          path: signing
-          key: firewalldns-signing-v1
-
+      # Release signing is restricted to trusted runs on main. Never restore
+      # private signing material from the Actions cache, which PR workflows can read.
       - name: Preparar firma de release compartida
+        id: signing
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD_SECRET: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -104,43 +100,34 @@ jobs:
           KEY_ALIAS_SECRET: ${{ secrets.KEY_ALIAS }}
         run: |
           set -euo pipefail
-          mkdir -p signing
-
-          if [[ -n "$KEYSTORE_BASE64" ]]; then
-            test -n "$KEYSTORE_PASSWORD_SECRET" || { echo "::error::KEYSTORE_PASSWORD es obligatorio cuando se proporciona KEYSTORE_BASE64"; exit 1; }
-            test -n "$KEY_ALIAS_SECRET" || { echo "::error::KEY_ALIAS es obligatorio cuando se proporciona KEYSTORE_BASE64"; exit 1; }
-            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > signing/release.jks
-            STORE_PASSWORD="$KEYSTORE_PASSWORD_SECRET"
-            KEY_ALIAS_VALUE="$KEY_ALIAS_SECRET"
-          else
-            # Backward-compatible recovery of the exact keystore used by earlier
-            # release APKs. Never generate a replacement signing identity here.
-            test -s signing/release.jks || { echo "::error::No hay JKS en la caché anterior ni se configuró KEYSTORE_BASE64"; exit 1; }
-            STORE_PASSWORD="${KEYSTORE_PASSWORD_SECRET:-}"
-            KEY_ALIAS_VALUE="${KEY_ALIAS_SECRET:-}"
-            if [[ -z "$STORE_PASSWORD" && -s signing/password ]]; then STORE_PASSWORD="$(cat signing/password)"; fi
-            if [[ -z "$KEY_ALIAS_VALUE" && -s signing/alias ]]; then KEY_ALIAS_VALUE="$(cat signing/alias)"; fi
+          echo "ready=false" >> "$GITHUB_OUTPUT"
+          if [[ -z "$KEYSTORE_BASE64" || -z "$KEYSTORE_PASSWORD_SECRET" || -z "$KEY_ALIAS_SECRET" ]]; then
+            echo "::notice::Release firmado omitido: configura KEYSTORE_BASE64, KEYSTORE_PASSWORD y KEY_ALIAS con la identidad de publicación existente."
+            exit 0
           fi
 
+          mkdir -p signing
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > signing/release.jks
           test -s signing/release.jks
-          test -n "$STORE_PASSWORD" || { echo "::error::No se pudo recuperar KEYSTORE_PASSWORD"; exit 1; }
-          test -n "$KEY_ALIAS_VALUE" || { echo "::error::No se pudo recuperar KEY_ALIAS"; exit 1; }
-          KEY_PASSWORD_VALUE="${KEY_PASSWORD_SECRET:-$STORE_PASSWORD}"
+          KEY_PASSWORD_VALUE="${KEY_PASSWORD_SECRET:-$KEYSTORE_PASSWORD_SECRET}"
+          keytool -list -keystore signing/release.jks -storepass "$KEYSTORE_PASSWORD_SECRET" -alias "$KEY_ALIAS_SECRET" >/dev/null
 
           echo "KEYSTORE_PATH=$PWD/signing/release.jks" >> "$GITHUB_ENV"
-          echo "KEYSTORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD_SECRET" >> "$GITHUB_ENV"
           echo "KEY_PASSWORD=$KEY_PASSWORD_VALUE" >> "$GITHUB_ENV"
-          echo "KEY_ALIAS=$KEY_ALIAS_VALUE" >> "$GITHUB_ENV"
-          echo "::add-mask::$STORE_PASSWORD"
+          echo "KEY_ALIAS=$KEY_ALIAS_SECRET" >> "$GITHUB_ENV"
           echo "::add-mask::$KEY_PASSWORD_VALUE"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
 
       - name: Ejecutar pruebas unitarias
         run: gradle :engine-core:test :engine-monitor:test :threat-engine:test :dns-engine:test :engine-runtime:test :android-adapter:testDebugUnitTest :app:testDebugUnitTest --no-daemon --stacktrace
 
       - name: Compilar APK FirewallDNS Release
+        if: steps.signing.outputs.ready == 'true'
         run: gradle :app:assembleRelease --no-daemon --stacktrace
 
       - name: Verificar Firestack/gVisor en FirewallDNS Release
+        if: steps.signing.outputs.ready == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -154,6 +141,7 @@ jobs:
           echo "APK FirewallDNS Release: Firestack/gVisor ARM64 y firma verificados"
 
       - name: Subir APK FirewallDNS
+        if: steps.signing.outputs.ready == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: FirewallDNS-APK
