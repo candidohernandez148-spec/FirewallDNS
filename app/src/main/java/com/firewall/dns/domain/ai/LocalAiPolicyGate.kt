@@ -48,8 +48,8 @@ object LocalAiPolicyGate {
         manualBlocked: Set<String>,
         blockConfidence: Float = DEFAULT_BLOCK_CONFIDENCE
     ): LocalAiPolicyOutcome {
-        val domain = normalize(suggestion.domain) ?: return LocalAiPolicyOutcome.OBSERVE_ONLY
-        val allowed = manualAllowed.mapNotNull(::normalize).toSet()
+        val domain = normalizeDomain(suggestion.domain) ?: return LocalAiPolicyOutcome.OBSERVE_ONLY
+        val allowed = manualAllowed.mapNotNull(::normalizeDomain).toSet()
         val blocked = manualBlocked.mapNotNull(::normalize).toSet()
 
         if (matches(domain, allowed)) return LocalAiPolicyOutcome.MANUAL_ALLOW
@@ -73,7 +73,7 @@ object LocalAiPolicyGate {
         }
     }
 
-    private fun normalize(value: String): String? {
+    fun normalizeDomain(value: String): String? {
         val clean = value.trim().trim('.').lowercase()
         if (clean.isBlank() || clean.length > 253 || clean.any { it.isWhitespace() }) return null
         if (clean.split('.').any { label ->
