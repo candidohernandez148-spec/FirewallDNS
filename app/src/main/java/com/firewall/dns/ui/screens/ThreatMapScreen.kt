@@ -671,10 +671,18 @@ private fun ThreeDimensionalMindMap(
                             else -> false
                         }
                         basePaint.style = Paint.Style.FILL
-                        basePaint.color = node.tint.copy(alpha = if (nodeActive) .22f else .035f).toArgb()
-                        canvas.drawCircle(point.x, point.y, nodeRadius * if (nodeActive) 2.8f * activePulse else 1.7f, basePaint)
-                        basePaint.color = node.tint.copy(alpha = if (nodeActive) .34f else .10f).toArgb()
-                        canvas.drawCircle(point.x, point.y, nodeRadius * if (nodeActive) 1.65f * activePulse else 1.25f, basePaint)
+                        basePaint.color = node.tint.copy(alpha = if (nodeActive) .22f else .055f).toArgb()
+                        canvas.drawCircle(
+                            point.x, point.y,
+                            nodeRadius * (if (nodeActive) 2.8f else 1.55f) * activePulse,
+                            basePaint
+                        )
+                        basePaint.color = node.tint.copy(alpha = if (nodeActive) .34f else .12f).toArgb()
+                        canvas.drawCircle(
+                            point.x, point.y,
+                            nodeRadius * (if (nodeActive) 1.65f else 1.18f) * activePulse,
+                            basePaint
+                        )
                         basePaint.color = node.tint.copy(alpha = if (nodeActive) 1f else .14f).toArgb()
                         if (nodeActive) basePaint.setShadowLayer(12f, 0f, 4f, node.tint.copy(alpha = .75f).toArgb())
                         canvas.drawCircle(point.x, point.y, nodeRadius * if (isSelected) 1.18f else 1f, basePaint)
