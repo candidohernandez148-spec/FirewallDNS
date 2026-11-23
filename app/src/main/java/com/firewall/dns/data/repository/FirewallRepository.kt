@@ -174,7 +174,10 @@ object FirewallRepository {
             customAllowSet.addAll(prefsDataSource.getCustomAllowSet())
             _customAllowList.value = customAllowSet.sorted()
             localAiBlockedSet.clear()
-            localAiBlockedSet.addAll(prefsDataSource.getLocalAiBlockedSet())
+            localAiBlockedSet.addAll(
+                prefsDataSource.getLocalAiBlockedSet().mapNotNull(LocalAiPolicyGate::normalizeDomain)
+            )
+            prefsDataSource.saveLocalAiBlockedSet(localAiBlockedSet.toSet())
             _localAiBlockedDomains.value = localAiBlockedSet.sorted()
             _networkFlowRules.value = prefsDataSource.getNetworkFlowRules().filter { rule ->
                 runCatching { NetworkFlowPolicyEngine(listOf(rule)) }.isSuccess
