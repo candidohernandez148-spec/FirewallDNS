@@ -7,6 +7,11 @@ data class LocalAiAnalysisResult(
     val recommendations: List<LocalAiDomainSuggestion>
 )
 
+data class LocalAiAnalysisApplication(
+    val analysis: LocalAiAnalysisResult,
+    val outcomes: List<LocalAiPolicyOutcome>
+)
+
 object LocalAiRecommendationParser {
     private const val MAX_RECOMMENDATIONS = 32
     private const val MAX_SUMMARY_CHARS = 500
