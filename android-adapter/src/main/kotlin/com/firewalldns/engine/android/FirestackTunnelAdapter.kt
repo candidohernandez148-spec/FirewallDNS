@@ -146,6 +146,17 @@ class FirestackTunnelAdapter private constructor(
 
     fun isConnected(): Boolean = !closed.get() && runCatching { tunnel.isConnected() }.getOrDefault(false)
 
+    /**
+     * Closes existing Firestack TCP/UDP/ICMP connections owned by one Android UID.
+     * Firestack's CloseConns accepts comma-separated connection IDs, PIDs or UIDs.
+     */
+    @Synchronized
+    fun closeUidConnections(uid: Int): Int {
+        if (closed.get() || uid < 0) return 0
+        val closedCsv = runCatching { tunnel.closeConns(uid.toString()) }.getOrNull() ?: return 0
+        return closedCsv.split(',').count { it.isNotBlank() }
+    }
+
     fun stat() = runCatching { tunnel.stat() }.getOrNull()
 
     /**
