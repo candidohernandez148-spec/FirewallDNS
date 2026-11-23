@@ -214,7 +214,6 @@ fun ThreatMapScreen(
                     lastDnsDecisionAtEpochMs = tunMetrics.lastDnsDecisionAtEpochMs,
                     lastFlowEventAtEpochMs = tunMetrics.lastFlowEventAtEpochMs,
                     metrics = tunMetrics,
-                    activeFlowCount = tunMetrics.flowsActive,
                     appRoutes = appRoutes,
                     vpnRunning = vpnRunning,
                     isVisible = isVisible,
@@ -501,7 +500,6 @@ private fun ThreeDimensionalMindMap(
     lastDnsDecisionAtEpochMs: Long,
     lastFlowEventAtEpochMs: Long,
     metrics: FirewallDnsTrafficMetrics.Snapshot,
-    activeFlowCount: Long,
     appRoutes: List<SocApplicationRoute>,
     vpnRunning: Boolean,
     isVisible: Boolean,
@@ -511,7 +509,16 @@ private fun ThreeDimensionalMindMap(
     val rotation = remember { Animatable(0f) }
     val activePulse = remember { Animatable(.88f) }
     val latestRotation by rememberUpdatedState(rotation.value)
-    LaunchedEffect(isVisible) {
+    fun recent(timestamp: Long, windowMs: Long = 5000L): Boolean =
+        timestamp > 0L && System.currentTimeMillis() - timestamp in 0L..windowMs
+    val hasRecentActivity = vpnRunning && listOf(
+        metrics.tunRxChangeObservedAtEpochMs, metrics.tunTxChangeObservedAtEpochMs,
+        metrics.nicChangeObservedAtEpochMs, metrics.ipChangeObservedAtEpochMs,
+        metrics.tcpChangeObservedAtEpochMs, metrics.udpChangeObservedAtEpochMs,
+        metrics.icmpChangeObservedAtEpochMs, metrics.forwardChangeObservedAtEpochMs,
+        lastDnsDecisionAtEpochMs, lastFlowEventAtEpochMs
+    ).any { recent(it) }
+    LaunchedEffect(isVisible, hasRecentActivity) {
         if (isVisible) {
             coroutineScope {
                 launch {
@@ -521,9 +528,13 @@ private fun ThreeDimensionalMindMap(
                     }
                 }
                 launch {
-                    while (true) {
-                        activePulse.animateTo(1f, tween(1100))
-                        activePulse.animateTo(.88f, tween(1100))
+                    if (hasRecentActivity) {
+                        while (true) {
+                            activePulse.animateTo(1f, tween(550))
+                            activePulse.animateTo(.88f, tween(550))
+                        }
+                    } else {
+                        activePulse.snapTo(.88f)
                     }
                 }
             }
@@ -533,29 +544,12 @@ private fun ThreeDimensionalMindMap(
             activePulse.snapTo(.88f)
         }
     }
-    val dnsEventProgress = remember { Animatable(1f) }
-    val flowEventProgress = remember { Animatable(1f) }
-    LaunchedEffect(lastDnsDecisionAtEpochMs, vpnRunning, isVisible) {
-        if (isVisible && vpnRunning && lastDnsDecisionAtEpochMs > 0L) {
-            dnsEventProgress.snapTo(0f)
-            dnsEventProgress.animateTo(1f, animationSpec = tween(900, easing = LinearEasing))
-        } else dnsEventProgress.snapTo(1f)
-    }
-    LaunchedEffect(lastFlowEventAtEpochMs, vpnRunning, isVisible) {
-        if (isVisible && vpnRunning && lastFlowEventAtEpochMs > 0L) {
-            flowEventProgress.snapTo(0f)
-            flowEventProgress.animateTo(1f, animationSpec = tween(1200, easing = LinearEasing))
-        } else flowEventProgress.snapTo(1f)
-    }
     var selectedAppUid by remember { mutableStateOf<Int?>(null) }
     val background = MaterialTheme.colorScheme.surface
     val lineColor = MaterialTheme.colorScheme.outlineVariant
     val onSurface = MaterialTheme.colorScheme.onSurface
     val density = LocalDensity.current.density
-    fun recent(timestamp: Long): Boolean = timestamp > 0L && System.currentTimeMillis() - timestamp in 0L..5000L
-    val dnsEventRecent = vpnRunning &&
-        lastDnsDecisionAtEpochMs > 0L &&
-        System.currentTimeMillis() - lastDnsDecisionAtEpochMs in 0L..2500L
+    val dnsEventRecent = recent(lastDnsDecisionAtEpochMs, 2500L)
     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(containerColor = background)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -564,7 +558,7 @@ private fun ThreeDimensionalMindMap(
                     style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 Text(
                     if (!vpnRunning) "MOTOR DETENIDO"
-                    else if (dnsEventRecent || activeFlowCount > 0L) "ACTIVIDAD DETECTADA"
+                    else if (dnsEventRecent || recent(lastFlowEventAtEpochMs)) "ACTIVIDAD DETECTADA"
                     else "EN ESPERA DE EVENTOS",
                     style = MaterialTheme.typography.labelSmall,
                     color = if (vpnRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
@@ -620,15 +614,23 @@ private fun ThreeDimensionalMindMap(
                         val to = byId[edge.to] ?: return@forEach
                         val begin = projected.getValue(from)
                         val finish = projected.getValue(to)
+                        val edgeEventAt = when (edge.from + "->" + edge.to) {
+                            "tun_in->core" -> metrics.tunRxChangeObservedAtEpochMs
+                            "core->firestack" -> lastFlowEventAtEpochMs
+                            "firestack->nic" -> metrics.nicChangeObservedAtEpochMs
+                            "nic->ip" -> metrics.ipChangeObservedAtEpochMs
+                            "ip->tcp" -> metrics.tcpChangeObservedAtEpochMs
+                            "ip->udp" -> metrics.udpChangeObservedAtEpochMs
+                            "ip->icmp" -> metrics.icmpChangeObservedAtEpochMs
+                            "ip->fwd" -> metrics.forwardChangeObservedAtEpochMs
+                            "dns->decisions" -> lastDnsDecisionAtEpochMs
+                            "firestack->tun_out" -> metrics.tunTxChangeObservedAtEpochMs
+                            else -> 0L
+                        }
+                        val edgeEventRecent = vpnRunning && recent(edgeEventAt, 5000L)
                         val isDnsRoute = edge.from == "dns" && edge.to == "decisions"
-                        val isFlowRoute = edge.from == "core" && edge.to == "firestack"
                         val touchesSelectedNode = edge.from == selectedNode || edge.to == selectedNode
-                        val flowEventRecent = vpnRunning && lastFlowEventAtEpochMs > 0L &&
-                            System.currentTimeMillis() - lastFlowEventAtEpochMs in 0L..5000L
-                        val routeActive = vpnRunning && (
-                            (isDnsRoute && dnsEventRecent) ||
-                            (isFlowRoute && activeFlowCount > 0L)
-                        )
+                        val routeActive = edgeEventRecent
                         basePaint.style = Paint.Style.STROKE
                         basePaint.strokeWidth = when {
                             touchesSelectedNode -> 2.6f
@@ -642,16 +644,12 @@ private fun ThreeDimensionalMindMap(
                         }
                         canvas.drawLine(begin.x, begin.y, finish.x, finish.y, basePaint)
 
-                        // This short-lived marker corresponds to the timestamped DNS decision event.
-                        // It is not a packet and never loops when the engine is idle.
-                        val eventProgress = when {
-                            isDnsRoute && dnsEventRecent -> dnsEventProgress.value
-                            isFlowRoute && flowEventRecent -> flowEventProgress.value
-                            else -> 1f
-                        }
-                        val eventIsVisible = (isDnsRoute && dnsEventRecent) ||
-                            (isFlowRoute && flowEventRecent)
-                        if (eventIsVisible && eventProgress < 1f) {
+                        // A one-shot marker is drawn only for a recently changed counter/event
+                        // belonging to this logical edge. It is telemetry activity, not a packet trace.
+                        val edgeEventAgeMs = if (edgeEventAt > 0L) System.currentTimeMillis() - edgeEventAt else Long.MAX_VALUE
+                        val eventIsVisible = edgeEventAgeMs in 0L..1200L
+                        val eventProgress = (edgeEventAgeMs.coerceAtLeast(0L) / 1200f).coerceIn(0f, 1f)
+                        if (eventIsVisible) {
                             val px = begin.x + (finish.x - begin.x) * eventProgress
                             val py = begin.y + (finish.y - begin.y) * eventProgress
                             val eventTint = if (isDnsRoute) Color(0xFFFF667D) else Color(0xFF42D9FF)
@@ -673,17 +671,21 @@ private fun ThreeDimensionalMindMap(
                         val nodeRadius = (if (node.id == "core") 17f else 11f) * (.78f + depth * .38f)
                         val isSelected = node.id == selectedNode
                         val nodeActive = vpnRunning && when (node.id) {
-                            "core" -> true
-                            "tun_in", "tun_out" -> false
-                            "firestack" -> metrics.firestackActive > 0L
-                            "nic" -> activeFlowCount > 0L || recent(metrics.nicChangeObservedAtEpochMs)
-                            "ip" -> activeFlowCount > 0L || recent(metrics.ipChangeObservedAtEpochMs)
-                            "tcp" -> metrics.activeFlows.any { it.identity.protocol.name == "TCP" } || recent(metrics.tcpChangeObservedAtEpochMs)
-                            "udp" -> metrics.activeFlows.any { it.identity.protocol.name == "UDP" } || recent(metrics.udpChangeObservedAtEpochMs)
-                            "icmp" -> metrics.activeFlows.any { it.identity.protocol.name == "ICMP" } || recent(metrics.icmpChangeObservedAtEpochMs)
+                            "core" -> recent(lastFlowEventAtEpochMs) || dnsEventRecent ||
+                                recent(metrics.tunRxChangeObservedAtEpochMs) || recent(metrics.tunTxChangeObservedAtEpochMs)
+                            "tun_in" -> recent(metrics.tunRxChangeObservedAtEpochMs)
+                            "tun_out" -> recent(metrics.tunTxChangeObservedAtEpochMs)
+                            "firestack" -> recent(lastFlowEventAtEpochMs)
+                            "nic" -> recent(metrics.nicChangeObservedAtEpochMs)
+                            "ip" -> recent(metrics.ipChangeObservedAtEpochMs)
+                            "tcp" -> recent(metrics.tcpChangeObservedAtEpochMs)
+                            "udp" -> recent(metrics.udpChangeObservedAtEpochMs)
+                            "icmp" -> recent(metrics.icmpChangeObservedAtEpochMs)
                             "fwd" -> recent(metrics.forwardChangeObservedAtEpochMs)
                             "dns", "decisions" -> dnsEventRecent
-                            "apps" -> activeFlowCount > 0L
+                            "apps" -> recent(lastFlowEventAtEpochMs)
+                            // Static references, rule inventories and resolver-list metadata do not
+                            // have per-node activity events; keep them still rather than fabricate motion.
                             else -> false
                         }
                         basePaint.style = Paint.Style.FILL
@@ -726,7 +728,7 @@ private fun ThreeDimensionalMindMap(
                 onAppSelected = { selectedAppUid = it }
             )
             Text(
-                "Las líneas muestran relaciones lógicas entre componentes, no una captura de paquetes. Solo se resaltan eventos recientes del monitor; no se simulan rutas ni tráfico.",
+                "Las líneas muestran relaciones lógicas, no una captura de paquetes. Los pulsos señalan cambios recientes de métricas/eventos en el nodo o tramo asociado; no son paquetes individuales ni prueban que todos los flujos recorran esa ruta.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
