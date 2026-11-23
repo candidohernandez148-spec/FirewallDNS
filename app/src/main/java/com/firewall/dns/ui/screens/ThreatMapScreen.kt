@@ -56,9 +56,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import com.firewall.dns.domain.engine.ThreatKnowledgeGraph
 import com.firewall.dns.domain.model.DnsLogEntry
@@ -516,12 +514,6 @@ private fun ThreeDimensionalMindMap(
             flowEventProgress.animateTo(1f, animationSpec = tween(1200, easing = LinearEasing))
         } else flowEventProgress.snapTo(1f)
     }
-    var routeTargetNodeId by remember(selectedNode) {
-        mutableStateOf(architectureEdges.firstOrNull { it.from == selectedNode }?.to ?: selectedNode)
-    }
-    val selectedRoute = remember(selectedNode, routeTargetNodeId) {
-        directedNodeRoute(selectedNode, routeTargetNodeId).orEmpty()
-    }
     var selectedAppUid by remember { mutableStateOf<Int?>(null) }
     val background = MaterialTheme.colorScheme.surface
     val lineColor = MaterialTheme.colorScheme.outlineVariant
@@ -548,13 +540,7 @@ private fun ThreeDimensionalMindMap(
             Canvas(
                 Modifier.fillMaxWidth().height(390.dp)
                     .semantics {
-                        contentDescription = "Mapa SOC tridimensional. Usa las acciones accesibles para seleccionar un nodo."
-                        customActions = nodes.map { node ->
-                            CustomAccessibilityAction("Seleccionar nodo ${node.label}") {
-                                onSelectNode(node.id)
-                                true
-                            }
-                        }
+                        contentDescription = "Mapa SOC tridimensional. Toca un nodo para consultar su información."
                     }
                     .pointerInput(Unit) {
                         detectTapGestures { tap ->
@@ -603,9 +589,6 @@ private fun ThreeDimensionalMindMap(
                         val finish = projected.getValue(to)
                         val isDnsRoute = edge.from == "dns" && edge.to == "decisions"
                         val isFlowRoute = edge.from == "core" && edge.to == "tun"
-                        val isSelectedRouteEdge = selectedRoute.zipWithNext().any {
-                            it.first == edge.from && it.second == edge.to
-                        }
                         val touchesSelectedNode = edge.from == selectedNode || edge.to == selectedNode
                         val flowEventRecent = vpnRunning && lastFlowEventAtEpochMs > 0L &&
                             System.currentTimeMillis() - lastFlowEventAtEpochMs in 0L..5000L
@@ -616,13 +599,11 @@ private fun ThreeDimensionalMindMap(
                         )
                         basePaint.style = Paint.Style.STROKE
                         basePaint.strokeWidth = when {
-                            isSelectedRouteEdge -> 4f
                             touchesSelectedNode -> 2.6f
                             routeActive -> 3f
                             else -> 1.5f
                         }
                         basePaint.color = when {
-                            isSelectedRouteEdge -> Color(0xFF42D9FF).toArgb()
                             touchesSelectedNode -> to.tint.copy(alpha = .72f).toArgb()
                             routeActive -> to.tint.copy(alpha = .9f).toArgb()
                             else -> to.tint.copy(alpha = .24f).toArgb()
@@ -633,12 +614,9 @@ private fun ThreeDimensionalMindMap(
                         val topologyProgress = (topologyPulse + edgeIndex * .173f) % 1f
                         val topologyX = begin.x + (finish.x - begin.x) * topologyProgress
                         val topologyY = begin.y + (finish.y - begin.y) * topologyProgress
-                        val topologyTint = if (isSelectedRouteEdge) Color(0xFF42D9FF) else Color(0xFF8AA8C8)
                         basePaint.style = Paint.Style.FILL
-                        basePaint.color = topologyTint.copy(alpha = if (isSelectedRouteEdge) .95f else .62f).toArgb()
-                        if (isSelectedRouteEdge) basePaint.setShadowLayer(7f * density, 0f, 0f, topologyTint.toArgb())
-                        canvas.drawCircle(topologyX, topologyY, (if (isSelectedRouteEdge) 3.2f else 2.1f) * density, basePaint)
-                        basePaint.clearShadowLayer()
+                        basePaint.color = Color(0xFF8AA8C8).copy(alpha = .62f).toArgb()
+                        canvas.drawCircle(topologyX, topologyY, 2.1f * density, basePaint)
 
                         // This short-lived marker corresponds to the timestamped DNS decision event.
                         // It is not a packet and never loops when the engine is idle.
@@ -718,12 +696,9 @@ private fun ThreeDimensionalMindMap(
             NodeRouteInspector(
                 nodes = nodes,
                 selectedNode = selectedNode,
-                targetNode = routeTargetNodeId,
-                route = selectedRoute,
                 appRoutes = appRoutes,
                 selectedAppUid = selectedAppUid,
-                onAppSelected = { selectedAppUid = it },
-                onTargetSelected = { routeTargetNodeId = it }
+                onAppSelected = { selectedAppUid = it }
             )
             Text(
                 "La cámara mantiene una órbita 3D. Los pulsos tenues recorren todas las conexiones como guía visual de topología; los marcadores de eventos representan actividad observada, no paquetes individuales.",
@@ -738,12 +713,9 @@ private fun ThreeDimensionalMindMap(
 private fun NodeRouteInspector(
     nodes: List<MindMapNode>,
     selectedNode: String,
-    targetNode: String,
-    route: List<String>,
     appRoutes: List<SocApplicationRoute>,
     selectedAppUid: Int?,
     onAppSelected: (Int) -> Unit,
-    onTargetSelected: (String) -> Unit,
 ) {
     val byId = nodes.associateBy { it.id }
     val selected = byId[selectedNode] ?: return
@@ -803,27 +775,10 @@ private fun NodeRouteInspector(
                 Text("La aplicación se identifica por UID. El recorrido muestra la topología de red; los flujos listados son observaciones reales independientes.",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text("SELECCIONA UN DESTINO", style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold)
-            nodes.filter { it.id != selectedNode }.chunked(3).forEach { group ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    group.forEach { node ->
-                        FilterChip(
-                            selected = targetNode == node.id,
-                            onClick = { onTargetSelected(node.id) },
-                            label = { Text(node.label, style = MaterialTheme.typography.labelSmall) }
-                        )
-                    }
-                }
-            }
-            Text("RECORRIDO DIRECCIONAL", style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold)
             Text(
-                if (route.isEmpty()) "No existe una ruta dirigida definida entre estos nodos en la topología actual."
-                else route.mapNotNull { byId[it]?.label }.joinToString("  →  "),
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.primary
+                "La topología completa se muestra mediante las conexiones de entrada y salida de cada nodo. La actividad resaltada depende de eventos observados, no de una ruta seleccionada manualmente.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
                 "Las conexiones de entrada y salida describen la topología. La ruta resaltada no confirma por sí sola que haya tráfico activo.",
@@ -834,25 +789,6 @@ private fun NodeRouteInspector(
     }
 }
 
-private fun directedNodeRoute(from: String, to: String): List<String>? {
-    if (from == to) return listOf(from)
-    val pending = ArrayDeque<List<String>>()
-    val visited = mutableSetOf(from)
-    pending.addLast(listOf(from))
-    while (pending.isNotEmpty()) {
-        val path = pending.removeFirst()
-        val current = path.last()
-        for (edge in architectureEdges) {
-            if (edge.from != current || !visited.add(edge.to)) continue
-            val nextPath = path + edge.to
-            if (edge.to == to) return nextPath
-            pending.addLast(nextPath)
-        }
-    }
-    return null
-}
-
-@Composable
 private fun SocArchitectureLayers(
     observedApps: Int,
     metrics: FirewallDnsTrafficMetrics.Snapshot,
