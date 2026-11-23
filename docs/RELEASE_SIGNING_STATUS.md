@@ -5,7 +5,7 @@ Este documento deja constancia del estado y de la política para firmar la APK d
 ## Decisión
 
 - La firma de Release se realizará en GitHub Actions.
-- La misma identidad de firma debe utilizarse para la APK de FirewallDNS.
+- La misma identidad de firma debe utilizarse para la APK única de FirewallDNS.
 - La llave privada JKS y sus contraseñas **nunca deben guardarse en este repositorio**, en commits, en archivos descargables públicos ni en cachés de Actions.
 - GitHub Actions debe recibir el material privado únicamente mediante GitHub Actions repository secrets.
 
@@ -20,7 +20,7 @@ Configurar en **Settings → Secrets and variables → Actions**:
 
 ## Automatización
 
-El workflow de Release de `main` prepara la llave desde los secrets, compila las APK Release, verifica la firma y publica los artefactos cuando la configuración es válida. Si faltan los secrets, el flujo omite intencionalmente la firma/publicación de Release; no genera ni sustituye automáticamente una identidad de firma.
+El workflow de Release de `main` prepara la llave desde los secrets, compila la APK Release, verifica la firma y publica el artefacto cuando la configuración es válida. Si faltan los secrets, el flujo omite intencionalmente la firma/publicación de Release; no genera ni sustituye automáticamente una identidad de firma.
 
 FirewallDNS se publica como una única APK firmada.
 
@@ -39,4 +39,4 @@ La conexión de GitHub utilizada para mantener el repositorio no dispone de una 
 
 - [Secrets de Actions](https://github.com/candidohernandez148-spec/FirewallDNS/settings/secrets/actions)
 - [Workflow de Actions](https://github.com/candidohernandez148-spec/FirewallDNS/actions)
-- [Guía técnica de firma compartida](./SHARED_APK_SIGNING.md)
+- [Guía de firma de FirewallDNS](./SHARED_APK_SIGNING.md)
