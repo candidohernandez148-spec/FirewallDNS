@@ -303,7 +303,7 @@ private fun AppActivityDetailScreen(
                 AppIcon(app)
                 Column(Modifier.weight(1f).padding(start = 12.dp)) {
                     Text(app.label, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text("UID \${app.uid} · \${app.packageName}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("UID ${app.uid} · ${app.packageName}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -316,7 +316,7 @@ private fun AppActivityDetailScreen(
             }
         } else {
             item {
-                Text("\${appFlows.size} conexiones activas atribuidas al UID. Se muestran hasta 3.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("${appFlows.size} conexiones activas atribuidas al UID. Se muestran hasta 3.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             items(appFlows.take(3)) { flow ->
                 Card(
@@ -325,9 +325,9 @@ private fun AppActivityDetailScreen(
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f))
                 ) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("\${flow.identity.protocol.name} · \${flow.action}", fontWeight = FontWeight.Bold)
-                        Text("\${flow.identity.sourceAddress}:\${flow.identity.sourcePort} → \${flow.identity.destinationAddress}:\${flow.identity.destinationPort}", style = MaterialTheme.typography.bodySmall)
-                        Text("TX \${flow.bytesSent} B · RX \${flow.bytesReceived} B · \${flow.reason}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("${flow.identity.protocol.name} · ${flow.action}", fontWeight = FontWeight.Bold)
+                        Text("${flow.identity.sourceAddress}:${flow.identity.sourcePort} → ${flow.identity.destinationAddress}:${flow.identity.destinationPort}", style = MaterialTheme.typography.bodySmall)
+                        Text("TX ${flow.bytesSent} B · RX ${flow.bytesReceived} B · ${flow.reason}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -337,9 +337,9 @@ private fun AppActivityDetailScreen(
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatusChip("BLOCK \${blocked}", MaterialTheme.colorScheme.error)
-                StatusChip("ALLOW \${allowed}", MaterialTheme.colorScheme.primary)
-                StatusChip("OBSERVE \${observed}", MaterialTheme.colorScheme.tertiary)
+                StatusChip("BLOCK ${blocked}", MaterialTheme.colorScheme.error)
+                StatusChip("ALLOW ${allowed}", MaterialTheme.colorScheme.primary)
+                StatusChip("OBSERVE ${observed}", MaterialTheme.colorScheme.tertiary)
             }
         }
         item {
@@ -380,7 +380,7 @@ private fun AppActivityDetailScreen(
                             Text(entry.timestamp, modifier = Modifier.weight(1f), textAlign = TextAlign.End, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Text(entry.domain, fontWeight = FontWeight.SemiBold)
-                        Text("\${entry.queryType} · \${entry.reason}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("${entry.queryType} · ${entry.reason}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
