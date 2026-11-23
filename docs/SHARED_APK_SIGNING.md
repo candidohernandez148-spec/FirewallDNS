@@ -1,4 +1,4 @@
-# Firma de FirewallDNS
+# Guía de firma de FirewallDNS
 
 FirewallDNS se distribuye como una única aplicación Android. No existe una APK companion ni una identidad de firma compartida entre aplicaciones.
 
