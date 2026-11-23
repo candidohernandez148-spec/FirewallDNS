@@ -49,6 +49,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlin.math.abs
 import com.firewall.dns.domain.model.AppInfoItem
 import com.firewall.dns.domain.model.FirewallStats
 import com.firewall.dns.domain.model.DnsLogEntry
@@ -273,17 +274,22 @@ private fun AppActivityDetailScreen(
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                 val startedAtBackEdge = down.position.x <= backEdgePx
-                var totalDrag = 0f
+                var totalDragX = 0f
+                var totalDragY = 0f
                 while (true) {
                     val event = awaitPointerEvent(PointerEventPass.Initial)
                     val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                    totalDrag = change.position.x - down.position.x
-                    if (startedAtBackEdge && totalDrag > touchSlop) {
+                    totalDragX = change.position.x - down.position.x
+                    totalDragY = change.position.y - down.position.y
+                    val horizontalBackSwipe = totalDragX > touchSlop && totalDragX > abs(totalDragY)
+                    if (startedAtBackEdge && horizontalBackSwipe) {
                         change.consume()
                     }
                     if (!change.pressed) break
                 }
-                if (startedAtBackEdge && totalDrag >= backThresholdPx) onBack()
+                if (startedAtBackEdge && totalDragX >= backThresholdPx && totalDragX > abs(totalDragY)) {
+                    onBack()
+                }
             }
         },
         verticalArrangement = Arrangement.spacedBy(12.dp)
