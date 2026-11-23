@@ -589,7 +589,7 @@ private fun ThreeDimensionalMindMap(
                     val radius = minOf(w * .43f, h * .43f)
                     val basePaint = Paint(Paint.ANTI_ALIAS_FLAG)
                     val projected = nodes.associateWith {
-                        projectNode(it, w, h, rotation)
+                        projectNode(it, w, h, rotation.value)
                     }
 
                     // Stable 3D depth rings: spatial decoration only, never shown as traffic.
@@ -690,13 +690,13 @@ private fun ThreeDimensionalMindMap(
                         basePaint.color = node.tint.copy(alpha = if (nodeActive) .22f else .055f).toArgb()
                         canvas.drawCircle(
                             point.x, point.y,
-                            nodeRadius * (if (nodeActive) 2.8f else 1.55f) * activePulse,
+                            nodeRadius * (if (nodeActive) 2.8f else 1.55f) * activePulse.value,
                             basePaint
                         )
                         basePaint.color = node.tint.copy(alpha = if (nodeActive) .34f else .12f).toArgb()
                         canvas.drawCircle(
                             point.x, point.y,
-                            nodeRadius * (if (nodeActive) 1.65f else 1.18f) * activePulse,
+                            nodeRadius * (if (nodeActive) 1.65f else 1.18f) * activePulse.value,
                             basePaint
                         )
                         basePaint.color = node.tint.copy(alpha = if (nodeActive) 1f else .14f).toArgb()
