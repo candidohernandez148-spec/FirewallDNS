@@ -78,6 +78,7 @@ private val architectureEdges = listOf(
     MindMapEdge("udp", "dns"),
     MindMapEdge("dns", "decisions"),
     MindMapEdge("core", "threats"),
+    MindMapEdge("threats", "decisions"),
     MindMapEdge("rules", "decisions"),
     MindMapEdge("apps", "decisions"),
     MindMapEdge("decisions", "upstream"),
@@ -122,7 +123,7 @@ fun ThreatMapScreen(
             MindMapNode("firestack", "FIRESTACK", "Pila de red gVisor",
                 if (!vpnRunning) "DETENIDO" else if (tunMetrics.firestackActive > 0) "ACTIVO" else "SIN CONFIRMAR",
                 -0.92f, -0.20f, -0.38f, Color(0xFF4EA5FF)),
-            MindMapNode("nic", "NIC", "Interfaz de red", "${tunMetrics.nicRxPackets} / ${tunMetrics.nicTxPackets}",
+            MindMapNode("nic", "NIC", "Interfaz interna Firestack", "${tunMetrics.nicRxPackets} / ${tunMetrics.nicTxPackets}",
                 -1.00f, 0.10f, 0.40f, Color(0xFF68D9A5)),
             MindMapNode("ip", "IP", "Contadores agregados IPv4 + IPv6", "${tunMetrics.ipPacketsReceived} / ${tunMetrics.ipPacketsSent}",
                 -0.70f, 0.70f, 0.20f, Color(0xFF78A8FF)),
@@ -680,8 +681,8 @@ private fun SocArchitectureLayers(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 SocLayerTile("PROTECCIÓN", "DNS · reglas · amenazas",
                     metrics.dnsPolicyDecisions.toString(), Color(0xFFFF667D), Modifier.weight(1f))
-                SocLayerTile("RESOLUCIÓN / SOC", "Resolvers · eventos · flujos",
-                    metrics.upstreamResolverRefreshes.toString(), Color(0xFF68D9A5), Modifier.weight(1f))
+                SocLayerTile("RESOLUCIÓN / SOC", "Flujos · actualizaciones resolvers",
+                    metrics.flowsActive.toString(), Color(0xFF68D9A5), Modifier.weight(1f))
             }
             Text("Los valores muestran métricas disponibles; no representan inventario completo de aplicaciones ni paquetes individuales.",
                 style = MaterialTheme.typography.labelSmall,
