@@ -1,5 +1,7 @@
 package com.firewalldns.engine.android
 
+import com.firewalldns.engine.core.PolicyAction
+import com.firewalldns.engine.core.PolicyDecision
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -76,6 +78,48 @@ class FirestackSocketBindingTest {
             listOf("valid.example"),
             parseFirestackDomainMetadata("valid.example," + "x".repeat(4090) + ",tail.example"),
         )
+    }
+
+    @Test
+    fun blocksOnlyCnameAliasesThatMatchAnExistingBlockDecision() {
+        val match = findBlockedCnameTarget(
+            queriedDomain = "assets.site.example",
+            targetsCsv = "assets.site.example,tracker.bad.example,cdn.site.example",
+        ) { domain ->
+            if (domain == "tracker.bad.example") {
+                PolicyDecision(PolicyAction.BLOCK, "known_tracker_domain")
+            } else {
+                PolicyDecision(PolicyAction.ALLOW, "no_matching_rule")
+            }
+        }
+
+        assertEquals("tracker.bad.example", match?.domain)
+        assertEquals(PolicyAction.BLOCK, match?.decision?.action)
+        assertEquals("known_tracker_domain", match?.decision?.reason)
+    }
+
+    @Test
+    fun cnameObserveSignalsNeverBecomeBlocks() {
+        val match = findBlockedCnameTarget(
+            queriedDomain = "assets.site.example",
+            targetsCsv = "assets.site.example,analytics.site.example",
+        ) {
+            PolicyDecision(PolicyAction.OBSERVE, "heuristic_signal")
+        }
+
+        assertEquals(null, match)
+    }
+
+    @Test
+    fun cnameEvaluationSkipsOriginalNameAndInvalidMetadata() {
+        val match = findBlockedCnameTarget(
+            queriedDomain = "ASSETS.SITE.EXAMPLE.",
+            targetsCsv = "assets.site.example,not a domain,",
+        ) {
+            PolicyDecision(PolicyAction.BLOCK, "test_block")
+        }
+
+        assertEquals(null, match)
     }
 
     @Test
