@@ -116,7 +116,8 @@ object RuleEvaluator {
         exactExceptions: Set<String> = emptySet(),
         exactBlock: Set<String> = emptySet(),
         importantExactExceptions: Set<String> = emptySet(),
-        importantExactBlock: Set<String> = emptySet()
+        importantExactBlock: Set<String> = emptySet(),
+        aiBlocked: Set<String> = emptySet()
     ): Pair<Boolean, String> {
         val decision = evaluateDecision(
             domain,
@@ -129,7 +130,8 @@ object RuleEvaluator {
             exactExceptions,
             exactBlock,
             importantExactExceptions,
-            importantExactBlock
+            importantExactBlock,
+            aiBlocked
         )
         return decision.blocked to decision.reason
     }
@@ -145,7 +147,8 @@ object RuleEvaluator {
         exactExceptions: Set<String> = emptySet(),
         exactBlock: Set<String> = emptySet(),
         importantExactExceptions: Set<String> = emptySet(),
-        importantExactBlock: Set<String> = emptySet()
+        importantExactBlock: Set<String> = emptySet(),
+        aiBlocked: Set<String> = emptySet()
     ): DecisionResult {
         val clean = domain.trim().trimEnd('.').lowercase()
 
@@ -170,6 +173,11 @@ object RuleEvaluator {
         }
         if (clean in importantExactBlock) {
             return DecisionResult(true, "Adblock importante exacto", RuleSource.LIST_BLOCK)
+        }
+        // AI ad/tracker blocks yield to explicit user rules and downloaded allow exceptions,
+        // but take effect before ordinary downloaded block rules.
+        if (matchesDomainOrParent(clean, aiBlocked)) {
+            return DecisionResult(true, "IA local: publicidad/rastreo", RuleSource.LIST_BLOCK)
         }
         if (matchesDomainOrParent(clean, hostExceptions)) {
             return DecisionResult(false, "Excepción @@||", RuleSource.LIST_EXCEPTION)
