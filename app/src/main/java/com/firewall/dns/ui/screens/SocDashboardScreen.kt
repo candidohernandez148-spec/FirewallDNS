@@ -134,8 +134,15 @@ fun SocDashboardScreen(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     CompactValue("Flujos activos", tunMetrics.flowsActive.toString(), Modifier.weight(1f))
                     CompactValue("Abiertos / cerrados", "${tunMetrics.flowsOpened} / ${tunMetrics.flowsClosed}", Modifier.weight(1f))
-                    CompactValue("TX / RX", "${tunMetrics.flowBytesSent} / ${tunMetrics.flowBytesReceived} B", Modifier.weight(1f))
+                    CompactValue("Flujos TX / RX", "${tunMetrics.flowBytesSent} / ${tunMetrics.flowBytesReceived} B", Modifier.weight(1f))
                 }
+                Text(
+                    "TUN RX / TX: ${tunMetrics.tunRxBytes} / ${tunMetrics.tunTxBytes} bytes",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
                 Text(
                     "Sockets protegidos ${tunMetrics.firestackProtectSuccess}/${tunMetrics.firestackProtectAttempts} · enlaces físicos ${tunMetrics.firestackBindSuccess}/${tunMetrics.firestackBindAttempts}",
                     style = MaterialTheme.typography.labelSmall,
