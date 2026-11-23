@@ -113,8 +113,8 @@ class DnsUpstreamClient(
     }
 
     /**
-     * Diagnostic-only explicit DNS/TCP exchange. Bypasses UDP and the response
-     * cache so the Android socket protector and TCP/53 path are actually exercised.
+     * Explicit DNS/TCP exchange. Bypasses UDP and the response cache when a
+     * caller requires the TCP transport path.
      */
     fun exchangeTcpOnly(query: ByteArray, cancellation: DnsExchangeCancellation): DnsUpstreamResult {
         if (cancellation.isCancelled) return DnsUpstreamResult.Cancelled
