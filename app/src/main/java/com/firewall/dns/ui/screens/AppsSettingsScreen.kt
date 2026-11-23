@@ -58,6 +58,7 @@ import com.firewalldns.engine.monitor.ActiveFlowSnapshot
 @Composable
 fun AppsSettingsScreen(
     stats: FirewallStats,
+    firestackActive: Boolean,
     apps: List<AppInfoItem>,
     logs: List<DnsLogEntry>,
     activeFlows: List<ActiveFlowSnapshot>,
@@ -72,7 +73,6 @@ fun AppsSettingsScreen(
     isVisible: Boolean = true,
     onAppDetailVisibilityChanged: (Boolean) -> Unit = {}
 ) {
-    val firestackActive = stats.isRunning && stats.engine.contains("Firestack/gVisor", ignoreCase = true)
     var selectedApp by remember { mutableStateOf<AppInfoItem?>(null) }
 
     fun selectApp(app: AppInfoItem?) {
