@@ -385,8 +385,9 @@ object FirewallRepository {
         return LocalAiEvidenceBuilder.buildPrompt(
             logs = _logs.value.toList(),
             blocklist = snapshot,
-            customBlocked = customBlockSet.toSet() + localAiBlockedSet.toSet(),
-            customAllowed = customAllowSet.toSet()
+            customBlocked = customBlockSet.toSet(),
+            customAllowed = customAllowSet.toSet(),
+            aiBlocked = localAiBlockedSet.toSet()
         )
     }
 
