@@ -133,12 +133,12 @@ fun IntegratedDiagnosticsScreen(
             put("upstreamResolvers", metrics.upstreamResolvers)
             put("upstreamResolverRefreshes", metrics.upstreamResolverRefreshes)
             put("upstreamResolverUpdatedAtEpochMs", metrics.upstreamResolverUpdatedAtEpochMs)
-            put("upstreamProtectUdpAttempts", metrics.upstreamProtectUdpAttempts)
-            put("upstreamProtectUdpSuccess", metrics.upstreamProtectUdpSuccess)
-            put("upstreamProtectUdpFailure", metrics.upstreamProtectUdpFailure)
-            put("upstreamProtectTcpAttempts", metrics.upstreamProtectTcpAttempts)
-            put("upstreamProtectTcpSuccess", metrics.upstreamProtectTcpSuccess)
-            put("upstreamProtectTcpFailure", metrics.upstreamProtectTcpFailure)
+            put("upstreamProtectUdpAttempts", "N/D")
+            put("upstreamProtectUdpSuccess", "N/D")
+            put("upstreamProtectUdpFailure", "N/D")
+            put("upstreamProtectTcpAttempts", "N/D")
+            put("upstreamProtectTcpSuccess", "N/D")
+            put("upstreamProtectTcpFailure", "N/D")
             put("noDnsResponse", "N/D")
             put("packetsWritten", "N/D")
             put("writeErrors", "N/D")
@@ -258,11 +258,8 @@ fun IntegratedDiagnosticsScreen(
                 Text("Salud del procesamiento", style = MaterialTheme.typography.titleMedium)
                 Text("Contador de saturación de cola: N/D (sin callback conectado).")
                 Text("Rechazos del parser: N/D (sin callback conectado).")
-                Metric("Fragmentos aceptados / reensamblados", metrics.fragmentsAccepted, metrics.packetsReassembled)
-                Metric("Fragmentos descartados inválidos / límite", metrics.fragmentsDroppedInvalid, metrics.fragmentsDroppedLimit)
-                Metric("Ensamblajes pendientes / expirados", metrics.fragmentPendingAssemblies, metrics.fragmentAssembliesExpired)
-                Metric("Errores de escritura", metrics.writeErrors)
-                Metric("Errores de workers", metrics.workerErrors)
+                Text("Fragmentación IPv4/IPv6: N/D (sin callback conectado al TUN productivo).")
+                Text("Errores de escritura y workers del lector anterior: N/D (sin callback conectado).")
                 Text("DNS upstream activos: ${metrics.upstreamResolvers.ifBlank { "sin datos" }}")
                 Metric("Cambios de servidores DNS", metrics.upstreamResolverRefreshes)
                 Text("Última actualización DNS (epoch ms): ${metrics.upstreamResolverUpdatedAtEpochMs}")
@@ -271,18 +268,15 @@ fun IntegratedDiagnosticsScreen(
                 Text("Timeouts / errores I/O por intento: N/D.")
                 Text("Fallos protect / validación por intento: N/D.")
                 Text("Otros fallos / cancelaciones por intento: N/D.")
-                Text(if (metrics.upstreamProtectUdpAttempts == 0L) "protect UDP: sin intentos medidos" else
-                    "protect UDP: ${metrics.upstreamProtectUdpSuccess}/${metrics.upstreamProtectUdpAttempts} correctos · ${metrics.upstreamProtectUdpFailure} fallos")
-                Text(if (metrics.upstreamProtectTcpAttempts == 0L) "protect TCP: sin intentos medidos" else
-                    "protect TCP: ${metrics.upstreamProtectTcpSuccess}/${metrics.upstreamProtectTcpAttempts} correctos · ${metrics.upstreamProtectTcpFailure} fallos")
-                Metric("Sin respuesta DNS", metrics.noDnsResponse)
+                Text("Protect UDP/TCP por separado: N/D; el adaptador productivo Firestack sólo publica resultados agregados.")
+                Text("Sin respuesta DNS / respuestas sintetizadas: N/D (sin callback conectado).")
             }
         }
         Card {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Cobertura y límites", style = MaterialTheme.typography.titleMedium)
                 Text("MEDIDO: Firestack/gVisor procesa los flujos TCP y UDP generales que Android enruta al TUN; sus decisiones se aplican mediante la política central de FirewallDNS. Los contadores de flujos y bytes proceden de sus callbacks reales.")
-                Text("MEDIDO: intentos y resultado booleano de VpnService.protect() para sockets upstream UDP/TCP. También se exponen fragmentos aceptados, paquetes reensamblados, descartes por límite/validez y ensamblajes expirados. La prueba de tráfico fragmentado a través del TUN productivo aún requiere instrumentación en dispositivo.")
+                Text("MEDIDO: resultados agregados de VpnService.protect() y bindSocket() de los sockets Firestack. No se separan por TCP/UDP. Los contadores del lector de paquetes y del reensamblador de fragmentos no están conectados al TUN productivo y se muestran como N/D.")
                 Text("DNS UDP/TCP puerto 53 se intercepta para cualquier destino. Se bloquean puertos estándar DoT/DoQ y endpoints DoH conocidos. DoH personalizado o por IP directa sobre HTTPS/443 sigue cifrado y no puede detectarse universalmente; no se afirma inspección de su contenido.")
                 Button(onClick = {
                     val send = Intent(Intent.ACTION_SEND).apply {
