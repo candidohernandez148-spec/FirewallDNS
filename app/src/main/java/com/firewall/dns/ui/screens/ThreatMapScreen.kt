@@ -695,7 +695,7 @@ private fun SocKpiGrid(metrics: FirewallDnsTrafficMetrics.Snapshot) {
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
         Text("RESUMEN OPERATIVO", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            SocKpi("FLUJOS IP ACTIVOS", metrics.flowsActive.toString(), "IPv4/IPv6 identificados abajo", Color(0xFF2776B8), Modifier.weight(1f))
+            SocKpi("PAQUETES IP RX", metrics.ipPacketsReceived.toString(), "Contador agregado IPv4 + IPv6", Color(0xFF2776B8), Modifier.weight(1f))
             SocKpi("FLUJOS ACTIVOS", metrics.flowsActive.toString(), "Abiertos ${metrics.flowsOpened}", Color(0xFF247A62), Modifier.weight(1f))
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
