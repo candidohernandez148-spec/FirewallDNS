@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.firewall.dns.data.repository.FirewallRepository
 import com.firewall.dns.domain.ai.LocalAiDomainSuggestion
 import com.firewall.dns.domain.ai.LocalAiPolicyOutcome
+import com.firewall.dns.domain.ai.LocalAiRecommendationParser
+import com.firewall.dns.domain.ai.LocalAiAnalysisApplication
 import com.firewalldns.engine.core.FlowProtocol
 import com.firewalldns.engine.core.NetworkFlowRule
 import com.firewalldns.engine.core.PolicyAction
@@ -138,6 +140,18 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
     /** Receives structured output from the on-device AI coordinator, outside network callbacks. */
     fun applyLocalAiSuggestion(suggestion: LocalAiDomainSuggestion): LocalAiPolicyOutcome =
         FirewallRepository.applyLocalAiSuggestion(suggestion)
+
+    /**
+     * Validates a structured model response and sends each accepted recommendation
+     * through the repository policy gate. The caller must invoke this off the TUN path.
+     */
+    fun applyLocalAiAnalysis(rawResponse: String): LocalAiAnalysisApplication? {
+        val analysis = LocalAiRecommendationParser.parse(rawResponse) ?: return null
+        val outcomes = analysis.recommendations.map { suggestion ->
+            FirewallRepository.applyLocalAiSuggestion(suggestion)
+        }
+        return LocalAiAnalysisApplication(analysis, outcomes)
+    }
 
     /** Explicit user correction always supersedes an AI-managed domain decision. */
     fun correctLocalAiDecision(domain: String, block: Boolean) {
