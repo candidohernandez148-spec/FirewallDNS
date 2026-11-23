@@ -79,7 +79,7 @@ object LocalAiPolicyGate {
         if (clean.split('.').any { label ->
                 label.isBlank() || label.length > 63 ||
                     label.startsWith('-') || label.endsWith('-') ||
-                    label.any { !(it.isLetterOrDigit() || it == '-') }
+                    label.any { !(it in 'a'..'z' || it in '0'..'9' || it == '-') }
             }
         ) return null
         return clean
