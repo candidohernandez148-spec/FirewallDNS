@@ -214,7 +214,6 @@ fun ThreatMapScreen(
                     lastDnsDecisionAtEpochMs = tunMetrics.lastDnsDecisionAtEpochMs,
                     lastFlowEventAtEpochMs = tunMetrics.lastFlowEventAtEpochMs,
                     metrics = tunMetrics,
-                    activeFlowCount = tunMetrics.flowsActive,
                     appRoutes = appRoutes,
                     vpnRunning = vpnRunning,
                     isVisible = isVisible,
@@ -501,7 +500,6 @@ private fun ThreeDimensionalMindMap(
     lastDnsDecisionAtEpochMs: Long,
     lastFlowEventAtEpochMs: Long,
     metrics: FirewallDnsTrafficMetrics.Snapshot,
-    activeFlowCount: Long,
     appRoutes: List<SocApplicationRoute>,
     vpnRunning: Boolean,
     isVisible: Boolean,
@@ -560,7 +558,7 @@ private fun ThreeDimensionalMindMap(
                     style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 Text(
                     if (!vpnRunning) "MOTOR DETENIDO"
-                    else if (dnsEventRecent || activeFlowCount > 0L) "ACTIVIDAD DETECTADA"
+                    else if (dnsEventRecent || recent(lastFlowEventAtEpochMs)) "ACTIVIDAD DETECTADA"
                     else "EN ESPERA DE EVENTOS",
                     style = MaterialTheme.typography.labelSmall,
                     color = if (vpnRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
@@ -678,7 +676,7 @@ private fun ThreeDimensionalMindMap(
                                 recent(metrics.tunRxChangeObservedAtEpochMs) || recent(metrics.tunTxChangeObservedAtEpochMs)
                             "tun_in" -> recent(metrics.tunRxChangeObservedAtEpochMs)
                             "tun_out" -> recent(metrics.tunTxChangeObservedAtEpochMs)
-                            "firestack" -> metrics.firestackActive > 0L || recent(lastFlowEventAtEpochMs)
+                            "firestack" -> recent(lastFlowEventAtEpochMs)
                             "nic" -> recent(metrics.nicChangeObservedAtEpochMs)
                             "ip" -> recent(metrics.ipChangeObservedAtEpochMs)
                             "tcp" -> recent(metrics.tcpChangeObservedAtEpochMs)
