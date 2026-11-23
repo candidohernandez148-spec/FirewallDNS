@@ -59,7 +59,8 @@ fun RulesScreen(
     onRemoveBlocklistUrl: (String) -> Unit,
     onDownloadBlocklist: () -> Unit,
     onAddCustomRule: (String, Boolean) -> Unit,
-    onRemoveCustomRule: (String) -> Unit
+    onRemoveCustomRule: (String) -> Unit,
+    aiBlocked: List<String> = emptyList()
 ) {
     var domainInput by remember { mutableStateOf("") }
     var urlInput by remember { mutableStateOf("") }
@@ -314,6 +315,27 @@ fun RulesScreen(
                             shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer)
                         ) { Text("Permitir") }
+                    }
+                    if (aiBlocked.isNotEmpty()) {
+                        Text("Bloqueos sugeridos por IA local", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Puedes corregir cualquiera: Permitir siempre guarda tu excepción y tiene prioridad sobre la IA.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        aiBlocked.forEach { domain ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(domain, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                OutlinedButton(
+                                    onClick = { onAddCustomRule(domain, false) },
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                                ) { Text("Permitir siempre") }
+                            }
+                        }
                     }
                     if (customBlock.isNotEmpty() || customAllow.isNotEmpty()) {
                         Text("Reglas personalizadas activas", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
