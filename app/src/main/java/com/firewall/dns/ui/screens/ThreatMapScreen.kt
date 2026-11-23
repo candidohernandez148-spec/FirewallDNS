@@ -8,8 +8,11 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Box
@@ -47,6 +50,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -141,6 +145,7 @@ fun ThreatMapScreen(
                 observedApps.size.toString(), 0.08f, 0.68f, -0.35f, Color(0xFF58D6B0))
         )
     }
+    BackHandler(enabled = section != "map") { section = "map" }
     val selectedNode = when (section) {
         "red" -> "tun"
         "dns" -> "dns"
@@ -200,7 +205,28 @@ fun ThreatMapScreen(
             }
         }
     } else {
-        Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().pointerInput(section) {
+            val backEdgePx = 32.dp.toPx()
+            val backThresholdPx = 72.dp.toPx()
+            val touchSlop = viewConfiguration.touchSlop
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                val startedAtBackEdge = down.position.x <= backEdgePx
+                var totalDrag = 0f
+                while (true) {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                    totalDrag = change.position.x - down.position.x
+                    if (startedAtBackEdge && totalDrag > touchSlop) {
+                        change.consume()
+                    }
+                    if (!change.pressed) break
+                }
+                if (startedAtBackEdge && totalDrag >= backThresholdPx) {
+                    section = "map"
+                }
+            }
+        }) {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
