@@ -60,6 +60,7 @@ import com.firewall.dns.domain.engine.ThreatKnowledgeGraph
 import com.firewall.dns.domain.model.DnsLogEntry
 import com.firewall.dns.service.FirewallDnsTrafficMetrics
 import kotlin.math.cos
+import kotlin.math.abs
 import kotlin.math.sin
 
 private data class MindMapEdge(val from: String, val to: String)
@@ -212,17 +213,20 @@ fun ThreatMapScreen(
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                 val startedAtBackEdge = down.position.x <= backEdgePx
-                var totalDrag = 0f
+                var totalDragX = 0f
+                var totalDragY = 0f
                 while (true) {
                     val event = awaitPointerEvent(PointerEventPass.Initial)
                     val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                    totalDrag = change.position.x - down.position.x
-                    if (startedAtBackEdge && totalDrag > touchSlop) {
+                    totalDragX = change.position.x - down.position.x
+                    totalDragY = change.position.y - down.position.y
+                    val horizontalBackSwipe = totalDragX > touchSlop && totalDragX > abs(totalDragY)
+                    if (startedAtBackEdge && horizontalBackSwipe) {
                         change.consume()
                     }
                     if (!change.pressed) break
                 }
-                if (startedAtBackEdge && totalDrag >= backThresholdPx) {
+                if (startedAtBackEdge && totalDragX >= backThresholdPx && totalDragX > abs(totalDragY)) {
                     section = "map"
                 }
             }
