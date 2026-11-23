@@ -166,13 +166,11 @@ fun SocDashboardScreen(
                     else null
                     Text(
                         when {
-                            sampleAge == null -> "SIN MUESTRA"
-                            sampleAge > 35L -> "DATOS ANTIGUOS"
-                            else -> "SNAPSHOT · ${sampleAge}s"
+                            sampleAge == null -> "SIN LECTURA API"
+                            else -> "API CONSULTADA · ${sampleAge}s"
                         },
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (sampleAge != null && sampleAge <= 35L)
-                            MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -187,7 +185,7 @@ fun SocDashboardScreen(
                     TunMetric("ICMPv6 RX / TX", "${tunMetrics.icmpV6Received} / ${tunMetrics.icmpV6Sent}", Modifier.weight(1f))
                     TunMetric("TCP establecidos", tunMetrics.tcpEstablished.toString(), Modifier.weight(1f))
                 }
-                Text("Estadísticas acumuladas de Firestack/gVisor. No se suman entre capas ni equivalen a paquetes individuales animados.",
+                Text("Estadísticas acumuladas de Firestack/gVisor. La hora indica cuándo se consultó la API, no cuándo se generó cada contador; Firestack puede servir estadísticas cacheadas hasta ~30 s. No se suman entre capas ni equivalen a paquetes individuales animados.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
