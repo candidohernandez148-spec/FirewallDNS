@@ -26,6 +26,7 @@ import com.firewalldns.engine.core.PolicyAction
 import com.firewalldns.engine.core.PolicyRule
 import com.firewalldns.engine.core.RuleSource
 import com.firewall.dns.service.FirewallTileService
+import com.firewall.dns.work.BlocklistUpdateScheduler
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -199,6 +200,8 @@ object FirewallRepository {
                 )
             )
             initialized = true
+            // Register the 24-hour Wi-Fi-only updater once; WorkManager keeps it unique across restarts.
+            runCatching { BlocklistUpdateScheduler.schedule(appContext) }
 
             val generationAtStart = blocklistGeneration.get()
             ioScope.launch {
