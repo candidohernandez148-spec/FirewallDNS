@@ -15,6 +15,6 @@ Las reglas manuales existentes son la autoridad superior:
 
 `LocalAiPolicyGate` implementa y prueba el contrato de seguridad: normalización del dominio, precedencia de reglas manuales, umbral de confianza y limitación del bloqueo automático a las categorías ADVERTISING y TRACKER. `FirewallRepository.applyLocalAiSuggestion()` conecta el resultado validado con una lista persistente separada de bloqueos AI, y la exporta al motor DNS como regla administrada. El evaluador mantiene prioridad para reglas manuales, excepciones de listas y amenazas importantes. La pantalla Protección muestra estos dominios y permite corregir cada uno con «Permitir siempre».
 
-**Pendiente:** conectar este gate a una inferencia GGUF real y al coordinador local; solo entonces el modelo podrá generar las recomendaciones que activan esta ruta. El runtime GGUF todavía no está integrado, por lo que esta entrega no debe anunciarse como IA activa ni como bloqueo automático ya disponible.
+**Runtime conectado:** Qwen3-0.6B Q4_K_M se ejecuta localmente mediante llama.cpp. El modelo se descarga en segundo plano solo con conexión no medida y se valida por SHA-256. WorkManager analiza los registros por lotes; la salida JSON pasa por `LocalAiPolicyGate` antes de persistirse. La primera ejecución real depende de que finalice la descarga y haya actividad DNS suficiente.
 
 La inferencia se ejecutará fuera del TUN, callbacks Firestack y UI. El motor actual conserva el bloqueo inmediato y el firewall seguirá funcionando si la IA no está instalada, cargada o disponible.
