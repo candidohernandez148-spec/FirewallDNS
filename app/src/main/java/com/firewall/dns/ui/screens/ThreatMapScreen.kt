@@ -1192,7 +1192,6 @@ private fun LiveMapTelemetry(
         Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                MapStatPill("TUN RX/TX", "${metrics.tunRxBytes} / ${metrics.tunTxBytes}", Color(0xFF1C806B))
                 MapStatPill("DNS", metrics.dnsPolicyDecisions.toString(), Color(0xFF315FA8))
                 MapStatPill("ACTIVOS", metrics.flowsActive.toString(), Color(0xFF7655A8))
                 MapStatPill("VPN", if (vpnRunning) "ON" else "OFF",
