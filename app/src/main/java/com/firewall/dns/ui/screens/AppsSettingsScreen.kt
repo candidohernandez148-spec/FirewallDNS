@@ -68,12 +68,13 @@ fun AppsSettingsScreen(
     onAppSearchChange: (String) -> Unit,
     onToggleExcludedApp: (String) -> Unit,
     onOpenBatteryOpt: () -> Unit,
-    onOpenVpnSettings: () -> Unit
+    onOpenVpnSettings: () -> Unit,
+    isVisible: Boolean = true
 ) {
     val firestackActive = stats.isRunning && stats.engine.contains("Firestack/gVisor", ignoreCase = true)
     var selectedApp by remember { mutableStateOf<AppInfoItem?>(null) }
 
-    BackHandler(enabled = selectedApp != null) { selectedApp = null }
+    BackHandler(enabled = isVisible && selectedApp != null) { selectedApp = null }
 
     if (selectedApp != null) {
         AppActivityDetailScreen(app = selectedApp!!, logs = logs, flows = activeFlows, onBack = { selectedApp = null })
