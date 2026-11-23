@@ -31,7 +31,8 @@ data class LocalAiDomainSuggestion(
     val domain: String,
     val category: LocalAiDomainCategory,
     val action: LocalAiSuggestedAction,
-    val confidence: Float
+    val confidence: Float,
+    val explanation: String = ""
 )
 
 object LocalAiPolicyGate {
