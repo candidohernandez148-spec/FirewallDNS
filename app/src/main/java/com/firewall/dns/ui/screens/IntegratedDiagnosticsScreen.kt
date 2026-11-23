@@ -167,10 +167,9 @@ fun IntegratedDiagnosticsScreen(
         })
         put("notVerified", listOf(
             "Firestack TCP/UDP end-to-end traffic verification on physical Wi-Fi and mobile networks",
-            "fragmented traffic injection through production TUN (counters are exposed, active injection is not yet automated)",
+            "Fragmented traffic injection through the production TUN is not yet automatically tested",
             "long-duration throughput, CPU and battery validation on physical devices",
             "complete DoH/DoT/DoQ inspection or decryption (known DoH hostnames and standard DoT/DoQ ports are guarded; IP-only endpoints remain unverified)",
-            "long-duration CPU and battery behavior on device",
             "Packet read/write, queue rejection, parser classification and DNS UDP/TCP transport counters are not wired to the current Firestack production callbacks",
             "Legacy fragment reassembler counters are not connected to the Firestack packet stack",
             "Per-attempt upstream DNS success, timeout and cancellation counters are not exposed by the current production adapter"
