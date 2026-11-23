@@ -263,6 +263,7 @@ fun FirewallApp(
     val onlyBlocked by viewModel.onlyBlocked.collectAsState()
     val customBlock by viewModel.customBlockList.collectAsState()
     val customAllow by viewModel.customAllowList.collectAsState()
+    val localAiBlockedDomains by viewModel.localAiBlockedDomains.collectAsState()
     val flowRules by viewModel.networkFlowRules.collectAsState()
     val blocklistUrls by viewModel.blocklistUrls.collectAsState()
     val blocklistsDownloaded by viewModel.blocklistsDownloaded.collectAsState()
@@ -451,7 +452,8 @@ fun FirewallApp(
                     onToggleExcludedApp = viewModel::toggleExcludedApp,
                     onOpenBatteryOpt = onOpenBatteryOpt,
                     onOpenVpnSettings = onOpenVpnSettings,
-                    isVisible = selectedDestination == 3
+                    isVisible = selectedDestination == 3,
+                    aiBlocked = localAiBlockedDomains
                 )
                 4 -> ThreatMapScreen(
                     logs = activityLogs,
