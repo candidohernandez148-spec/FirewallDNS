@@ -141,6 +141,9 @@ class DnsFirewallService : VpnService() {
                 firestack.nativeStats()?.let(FirewallDnsTrafficMetrics::firestackNativeSnapshot)
                 // Active-flow and engine-queue snapshots are real runtime metrics.
                 FirewallDnsTrafficMetrics.flowSnapshot(runtime.flowMonitor.snapshot(includeFlows = true))
+                // DNS decisions are already persisted by Firestack's onDnsDecision callback.
+                // Drain this duplicate bounded monitor queue so it cannot fill without a consumer.
+                runtime.drainEvents(512)
                 FirewallDnsTrafficMetrics.engineMonitorSnapshot(runtime.metrics())
             }
         }
