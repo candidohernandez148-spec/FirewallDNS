@@ -22,7 +22,10 @@ object LocalAiRecommendationParser {
      * Invalid records are discarded; model text is never treated as executable policy.
      */
     fun parse(raw: String): LocalAiAnalysisResult? = runCatching {
-        val root = JSONObject(raw)
+        val start = raw.indexOf('{')
+        val end = raw.lastIndexOf('}')
+        if (start < 0 || end <= start) return null
+        val root = JSONObject(raw.substring(start, end + 1))
         val summary = root.optString("summary").take(MAX_SUMMARY_CHARS)
         val entries = root.optJSONArray("recommendations")
             ?: return@runCatching null
