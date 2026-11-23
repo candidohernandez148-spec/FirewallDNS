@@ -37,6 +37,10 @@ Firestack `intra.Connect` recibe un objeto `Bridge` que combina:
 
 La implementación Kotlin debe ser un adaptador delgado hacia interfaces de FirewallDNS, no una copia de las reglas de Rethink. La política de dominios y UID seguirá perteneciendo a FirewallDNS. No se activarán transportes/proxies opcionales de Firestack que no sean necesarios para el firewall local.
 
+## Inspección de alias CNAME y HTTPS/SVCB
+
+Firestack expone en `DNSSummary.Targets` los nombres/alias presentes en la sección de respuestas DNS. El adaptador evalúa esos nombres con la política existente de FirewallDNS antes de devolver la respuesta al sistema. Si un alias coincide con una regla de bloqueo existente, solicita el transporte `BlockAll` de Firestack para esa respuesta. No realiza consultas DNS adicionales, no convierte señales `OBSERVE` en bloqueos y no atribuye el UID del stub DNS a una aplicación. La validación debe cubrir respuestas con CNAME, alias HTTPS/SVCB, cadenas, caché y respuestas sin alias.
+
 ## Captura DNS de resolvers arbitrarios
 
 Firestack's default DNS mode captures only the synthetic DNS IPs configured in the VPN. That would allow applications using hard-coded resolver IPs (for example, a public resolver) to send UDP/TCP port 53 without reaching FirewallDNS domain policy.
