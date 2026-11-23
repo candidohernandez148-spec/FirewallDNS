@@ -83,7 +83,7 @@ This does **not** decrypt DoH/DoT/DoQ or arbitrary encrypted DNS on ports 443/85
 
 - (Histórico) Se compararon prototipos smoltcp y Firestack; el código smoltcp fue retirado posteriormente.
 - (Completado) Retirar smoltcp, su JNI y el banco de pruebas del proyecto activo.
-- Consolidar métricas, mapa, Monitor, Amenazas y Diagnóstico en el mismo origen de eventos.
+- Consolidar métricas, mapa SOC, Monitor y Amenazas en el mismo origen de eventos.
 - Documentar capacidades reales y límites visibles en la aplicación.
 
 ## Criterios de finalización
