@@ -519,7 +519,7 @@ private fun ThreeDimensionalMindMap(
         lastDnsDecisionAtEpochMs, lastFlowEventAtEpochMs
     ).any { recent(it) }
     LaunchedEffect(isVisible, hasRecentActivity) {
-        if (isVisible) {
+        if (isVisible && hasRecentActivity) {
             coroutineScope {
                 launch {
                     while (true) {
