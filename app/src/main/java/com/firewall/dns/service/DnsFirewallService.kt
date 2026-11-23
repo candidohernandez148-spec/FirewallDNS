@@ -135,6 +135,12 @@ class DnsFirewallService : VpnService() {
                 val runtime = sharedEngine?.engine ?: continue
                 val firestack = activeTunSession?.firestack
                 if (!isRunning || firestack == null) continue
+                if (!firestack.isConnected()) {
+                    // Do not keep reporting a live tunnel after Firestack disconnects.
+                    FirewallDnsTrafficMetrics.firestackStopped()
+                    scheduleFirestackNetworkRecovery()
+                    continue
+                }
                 runtime.evictIdleFlows()
                 // Native Firestack statistics are snapshots from the existing gVisor stack.
                 // Firestack internally caches Stat() for up to 30 seconds.
