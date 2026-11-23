@@ -1,6 +1,7 @@
 package com.firewall.dns.data.local
 
 import android.content.Context
+import java.io.File
 import com.firewall.dns.domain.model.DnsLogEntry
 import com.firewalldns.engine.core.FlowProtocol
 import com.firewalldns.engine.core.NetworkFlowRule
@@ -17,14 +18,13 @@ data class ActivitySnapshot(
 
 class PreferencesDataSource(context: Context) {
 
-    private val prefs = context.applicationContext
-        .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext
+    private val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     companion object {
         private const val PREFS_NAME = "firewall_prefs"
         private const val KEY_CUSTOM_BLOCK = "custom_block"
         private const val KEY_CUSTOM_ALLOW = "custom_allow"
-        private const val KEY_LOCAL_AI_BLOCKED = "local_ai_blocked_domains"
         private const val KEY_EXCLUDED_APPS = "excluded_apps"
         private const val KEY_BLOCKED_APPS = "blocked_apps"
         private const val KEY_SHOULD_RUN = "should_run"
@@ -36,14 +36,23 @@ class PreferencesDataSource(context: Context) {
         private const val KEY_TOTAL_ALLOWED = "activity_total_allowed"
         private const val KEY_TOTAL_BLOCKED = "activity_total_blocked"
         private const val KEY_FLOW_RULES = "network_flow_rules_v1"
+        private const val KEY_LEGACY_AI_CLEANUP_DONE = "legacy_ai_cleanup_done"
 
         const val DEFAULT_ADBLOCK_URL =
             "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/light.txt"
     }
 
     init {
-        // Preserve any on-device learning artifacts until the local learning engine
-        // can migrate or consume them; initialization must never erase user history.
+        // Remove only artifacts owned by the retired local-AI feature; keep user rules and activity history.
+        if (!prefs.getBoolean(KEY_LEGACY_AI_CLEANUP_DONE, false)) {
+            prefs.edit()
+                .remove("local_ai_blocked_domains")
+                .putBoolean(KEY_LEGACY_AI_CLEANUP_DONE, true)
+                .apply()
+            appContext.getSharedPreferences("local_ai_runtime", Context.MODE_PRIVATE)
+                .edit().clear().apply()
+            File(appContext.filesDir, "ai-models").deleteRecursively()
+        }
         if (!prefs.getBoolean(KEY_ADBLOCK_MIGRATED, false)) {
             prefs.edit()
                 .putString(KEY_BLOCKLIST_URLS, DEFAULT_ADBLOCK_URL)
@@ -108,12 +117,6 @@ class PreferencesDataSource(context: Context) {
         prefs.edit().putStringSet(KEY_CUSTOM_ALLOW, set.toSet()).apply()
     }
 
-    fun getLocalAiBlockedSet(): Set<String> =
-        prefs.getStringSet(KEY_LOCAL_AI_BLOCKED, emptySet())?.toSet() ?: emptySet()
-
-    fun saveLocalAiBlockedSet(set: Set<String>) {
-        prefs.edit().putStringSet(KEY_LOCAL_AI_BLOCKED, set.toSet()).apply()
-    }
 
     fun getExcludedPackages(): Set<String> =
         prefs.getStringSet(KEY_EXCLUDED_APPS, emptySet())?.toSet() ?: emptySet()
