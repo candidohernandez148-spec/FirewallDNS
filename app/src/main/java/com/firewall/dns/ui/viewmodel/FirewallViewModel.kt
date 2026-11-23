@@ -4,6 +4,8 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.firewall.dns.data.repository.FirewallRepository
+import com.firewall.dns.domain.ai.LocalAiDomainSuggestion
+import com.firewall.dns.domain.ai.LocalAiPolicyOutcome
 import com.firewalldns.engine.core.FlowProtocol
 import com.firewalldns.engine.core.NetworkFlowRule
 import com.firewalldns.engine.core.PolicyAction
@@ -36,6 +38,7 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
     val traffic: StateFlow<List<TrafficPoint>> = FirewallRepository.traffic
     val customBlockList: StateFlow<List<String>> = FirewallRepository.customBlockList
     val customAllowList: StateFlow<List<String>> = FirewallRepository.customAllowList
+    val localAiBlockedDomains: StateFlow<List<String>> = FirewallRepository.localAiBlockedDomains
     val networkFlowRules: StateFlow<List<NetworkFlowRule>> = FirewallRepository.networkFlowRules
     val excludedPackages: StateFlow<Set<String>> = FirewallRepository.excludedPackages
     val blocklistUrls: StateFlow<List<String>> = FirewallRepository.blocklistUrls
@@ -131,6 +134,15 @@ class FirewallViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun removeCustomRule(domain: String) { FirewallRepository.removeCustomRule(domain) }
+
+    /** Receives structured output from the on-device AI coordinator, outside network callbacks. */
+    fun applyLocalAiSuggestion(suggestion: LocalAiDomainSuggestion): LocalAiPolicyOutcome =
+        FirewallRepository.applyLocalAiSuggestion(suggestion)
+
+    /** Explicit user correction always supersedes an AI-managed domain decision. */
+    fun correctLocalAiDecision(domain: String, block: Boolean) {
+        FirewallRepository.correctLocalAiDecision(domain, block)
+    }
 
     fun addNetworkFlowRule(cidr: String, protocol: FlowProtocol?, port: Int?, appPackage: String?, action: PolicyAction): Boolean {
         val result = FirewallRepository.addNetworkFlowRule(cidr, protocol, port, appPackage, action)
