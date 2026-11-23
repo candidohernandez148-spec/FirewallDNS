@@ -60,7 +60,11 @@ fun RulesScreen(
     onDownloadBlocklist: () -> Unit,
     onAddCustomRule: (String, Boolean) -> Unit,
     onRemoveCustomRule: (String) -> Unit,
-    aiBlocked: List<String> = emptyList()
+    aiBlocked: List<String> = emptyList(),
+    aiRuntimeStatus: String = "Preparando IA local",
+    aiDownloadProgress: Int = 0,
+    aiSummary: String = "",
+    onRunLocalAi: () -> Unit = {}
 ) {
     var domainInput by remember { mutableStateOf("") }
     var urlInput by remember { mutableStateOf("") }
@@ -97,7 +101,7 @@ fun RulesScreen(
                     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         Text("Protección inteligente", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Text(
-                            "El motor de reglas analiza consultas en tiempo real. La política para IA local ya está conectada al DNS y permite corregir bloqueos; el runtime GGUF aún está pendiente, así que todavía no hay decisiones automáticas generadas por el modelo.",
+                            "Qwen3-0.6B funciona en el dispositivo con llama.cpp. Analiza actividad DNS por lotes fuera del TUN; los bloqueos sugeridos pasan por la política de seguridad y puedes corregirlos.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
