@@ -35,6 +35,14 @@ class LocalAiRecommendationParserTest {
     }
 
     @Test
+    fun parsesJsonAfterModelReasoningPreamble() {
+        val raw = "<think>Analizo indicadores.</think> {\"summary\":\"Rastreo detectado\",\"recommendations\":[{\"domain\":\"track.example.com\",\"category\":\"TRACKER\",\"action\":\"BLOCK\",\"confidence\":0.96}]}"
+        val result = LocalAiRecommendationParser.parse(raw)
+        assertNotNull(result)
+        assertEquals("track.example.com", result!!.recommendations.single().domain)
+    }
+
+    @Test
     fun rejectsNonJsonAndMissingRecommendationArray() {
         assertNull(LocalAiRecommendationParser.parse("not json"))
         assertNull(LocalAiRecommendationParser.parse("""{"summary":"empty"}"""))
