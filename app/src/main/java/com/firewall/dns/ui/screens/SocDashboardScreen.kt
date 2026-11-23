@@ -1,24 +1,15 @@
 package com.firewall.dns.ui.screens
 
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -27,6 +18,11 @@ import com.firewall.dns.domain.model.DnsLogEntry
 import com.firewall.dns.domain.model.FirewallStats
 import com.firewall.dns.service.FirewallDnsTrafficMetrics
 
+/**
+ * Compact SOC overview. The detailed protocol and flow tables remain in the
+ * Monitor and Map destinations; this first screen keeps operational essentials
+ * visible without requiring a vertical scroll on common phone-sized displays.
+ */
 @Composable
 fun SocDashboardScreen(
     stats: FirewallStats,
@@ -39,243 +35,244 @@ fun SocDashboardScreen(
     onOpenProtection: () -> Unit
 ) {
     val operational = stats.isRunning && !otherVpnActive && tunMetrics.firestackActive > 0L
-    val threatMatches = logs.count { e ->
-        e.isBlocked && listOf("phishing", "malware", "ransomware", "botnet", "tracker", "rastreo", "sospech")
-            .any(e.reason.lowercase()::contains)
+    val threatMatches = logs.count { entry ->
+        entry.isBlocked && listOf("phishing", "malware", "ransomware", "botnet", "tracker", "rastreo", "sospech")
+            .any(entry.reason.lowercase()::contains)
     }
     val total = stats.totalAllowed + stats.totalBlocked
     val blockRate = if (total > 0) stats.totalBlocked * 100 / total else 0L
-    val pulse = rememberInfiniteTransition(label = "dashboard-pulse")
-        .animateFloat(
-            initialValue = 0.48f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(tween(1050), RepeatMode.Reverse),
-            label = "status-pulse"
-        ).value
+    val latestEvents = logs.take(2)
 
     Column(
-        modifier = Modifier.fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("CENTRO DE OPERACIONES", style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                Text("Seguridad de red", style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold)
-                Text("Estado y actividad del motor en vivo", style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                Text(
+                    "CENTRO DE OPERACIONES",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+                Text("Seguridad de red", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
-            Surface(shape = RoundedCornerShape(50),
-                color = if (operational) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer) {
-                Text(if (operational) "PROTEGIDO" else "REVISAR",
-                    Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
-                    style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-            }
+            StatusPill(if (operational) "PROTEGIDO" else "REVISAR", operational)
         }
 
-        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp),
-            colors = CardDefaults.cardColors(containerColor = if (operational)
-                MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer)) {
-            Row(Modifier.fillMaxWidth().padding(16.dp),
+        Card(
+            Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(17.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = if (operational) MaterialTheme.colorScheme.primaryContainer
+                else MaterialTheme.colorScheme.errorContainer
+            )
+        ) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                Surface(shape = CircleShape,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Surface(
+                    shape = CircleShape,
                     color = if (operational) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-                    modifier = Modifier.size(58.dp).alpha(if (operational) pulse else 1f)) {
+                    modifier = Modifier.size(38.dp)
+                ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.Lock, contentDescription = "Estado de protección",
+                        Icon(
+                            Icons.Default.Lock,
+                            contentDescription = "Estado de protección",
                             tint = if (operational) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onError,
-                            modifier = Modifier.size(27.dp))
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                 }
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(if (operational) "Protección operativa" else "Atención requerida",
-                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text(when {
-                        otherVpnActive -> "Otra VPN ocupa la conexión VPN de Android."
-                        !stats.isRunning -> "El servicio VPN está desactivado."
-                        tunMetrics.firestackActive <= 0L -> "El servicio figura iniciado, pero Firestack/gVisor no confirma actividad."
-                        else -> "Motor operativo: ${stats.engine.ifBlank { "Firestack/gVisor" }}."
-                    }, style = MaterialTheme.typography.bodySmall)
-                    Text("Red: ${stats.networkType.ifBlank { "No disponible" }}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        if (operational) "Protección operativa" else "Atención requerida",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        when {
+                            otherVpnActive -> "Otra VPN ocupa la conexión VPN de Android."
+                            !stats.isRunning -> "El servicio VPN está desactivado."
+                            tunMetrics.firestackActive <= 0L -> "Firestack/gVisor no confirma actividad."
+                            else -> "Firestack/gVisor · ${stats.networkType.ifBlank { "red no identificada" }}"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(if (stats.isRunning) "ON" else "OFF",
-                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
-                    Text("Firewall", style = MaterialTheme.typography.labelSmall)
-                }
+                Text(if (stats.isRunning) "ON" else "OFF", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
             }
         }
 
-        Text("Actividad de red", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            MetricCard("Bloqueados", stats.totalBlocked.toString(), MaterialTheme.colorScheme.error, Modifier.weight(1f))
-            MetricCard("Permitidos", stats.totalAllowed.toString(), MaterialTheme.colorScheme.primary, Modifier.weight(1f))
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            MetricCard("Reglas externas", stats.loadedRulesCount.toString(), MaterialTheme.colorScheme.onSurface, Modifier.weight(1f))
-            MetricCard("Tasa de bloqueo", "$blockRate%", MaterialTheme.colorScheme.onSurface, Modifier.weight(1f))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            CompactMetric("BLOQUEADOS", stats.totalBlocked.toString(), MaterialTheme.colorScheme.error, Modifier.weight(1f))
+            CompactMetric("PERMITIDOS", stats.totalAllowed.toString(), MaterialTheme.colorScheme.primary, Modifier.weight(1f))
+            CompactMetric("REGLAS", stats.loadedRulesCount.toString(), MaterialTheme.colorScheme.onSurface, Modifier.weight(1f))
+            CompactMetric("BLOQUEO", "${blockRate}%", MaterialTheme.colorScheme.onSurface, Modifier.weight(1f))
         }
 
-        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
-            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(15.dp)) {
+            Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Motor TUN · métricas reales", Modifier.weight(1f),
-                        style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                    Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer) {
-                        Text("EN VIVO", Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
-                    }
+                    Text("MOTOR TUN · MÉTRICAS REALES", Modifier.weight(1f),
+                        style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        if (tunMetrics.firestackActive > 0L) "EN VIVO" else "DETENIDO",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (tunMetrics.firestackActive > 0L) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    // Mismo contador acumulado que Actividad de red: cada decisión DNS
-                    // bloqueada se registra una sola vez en FirewallRepository.
-                    TunMetric("Bloqueos DNS", stats.totalBlocked, Modifier.weight(1f))
-                    TunMetric("Flujos activos", tunMetrics.flowsActive, Modifier.weight(1f))
-                    TunMetric("Flujos rechazados", tunMetrics.flowsBlocked, Modifier.weight(1f))
-                    TunMetric("Flujos abiertos", tunMetrics.flowsOpened, Modifier.weight(1f))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CompactValue("Flujos activos", tunMetrics.flowsActive.toString(), Modifier.weight(1f))
+                    CompactValue("Abiertos / cerrados", "${tunMetrics.flowsOpened} / ${tunMetrics.flowsClosed}", Modifier.weight(1f))
+                    CompactValue("TX / RX", "${tunMetrics.flowBytesSent} / ${tunMetrics.flowBytesReceived} B", Modifier.weight(1f))
                 }
                 Text(
-                    "Bloqueos DNS comparte el contador acumulado de Actividad de red. " +
-                        "Flujos rechazados es una métrica distinta del transporte TUN.",
+                    "Sockets protegidos ${tunMetrics.firestackProtectSuccess}/${tunMetrics.firestackProtectAttempts} · enlaces físicos ${tunMetrics.firestackBindSuccess}/${tunMetrics.firestackBindAttempts}",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                Text("FirewallDNS · Firestack/gVisor: ${if (tunMetrics.firestackActive > 0) "activo" else "inactivo"}",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Tráfico TX/RX: ${tunMetrics.flowBytesSent} / ${tunMetrics.flowBytesReceived} bytes",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Sockets protegidos: ${tunMetrics.firestackProtectSuccess}/${tunMetrics.firestackProtectAttempts} · enlaces físicos: ${tunMetrics.firestackBindSuccess}/${tunMetrics.firestackBindAttempts}",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
 
-        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
-            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(15.dp)) {
+            Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Protocolos del túnel", Modifier.weight(1f),
-                        style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Text("PROTOCOLOS · FIRESTACK / gVISOR", Modifier.weight(1f),
+                        style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                     val sampleAge = if (tunMetrics.nativeStatsUpdatedAtEpochMs > 0L)
                         ((System.currentTimeMillis() - tunMetrics.nativeStatsUpdatedAtEpochMs).coerceAtLeast(0L) / 1000L)
                     else null
-                    Text(
-                        when {
-                            sampleAge == null -> "SIN LECTURA API"
-                            else -> "API CONSULTADA · ${sampleAge}s"
-                        },
+                    Text(sampleAge?.let { "${it}s" } ?: "SIN LECTURA",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TunMetric("IP RX / TX", "${tunMetrics.ipPacketsReceived} / ${tunMetrics.ipPacketsSent}", Modifier.weight(1f))
-                    TunMetric("TCP RX / TX", "${tunMetrics.tcpSegmentsReceived} / ${tunMetrics.tcpSegmentsSent}", Modifier.weight(1f))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CompactValue("IP RX / TX", "${tunMetrics.ipPacketsReceived} / ${tunMetrics.ipPacketsSent}", Modifier.weight(1f))
+                    CompactValue("TCP RX / TX", "${tunMetrics.tcpSegmentsReceived} / ${tunMetrics.tcpSegmentsSent}", Modifier.weight(1f))
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TunMetric("UDP RX / TX", "${tunMetrics.udpPacketsReceived} / ${tunMetrics.udpPacketsSent}", Modifier.weight(1f))
-                    TunMetric("ICMPv4 RX / TX", "${tunMetrics.icmpV4Received} / ${tunMetrics.icmpV4Sent}", Modifier.weight(1f))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CompactValue("UDP RX / TX", "${tunMetrics.udpPacketsReceived} / ${tunMetrics.udpPacketsSent}", Modifier.weight(1f))
+                    CompactValue("ICMP v4 / v6 RX", "${tunMetrics.icmpV4Received} / ${tunMetrics.icmpV6Received}", Modifier.weight(1f))
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TunMetric("ICMPv6 RX / TX", "${tunMetrics.icmpV6Received} / ${tunMetrics.icmpV6Sent}", Modifier.weight(1f))
-                    TunMetric("TCP establecidos", tunMetrics.tcpEstablished.toString(), Modifier.weight(1f))
-                }
-                Text("Estadísticas acumuladas de Firestack/gVisor. La hora indica cuándo se consultó la API, no cuándo se generó cada contador; Firestack puede servir estadísticas cacheadas hasta ~30 s. No se suman entre capas ni equivalen a paquetes individuales animados.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+
         if (!operational || !blocklistsDownloaded || threatMatches > 0) {
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                Row(Modifier.padding(13.dp), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text("Señal de seguridad", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                        Text(when {
-                            otherVpnActive -> "Se detectó otra VPN activa."
+            Surface(
+                Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                onClick = onOpenThreats
+            ) {
+                Row(Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(17.dp))
+                    Text(
+                        when {
+                            otherVpnActive -> "Otra VPN está activa."
                             !stats.isRunning -> "Activa FirewallDNS para filtrar DNS."
+                            tunMetrics.firestackActive <= 0L -> "El motor no confirma el estado operativo."
                             !blocklistsDownloaded -> "Falta descargar las listas de bloqueo."
-                            threatMatches > 0 -> "$threatMatches coincidencias de amenaza en el historial DNS."
-                            else -> "Revisa el estado de protección."
-                        }, style = MaterialTheme.typography.bodySmall)
-                    }
-                    IconButton(onClick = onOpenThreats) { Icon(Icons.Default.ArrowForward, contentDescription = "Abrir amenazas") }
+                            else -> "$threatMatches coincidencias de amenaza en el historial."
+                        },
+                        Modifier.weight(1f),
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text("VER", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold)
                 }
             }
         }
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Actividad reciente", Modifier.weight(1f),
-                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            TextButton(onClick = onOpenMonitor) { Text("Ver todo") }
-        }
-        if (logs.isEmpty()) {
-            Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant) {
-                Text("Todavía no hay eventos DNS registrados.", Modifier.padding(14.dp),
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            TextButton(onClick = onOpenMonitor, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
+                Text("Monitor", style = MaterialTheme.typography.labelMedium)
             }
+        }
+        if (latestEvents.isEmpty()) {
+            Text("Todavía no hay eventos DNS registrados.", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
-            logs.take(5).forEach { RecentDnsEvent(it) }
+            latestEvents.forEach { CompactDnsEvent(it) }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            OutlinedButton(onClick = onOpenMonitor, Modifier.weight(1f)) { Text("Monitor DNS") }
-            Button(onClick = onOpenProtection, Modifier.weight(1f)) {
-                Text("Protección")
-                Spacer(Modifier.width(5.dp))
-                Icon(Icons.Default.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp))
-            }
-        }
-    }
-}
-
-@Composable
-private fun TunMetric(label: String, value: Long, modifier: Modifier = Modifier) =
-    TunMetric(label, value.toString(), modifier)
-
-@Composable
-private fun TunMetric(label: String, value: String, modifier: Modifier = Modifier) {
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Text(value, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1)
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-@Composable
-private fun MetricCard(label: String, value: String, valueColor: Color, modifier: Modifier = Modifier) {
-    Card(modifier = modifier, shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = valueColor)
-            Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        OutlinedButton(
+            onClick = onOpenProtection,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 34.dp),
+            contentPadding = PaddingValues(vertical = 5.dp)
+        ) {
+            Text("Abrir protección", style = MaterialTheme.typography.labelMedium)
         }
     }
 }
 
 @Composable
-private fun RecentDnsEvent(entry: DnsLogEntry) {
+private fun StatusPill(label: String, operational: Boolean) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = if (operational) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer
+    ) {
+        Text(label, Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun CompactMetric(label: String, value: String, tint: Color, modifier: Modifier = Modifier) {
+    Card(modifier, shape = RoundedCornerShape(12.dp)) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 7.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+                color = tint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(label, style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+@Composable
+private fun CompactValue(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold,
+            maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(label, style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun CompactDnsEvent(entry: DnsLogEntry) {
     val blocked = entry.isBlocked
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
-        Row(Modifier.padding(horizontal = 12.dp, vertical = 11.dp),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Box(Modifier.size(9.dp).background(if (blocked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, CircleShape))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(entry.domain, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text("${entry.appName} · ${entry.timestamp}", style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
-            Text(if (blocked) "BLOQUEADO" else "PERMITIDO", style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold, color = if (blocked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Box(Modifier.size(7.dp).background(
+            if (blocked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, CircleShape
+        ))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(entry.domain, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("${entry.appName} · ${entry.timestamp}", style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
+        Text(if (blocked) "BLOQ." else "OK", style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = if (blocked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
     }
 }
