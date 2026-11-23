@@ -39,7 +39,7 @@ La implementación Kotlin debe ser un adaptador delgado hacia interfaces de Fire
 
 ## Inspección de alias CNAME y HTTPS/SVCB
 
-Firestack expone en `DNSSummary.Targets` los nombres/alias presentes en la sección de respuestas DNS. El adaptador evalúa esos nombres con la política existente de FirewallDNS antes de devolver la respuesta al sistema. Si un alias coincide con una regla de bloqueo existente, solicita el transporte `BlockAll` de Firestack para esa respuesta. No realiza consultas DNS adicionales, no convierte señales `OBSERVE` en bloqueos y no atribuye el UID del stub DNS a una aplicación. La validación debe cubrir respuestas con CNAME, alias HTTPS/SVCB, cadenas, caché y respuestas sin alias.
+Firestack expone en `DNSSummary.Targets` los nombres/alias presentes en la sección de respuestas DNS. El adaptador evalúa esos nombres con la política existente de FirewallDNS antes de devolver la respuesta al sistema. Si un alias coincide con una regla de bloqueo existente, solicita el transporte `BlockAll` de Firestack para esa respuesta. No realiza consultas DNS adicionales ni convierte señales `OBSERVE` en bloqueos. Si Firestack solo identifica el stub DNS, la aplicación permanece desconocida; las reglas por aplicación se aplican únicamente cuando el callback entrega un UID numérico que el resolver existente puede asociar a un paquete. La validación debe cubrir respuestas con CNAME, alias HTTPS/SVCB, cadenas, caché y respuestas sin alias.
 
 ## Captura DNS de resolvers arbitrarios
 
