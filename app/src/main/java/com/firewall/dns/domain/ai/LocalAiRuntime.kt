@@ -1,7 +1,13 @@
 package com.firewall.dns.domain.ai
 
 import android.content.Context
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.pm.ServiceInfo
+import android.os.Build
+import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
+import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import dev.ffmpegkit.llama.Llama
@@ -70,6 +76,7 @@ class LocalAiModelDownloadWorker(context: Context, params: WorkerParameters) : C
                 return Result.failure()
             }
             LocalAiRuntime.writeState(applicationContext, "Descargando Qwen3 por Wi-Fi", 0)
+            setForeground(downloadForegroundInfo(0))
             val connection = (URL(LocalAiRuntime.MODEL_URL).openConnection() as HttpURLConnection).apply {
                 connectTimeout = 20_000
                 readTimeout = 60_000
@@ -99,6 +106,7 @@ class LocalAiModelDownloadWorker(context: Context, params: WorkerParameters) : C
                             lastPercent = percent
                             setProgress(workDataOf("percent" to percent))
                             LocalAiRuntime.writeState(applicationContext, "Descargando Qwen3 · " + percent + "%", percent)
+                            setForeground(downloadForegroundInfo(percent))
                         }
                     }
                     output.fd.sync()
@@ -117,6 +125,28 @@ class LocalAiModelDownloadWorker(context: Context, params: WorkerParameters) : C
             temp.delete()
             LocalAiRuntime.writeState(applicationContext, "Error al descargar Qwen3: " + (error.message ?: "desconocido"))
             return if (runAttemptCount < 5) Result.retry() else Result.failure()
+        }
+    }
+
+    private fun downloadForegroundInfo(percent: Int): ForegroundInfo {
+        val manager = applicationContext.getSystemService(NotificationManager::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            manager.createNotificationChannel(
+                NotificationChannel("firewalldns_qwen_download", "Descarga de IA local", NotificationManager.IMPORTANCE_LOW)
+            )
+        }
+        val notification = NotificationCompat.Builder(applicationContext, "firewalldns_qwen_download")
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle("FirewallDNS · Qwen3")
+            .setContentText("Descargando modelo por Wi-Fi · " + percent + "%")
+            .setProgress(100, percent, false)
+            .setOnlyAlertOnce(true)
+            .setOngoing(true)
+            .build()
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ForegroundInfo(4201, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        } else {
+            ForegroundInfo(4201, notification)
         }
     }
 }
