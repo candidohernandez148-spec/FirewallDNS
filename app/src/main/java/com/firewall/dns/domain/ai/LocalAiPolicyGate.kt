@@ -51,7 +51,7 @@ object LocalAiPolicyGate {
     ): LocalAiPolicyOutcome {
         val domain = normalizeDomain(suggestion.domain) ?: return LocalAiPolicyOutcome.OBSERVE_ONLY
         val allowed = manualAllowed.mapNotNull(::normalizeDomain).toSet()
-        val blocked = manualBlocked.mapNotNull(::normalize).toSet()
+        val blocked = manualBlocked.mapNotNull(::normalizeDomain).toSet()
 
         if (matches(domain, allowed)) return LocalAiPolicyOutcome.MANUAL_ALLOW
         if (matches(domain, blocked)) return LocalAiPolicyOutcome.MANUAL_BLOCK
