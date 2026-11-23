@@ -30,8 +30,16 @@ class LocalAiRecommendationParserTest {
             ]}"""
         )
         assertNotNull(result)
-        assertEquals(1, result!!.recommendations.size)
-        assertEquals("track.example.com", result.recommendations.single().domain)
+        assertEquals(2, result!!.recommendations.size)
+        assertEquals(
+            setOf("safe.example.com", "track.example.com"),
+            result.recommendations.map { it.domain }.toSet()
+        )
+        // OTHER/BLOCK is syntactically valid; LocalAiPolicyGate must reject it
+        // as an automatic block rather than the JSON parser silently dropping it.
+        val otherBlock = result.recommendations.single { it.domain == "safe.example.com" }
+        assertEquals(LocalAiDomainCategory.OTHER, otherBlock.category)
+        assertEquals(LocalAiSuggestedAction.BLOCK, otherBlock.action)
     }
 
     @Test
