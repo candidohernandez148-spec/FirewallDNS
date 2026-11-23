@@ -110,7 +110,7 @@ This does **not** decrypt DoH/DoT/DoQ or arbitrary encrypted DNS on ports 443/85
 - `NetworkFlowPolicyEngine` evalúa TCP/UDP/ICMP por UID, paquete, protocolo, CIDR IPv4/IPv6 y puerto; usa snapshots atómicos, prioridad/origen y caducidad; las reglas HEURISTIC no pueden bloquear.
 - `EncryptedDnsGuard` bloquea DoT TCP/853 y DoQ UDP/853, 784 y 8853; bloquea dominios DoH conocidos correlacionados con flujos y deja dominios probables en OBSERVAR. No descifra TLS ni garantiza detectar DoH por IP sin dominio correlacionado.
 - `FlowConnectionMonitor` mantiene límites estrictos, métricas de bytes, UID/aplicación, protocolo, regla y generación de red; serializa cierre, actividad y expiración para evitar carreras.
-- Inicio, Diagnóstico y métricas exponen el estado Firestack, flujos, protección/enlace de sockets y fallos de red.
+- Inicio, Monitor, Amenazas y mapa SOC muestran el estado operativo de Firestack, flujos, protección/enlace de sockets y fallos de red.
 - La compilación de `main` posterior a PR #95 pasó. La rama `refactor/single-firewalldns-engine` retira el lector TUN Kotlin y smoltcp del camino productivo; su CI debe confirmar compilación Debug/Release y pruebas. La validación física sigue pendiente.
 - La validación final en dispositivo sigue pendiente: Samsung A34 5G, Wi-Fi, Telcel LTE, cambios de red, TCP/UDP, DNS con IP fija, DoT/DoQ/DoH y estabilidad prolongada.
 
