@@ -518,7 +518,7 @@ private fun ThreeDimensionalMindMap(
     val selectedRoute = remember(selectedNode, routeTargetNodeId) {
         directedNodeRoute(selectedNode, routeTargetNodeId).orEmpty()
     }
-    var selectedAppUid by remember(selectedNode, appRoutes) { mutableStateOf(appRoutes.firstOrNull()?.uid) }
+    var selectedAppUid by remember { mutableStateOf<Int?>(null) }
     val background = MaterialTheme.colorScheme.surface
     val lineColor = MaterialTheme.colorScheme.outlineVariant
     val onSurface = MaterialTheme.colorScheme.onSurface
@@ -750,14 +750,14 @@ private fun NodeRouteInspector(
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                             group.forEach { app ->
                                 FilterChip(
-                                    selected = selectedAppUid == app.uid,
+                                    selected = selectedAppUid == app.uid || (selectedAppUid == null && appRoutes.firstOrNull()?.uid == app.uid),
                                     onClick = { onAppSelected(app.uid) },
                                     label = { Text(app.label.take(15) + " · " + app.uid, style = MaterialTheme.typography.labelSmall) }
                                 )
                             }
                         }
                     }
-                    val selectedApp = appRoutes.firstOrNull { it.uid == selectedAppUid }
+                    val selectedApp = appRoutes.firstOrNull { it.uid == selectedAppUid } ?: appRoutes.firstOrNull()
                     if (selectedApp != null) {
                         Text(
                             "${selectedApp.label} · UID ${selectedApp.uid} · DNS ${selectedApp.dnsEvents} · FLUJOS ACTIVOS ${selectedApp.flows.size}",
