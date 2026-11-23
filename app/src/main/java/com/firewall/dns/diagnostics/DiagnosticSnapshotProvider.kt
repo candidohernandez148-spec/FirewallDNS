@@ -90,6 +90,20 @@ class DiagnosticSnapshotProvider : ContentProvider() {
             "firestackBindSuccess" to snapshot.firestackBindSuccess,
             "firestackBindFailure" to snapshot.firestackBindFailure,
         )
+        // Do not export legacy counters as zero: the current Firestack production
+        // adapter does not publish these packet-parser, writer or fragment callbacks.
+        values.keys.removeAll(
+            setOf(
+                "packetsRead", "queueRejected", "parserRejected", "ipv4Packets", "ipv6Packets",
+                "dnsTcp", "tcpRstSent", "tcpRstSuppressed", "unsupportedTransport", "dnsUdpPackets",
+                "malformedDns", "upstreamSuccess", "upstreamAttemptFailures", "upstreamFailureTimeouts",
+                "upstreamFailureProtection", "upstreamFailureIo", "upstreamFailureValidation",
+                "upstreamFailureOther", "upstreamCancelled", "noDnsResponse", "dnsResponsesBuilt",
+                "packetsWritten", "writeErrors", "workerErrors", "fragmentsAccepted",
+                "packetsReassembled", "fragmentsDroppedInvalid", "fragmentsDroppedLimit",
+                "fragmentAssembliesExpired", "fragmentPendingAssemblies", "fragmentBufferedBytes",
+            )
+        )
         return MatrixCursor(arrayOf("metric", "value")).apply {
             values.forEach { (key, value) -> addRow(arrayOf(key, value.toString())) }
         }
