@@ -1100,14 +1100,11 @@ private fun LiveEngineOperations(
             "Eventos descartados por cola llena" to metrics.engineEventsDropped,
             "Capacidad configurada de la cola" to 512L,
         ), "Cola acotada de telemetría EngineMonitor (capacidad 512); no es una cola de paquetes TUN. El contador de ocupación es una instantánea.")
-        LiveMetricSection("TRANSPORTE DNS UPSTREAM · SOCKETS", listOf(
-            "UDP · intentos de protección" to metrics.upstreamProtectUdpAttempts,
-            "UDP · sockets protegidos" to metrics.upstreamProtectUdpSuccess,
-            "UDP · fallos de protección" to metrics.upstreamProtectUdpFailure,
-            "TCP · intentos de protección" to metrics.upstreamProtectTcpAttempts,
-            "TCP · sockets protegidos" to metrics.upstreamProtectTcpSuccess,
-            "TCP · fallos de protección" to metrics.upstreamProtectTcpFailure,
-        ), "Estos contadores miden llamadas reales a VpnService.protect() para sockets upstream. No representan consultas DNS entrantes ni el resultado de cada intercambio.")
+        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text("TRANSPORTE DNS UPSTREAM · SOCKETS", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Text("Protect UDP/TCP por separado: N/D. El cliente AndroidDnsSocketProtector no está conectado al flujo productivo Firestack.")
+            Text("El resultado agregado de VpnService.protect() para sockets Firestack aparece en la sección de protección de sockets.")
+        }
         LiveMetricSection("RESÚMENES DE RESPUESTA DNS FIRESTACK", listOf(
             "Callbacks de respuesta observados" to metrics.dnsResponseCallbacks,
             "Estado Complete" to metrics.dnsResponseComplete,
