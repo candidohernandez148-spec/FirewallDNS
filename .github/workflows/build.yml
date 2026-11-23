@@ -69,23 +69,27 @@ jobs:
       - name: Ejecutar pruebas unitarias
         run: gradle :engine-core:test :engine-monitor:test :threat-engine:test :dns-engine:test :engine-runtime:test :android-adapter:testDebugUnitTest :app:testDebugUnitTest --no-daemon --stacktrace
 
-      - name: Compilar APK FirewallDNS
-        run: gradle :app:assembleDebug --no-daemon --stacktrace
+      - name: Compilar APKs FirewallDNS y Diagnostic
+        run: gradle :app:assembleDebug :diagnostic-app:assembleDebug --no-daemon --stacktrace
 
       - name: Verificar Firestack/gVisor en APK FirewallDNS
         shell: bash
         run: |
           set -euo pipefail
           APK="app/build/outputs/apk/debug/app-debug.apk"
+          DIAGNOSTIC_APK="diagnostic-app/build/outputs/apk/debug/diagnostic-app-debug.apk"
           test -s "$APK"
+          test -s "$DIAGNOSTIC_APK"
           unzip -l "$APK" | grep -q 'lib/arm64-v8a/libgojni.so'
           echo "APK FirewallDNS Debug: Firestack/gVisor ARM64 incluido"
+          echo "APK FirewallDNS Diagnostic Debug: compilado"
 
       - uses: actions/upload-artifact@v4
         with:
           name: FirewallDNS-debug-apks
           path: |
             app/build/outputs/apk/debug/*.apk
+            diagnostic-app/build/outputs/apk/debug/*.apk
 
   firestack-aar:
     name: Build pinned Firestack Android AAR
