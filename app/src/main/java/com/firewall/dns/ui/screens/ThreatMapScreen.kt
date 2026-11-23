@@ -615,7 +615,7 @@ private fun ThreeDimensionalMindMap(
                     }
 
                     val byId = nodes.associateBy { it.id }
-                    architectureEdges.forEachIndexed { edgeIndex, edge ->
+                    architectureEdges.forEach { edge ->
                         val from = byId[edge.from] ?: return@forEachIndexed
                         val to = byId[edge.to] ?: return@forEachIndexed
                         val begin = projected.getValue(from)
