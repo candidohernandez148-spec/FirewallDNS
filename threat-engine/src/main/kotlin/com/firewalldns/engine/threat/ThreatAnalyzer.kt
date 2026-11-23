@@ -14,14 +14,14 @@ class ThreatAnalyzer(
 ) {
     private data class CompiledIndicator(val indicator: ThreatIndicator, val domain: String)
 
-    private val compiledIndicators: List<CompiledIndicator>
-    private val normalizedSafeDomains: List<String>
+    private val indicatorsByDomain: Map<String, List<CompiledIndicator>>
+    private val normalizedSafeDomains: Set<String>
 
     init {
         require(indicators.map { it.id }.distinct().size == indicators.size) {
             "Threat indicator IDs must be unique"
         }
-        compiledIndicators = indicators.map { indicator ->
+        val compiled = indicators.map { indicator ->
             require(indicator.id.isNotBlank()) { "Threat indicator ID must not be blank" }
             require(indicator.reason.isNotBlank()) { "Threat indicator reason must not be blank" }
             require(indicator.confidence in 0..100) { "Threat confidence must be between 0 and 100" }
@@ -35,14 +35,18 @@ class ThreatAnalyzer(
                     "Invalid threat indicator domain '${indicator.id}'"
                 },
             )
-        }.sortedWith(
-            compareByDescending<CompiledIndicator> { it.domain.length }
-                .thenByDescending { it.indicator.confidence }
-                .thenBy { it.indicator.id },
-        )
+        }
+        // Index by DNS label suffix. Lookup then visits only the queried name
+        // and its parents instead of scanning every threat indicator.
+        indicatorsByDomain = compiled.groupBy { it.domain }.mapValues { (_, entries) ->
+            entries.sortedWith(
+                compareByDescending<CompiledIndicator> { it.indicator.confidence }
+                    .thenBy { it.indicator.id },
+            )
+        }
         normalizedSafeDomains = safeDomains.map { domain ->
             requireNotNull(DomainNormalizer.normalize(domain)) { "Invalid safe domain '$domain'" }
-        }
+        }.toSet()
     }
 
     fun analyze(domainInput: String): ThreatAssessment {
@@ -55,13 +59,7 @@ class ThreatAnalyzer(
                 reason = "invalid_domain_input",
             )
 
-        val matched = compiledIndicators.firstOrNull { compiled ->
-            if (compiled.indicator.includeSubdomains) {
-                domain == compiled.domain || domain.endsWith(".${compiled.domain}")
-            } else {
-                domain == compiled.domain
-            }
-        }
+        val matched = findMatchingIndicator(domain)
         if (matched != null) {
             val indicator = matched.indicator
             val signal = ThreatSignal(
@@ -83,7 +81,7 @@ class ThreatAnalyzer(
             )
         }
 
-        if (normalizedSafeDomains.any { domain == it || domain.endsWith(".$it") }) {
+        if (matchesSafeDomain(domain)) {
             return ThreatAssessment(
                 domain = domain,
                 action = PolicyAction.ALLOW,
@@ -144,6 +142,27 @@ class ThreatAnalyzer(
             source = RuleSource.HEURISTIC,
             signals = signals,
         )
+    }
+
+    private fun findMatchingIndicator(domain: String): CompiledIndicator? {
+        var suffix = domain
+        while (true) {
+            val match = indicatorsByDomain[suffix]?.firstOrNull { suffix == domain || it.indicator.includeSubdomains }
+            if (match != null) return match
+            val dot = suffix.indexOf('.')
+            if (dot < 0) return null
+            suffix = suffix.substring(dot + 1)
+        }
+    }
+
+    private fun matchesSafeDomain(domain: String): Boolean {
+        var suffix = domain
+        while (true) {
+            if (suffix in normalizedSafeDomains) return true
+            val dot = suffix.indexOf('.')
+            if (dot < 0) return false
+            suffix = suffix.substring(dot + 1)
+        }
     }
 
     private companion object {

@@ -69,34 +69,25 @@ jobs:
       - name: Ejecutar pruebas unitarias
         run: gradle :engine-core:test :engine-monitor:test :threat-engine:test :dns-engine:test :engine-runtime:test :android-adapter:testDebugUnitTest :app:testDebugUnitTest --no-daemon --stacktrace
 
-      - name: Compilar APKs FirewallDNS y Diagnostic
-        run: gradle :app:assembleDebug :diagnostic-app:assembleDebug --no-daemon --stacktrace
+      - name: Compilar APK FirewallDNS
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
 
       - name: Verificar Firestack/gVisor en APK FirewallDNS
         shell: bash
         run: |
           set -euo pipefail
           APK="app/build/outputs/apk/debug/app-debug.apk"
-          DIAGNOSTIC_APK="diagnostic-app/build/outputs/apk/debug/diagnostic-app-debug.apk"
           test -s "$APK"
-          test -s "$DIAGNOSTIC_APK"
           unzip -l "$APK" | grep -q 'lib/arm64-v8a/libgojni.so'
           BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
           "$BUILD_TOOLS/apksigner" verify "$APK"
-          "$BUILD_TOOLS/apksigner" verify "$DIAGNOSTIC_APK"
-          MAIN_CERT="$("$BUILD_TOOLS/apksigner" verify --print-certs "$APK" | awk -F': ' '/Signer #1 certificate SHA-256 digest/ {print $2; exit}')"
-          DIAGNOSTIC_CERT="$("$BUILD_TOOLS/apksigner" verify --print-certs "$DIAGNOSTIC_APK" | awk -F': ' '/Signer #1 certificate SHA-256 digest/ {print $2; exit}')"
-          test -n "$MAIN_CERT" && test -n "$DIAGNOSTIC_CERT"
-          test "$MAIN_CERT" = "$DIAGNOSTIC_CERT"
-          echo "APK FirewallDNS Debug: Firestack/gVisor ARM64 y firma compartida"
-          echo "APK FirewallDNS Diagnostic Debug: compilado y firmado con el mismo certificado"
+          echo "APK FirewallDNS Debug: Firestack/gVisor ARM64 verificados"
 
       - uses: actions/upload-artifact@v4
         with:
           name: FirewallDNS-debug-apks
           path: |
             app/build/outputs/apk/debug/*.apk
-            diagnostic-app/build/outputs/apk/debug/*.apk
 
   firestack-aar:
     name: Build pinned Firestack Android AAR

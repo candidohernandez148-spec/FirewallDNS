@@ -37,6 +37,10 @@ Firestack `intra.Connect` recibe un objeto `Bridge` que combina:
 
 La implementación Kotlin debe ser un adaptador delgado hacia interfaces de FirewallDNS, no una copia de las reglas de Rethink. La política de dominios y UID seguirá perteneciendo a FirewallDNS. No se activarán transportes/proxies opcionales de Firestack que no sean necesarios para el firewall local.
 
+## Inspección de alias CNAME y HTTPS/SVCB
+
+Firestack expone en `DNSSummary.Targets` los nombres/alias presentes en la sección de respuestas DNS. El adaptador evalúa esos nombres con la política existente de FirewallDNS antes de devolver la respuesta al sistema. Si un alias coincide con una regla de bloqueo existente, solicita el transporte `BlockAll` de Firestack para esa respuesta. No realiza consultas DNS adicionales ni convierte señales `OBSERVE` en bloqueos. Si Firestack solo identifica el stub DNS, la aplicación permanece desconocida; las reglas por aplicación se aplican únicamente cuando el callback entrega un UID numérico que el resolver existente puede asociar a un paquete. La validación debe cubrir respuestas con CNAME, alias HTTPS/SVCB, cadenas, caché y respuestas sin alias.
+
 ## Captura DNS de resolvers arbitrarios
 
 Firestack's default DNS mode captures only the synthetic DNS IPs configured in the VPN. That would allow applications using hard-coded resolver IPs (for example, a public resolver) to send UDP/TCP port 53 without reaching FirewallDNS domain policy.
@@ -83,7 +87,7 @@ This does **not** decrypt DoH/DoT/DoQ or arbitrary encrypted DNS on ports 443/85
 
 - (Histórico) Se compararon prototipos smoltcp y Firestack; el código smoltcp fue retirado posteriormente.
 - (Completado) Retirar smoltcp, su JNI y el banco de pruebas del proyecto activo.
-- Consolidar métricas, mapa, Monitor, Amenazas y Diagnóstico en el mismo origen de eventos.
+- Consolidar métricas, mapa SOC, Monitor y Amenazas en el mismo origen de eventos.
 - Documentar capacidades reales y límites visibles en la aplicación.
 
 ## Criterios de finalización
@@ -110,7 +114,7 @@ This does **not** decrypt DoH/DoT/DoQ or arbitrary encrypted DNS on ports 443/85
 - `NetworkFlowPolicyEngine` evalúa TCP/UDP/ICMP por UID, paquete, protocolo, CIDR IPv4/IPv6 y puerto; usa snapshots atómicos, prioridad/origen y caducidad; las reglas HEURISTIC no pueden bloquear.
 - `EncryptedDnsGuard` bloquea DoT TCP/853 y DoQ UDP/853, 784 y 8853; bloquea dominios DoH conocidos correlacionados con flujos y deja dominios probables en OBSERVAR. No descifra TLS ni garantiza detectar DoH por IP sin dominio correlacionado.
 - `FlowConnectionMonitor` mantiene límites estrictos, métricas de bytes, UID/aplicación, protocolo, regla y generación de red; serializa cierre, actividad y expiración para evitar carreras.
-- Inicio, Diagnóstico y métricas exponen el estado Firestack, flujos, protección/enlace de sockets y fallos de red.
+- Inicio, Monitor, Amenazas y mapa SOC muestran el estado operativo de Firestack, flujos, protección/enlace de sockets y fallos de red.
 - La compilación de `main` posterior a PR #95 pasó. La rama `refactor/single-firewalldns-engine` retira el lector TUN Kotlin y smoltcp del camino productivo; su CI debe confirmar compilación Debug/Release y pruebas. La validación física sigue pendiente.
 - La validación final en dispositivo sigue pendiente: Samsung A34 5G, Wi-Fi, Telcel LTE, cambios de red, TCP/UDP, DNS con IP fija, DoT/DoQ/DoH y estabilidad prolongada.
 

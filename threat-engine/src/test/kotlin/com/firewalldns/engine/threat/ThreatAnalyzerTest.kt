@@ -94,6 +94,63 @@ class ThreatAnalyzerTest {
         }
     }
 
+    @Test fun mostSpecificIndicatorWinsBeforeHigherConfidenceParent() {
+        val custom = ThreatAnalyzer(
+            indicators = listOf(
+                ThreatIndicator(
+                    id = "parent",
+                    domain = "example.com",
+                    category = ThreatCategory.MALWARE,
+                    confidence = 99,
+                    action = PolicyAction.BLOCK,
+                    source = RuleSource.MANAGED,
+                    reason = "parent_indicator",
+                ),
+                ThreatIndicator(
+                    id = "specific",
+                    domain = "sub.example.com",
+                    category = ThreatCategory.PHISHING,
+                    confidence = 91,
+                    action = PolicyAction.BLOCK,
+                    source = RuleSource.MANAGED,
+                    reason = "specific_indicator",
+                ),
+            ),
+            safeDomains = emptyList(),
+        )
+
+        val result = custom.analyze("img.sub.example.com")
+        assertEquals("specific", result.indicatorId)
+        assertEquals("specific_indicator", result.reason)
+    }
+
+    @Test fun sameDomainIndicatorsUseConfidenceThenStableIdOrdering() {
+        val custom = ThreatAnalyzer(
+            indicators = listOf(
+                ThreatIndicator(
+                    id = "lower",
+                    domain = "same.example",
+                    category = ThreatCategory.TRACKING,
+                    confidence = 90,
+                    action = PolicyAction.OBSERVE,
+                    reason = "lower_confidence",
+                ),
+                ThreatIndicator(
+                    id = "higher",
+                    domain = "same.example",
+                    category = ThreatCategory.MALWARE,
+                    confidence = 95,
+                    action = PolicyAction.BLOCK,
+                    source = RuleSource.MANAGED,
+                    reason = "higher_confidence",
+                ),
+            ),
+            safeDomains = emptyList(),
+        )
+
+        assertEquals("higher", custom.analyze("same.example").indicatorId)
+    }
+
     @Test fun indicatorCanBeScopedToExactDomain() {
         val custom = ThreatAnalyzer(
             indicators = listOf(

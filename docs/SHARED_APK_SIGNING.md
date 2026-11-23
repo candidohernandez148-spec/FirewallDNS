@@ -1,37 +1,30 @@
-# Shared signing for FirewallDNS APKs
+# Guía de firma de FirewallDNS
 
-The main APK and diagnostic APK use a signature-protected ContentProvider. They must be signed by the same certificate.
+FirewallDNS se distribuye como una única aplicación Android. No existe una APK companion ni una identidad de firma compartida entre aplicaciones.
 
-## Local release builds
+## Compilación local de Release
 
-Use one JKS file for both modules. Do not commit it or its passwords.
+No guardes la llave privada ni sus contraseñas en el repositorio.
 
 ```bash
 export KEYSTORE_PATH="$HOME/.keys/firewalldns-release.jks"
 export KEYSTORE_PASSWORD='...'
 export KEY_ALIAS='firewalldns'
-export KEY_PASSWORD="$KEYSTORE_PASSWORD" # or the distinct key password
-./gradlew :app:assembleRelease :diagnostic-app:assembleRelease
+export KEY_PASSWORD="$KEYSTORE_PASSWORD" # o la contraseña privada distinta
+./gradlew :app:assembleRelease
 ```
 
-If the variables or keystore are missing, release configuration intentionally fails. Debug variants continue to use the standard Android debug signing configuration; both modules built under the same developer account normally share that debug keystore.
+Si faltan las variables o el keystore, la configuración de Release falla intencionalmente. Las compilaciones Debug siguen disponibles sin secretos.
 
-## GitHub Actions secrets
+## GitHub Actions
 
-The release workflow never restores a signing keystore or password from an Actions cache. Private signing material must not be stored in Actions caches because pull-request workflows may be able to restore caches from the base branch.
+Configura estos secretos del repositorio usando la misma identidad de publicación de las versiones distribuidas:
 
-Configure these repository Actions secrets using the **same JKS and certificate** used for previously distributed APKs:
-- `KEYSTORE_BASE64`: base64 encoding of the existing JKS.
-- `KEYSTORE_PASSWORD`: JKS store password.
-- `KEY_ALIAS`: existing key alias.
-- `KEY_PASSWORD`: private-key password (optional if equal to the store password).
+- `KEYSTORE_BASE64`: JKS codificado en Base64.
+- `KEYSTORE_PASSWORD`: contraseña del almacén.
+- `KEY_ALIAS`: alias existente.
+- `KEY_PASSWORD`: contraseña de la clave privada (opcional si coincide con la anterior).
 
-Release signing runs only on trusted non-pull-request executions of `main`. Pull requests still run unit tests; the separate Debug workflow builds the test APK without release credentials. If the signing secrets are absent, the signed Release artifact is deliberately skipped; no replacement key is generated and no debug certificate is substituted.
+El workflow solo prepara la firma en ejecuciones confiables de `main`. No recupera material privado desde cachés de Actions ni genera una identidad de sustitución. Si faltan secretos, omite el APK Release firmado.
 
-**Repository maintenance:** delete the legacy Actions cache named `firewalldns-signing-v1` from Settings → Actions → Caches. The workflow no longer reads it, but deleting it removes the old private material from the cache store. If there is any reason to believe an untrusted workflow already restored or exposed that cache, treat the signing key as compromised and assess certificate rotation carefully before changing it, because existing app installations require compatible signing to accept updates.
-
-CI verifies the Release APK signature with `apksigner` before uploading it. The diagnostic APK must continue to use the same release certificate because its provider access is signature-protected.
-
-## Provider access
-
-The diagnostic manifest declares the provider authority in `<queries>` for Android 11+ package visibility and requests the signature permission. Package visibility does not bypass signature permission enforcement. Install both release APKs signed with this same JKS; reinstall both if the signing identity changes.
+Nunca publiques el JKS ni las contraseñas en commits, issues, informes o registros de Actions.
