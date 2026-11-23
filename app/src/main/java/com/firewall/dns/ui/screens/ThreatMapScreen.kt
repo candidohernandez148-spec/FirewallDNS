@@ -1038,7 +1038,7 @@ private fun SocAppDnsActivity(
 }
 
 @Composable
-private fun SocPolicyDiagnostics(metrics: FirewallDnsTrafficMetrics.Snapshot) {
+private fun SocPolicyStatus(metrics: FirewallDnsTrafficMetrics.Snapshot) {
     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
         Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
