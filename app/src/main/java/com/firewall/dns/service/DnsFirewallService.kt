@@ -146,7 +146,11 @@ class DnsFirewallService : VpnService() {
                 // Firestack internally caches Stat() for up to 30 seconds.
                 firestack.nativeStats()?.let(FirewallDnsTrafficMetrics::firestackNativeSnapshot)
                 // Active-flow and engine-queue snapshots are real runtime metrics.
-                FirewallDnsTrafficMetrics.flowSnapshot(runtime.flowMonitor.snapshot(includeFlows = true))
+                FirewallDnsTrafficMetrics.flowSnapshot(
+                    runtime.flowMonitor.snapshot(
+                        includeFlows = FirewallDnsTrafficMetrics.shouldCollectActiveFlowDetails(),
+                    ),
+                )
                 // DNS decisions are already persisted by Firestack's onDnsDecision callback.
                 // Drain this duplicate bounded monitor queue so it cannot fill without a consumer.
                 runtime.drainEvents(512)
