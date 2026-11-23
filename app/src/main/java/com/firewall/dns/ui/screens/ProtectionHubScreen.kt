@@ -141,6 +141,7 @@ fun ProtectionHubScreen(
         } else if (section == 1) {
             AppsSettingsScreen(
                 stats = stats,
+                firestackActive = tunMetrics.firestackActive == 1L,
                 apps = apps,
                 logs = logs,
                 activeFlows = tunMetrics.activeFlows,
