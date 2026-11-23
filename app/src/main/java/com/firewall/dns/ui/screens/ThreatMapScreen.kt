@@ -154,10 +154,10 @@ fun ThreatMapScreen(
                 if (vpnRunning) "ACTIVO" else "DETENIDO",
                 0f, 0f, 0f, Color(0xFF42D9FF)),
             MindMapNode("tun_in", "TUN ENTRADA", "Bytes leídos desde Android hacia el servicio VPN",
-                "${tunMetrics.tunRxBytes} B RX",
+                "${tunMetrics.tunRxBytes} RX",
                 -0.95f, -0.48f, 0.00f, Color(0xFF58D6B0)),
             MindMapNode("tun_out", "TUN SALIDA", "Bytes escritos por el servicio hacia Android",
-                "${tunMetrics.tunTxBytes} B TX",
+                "${tunMetrics.tunTxBytes} TX",
                 0.95f, -0.48f, 0.00f, Color(0xFF58D6B0)),
             MindMapNode("firestack", "FIRESTACK", "Pila de red gVisor",
                 if (!vpnRunning) "DETENIDO" else if (tunMetrics.firestackActive > 0) "ACTIVO" else "SIN CONFIRMAR",
@@ -1110,7 +1110,7 @@ private fun SocTunnelPath(
                 fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             SocPathMetric(
                 "TUN ENTRADA · RX",
-                "${metrics.tunRxBytes} B",
+                metrics.tunRxBytes,
                 "Bytes leídos desde el descriptor TUN por el servicio VPN."
             )
 
@@ -1154,7 +1154,7 @@ private fun SocTunnelPath(
                 fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             SocPathMetric(
                 "TUN SALIDA · TX",
-                "${metrics.tunTxBytes} B",
+                metrics.tunTxBytes,
                 "Bytes escritos por el servicio en el descriptor TUN para devolver paquetes a Android."
             )
             Text("Los valores son acumulados desde el inicio de los contadores disponibles. La salida TUN no significa que todo el tráfico haya sido permitido: las decisiones DNS bloqueadas se contabilizan aparte.",
