@@ -104,6 +104,7 @@ fun ThreatMapScreen(
     smartModeEnabled: Boolean,
     observationModeEnabled: Boolean,
     onSetRule: (String, Boolean) -> Unit,
+    isVisible: Boolean = true,
 ) {
     var section by remember { mutableStateOf("map") }
     val catalog = remember { ThreatKnowledgeGraph.catalogSnapshot() }
@@ -146,7 +147,7 @@ fun ThreatMapScreen(
                 observedApps.size.toString(), 0.08f, 0.68f, -0.35f, Color(0xFF58D6B0))
         )
     }
-    BackHandler(enabled = section != "map") { section = "map" }
+    BackHandler(enabled = isVisible && section != "map") { section = "map" }
     val selectedNode = when (section) {
         "red" -> "tun"
         "dns" -> "dns"
