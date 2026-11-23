@@ -24,6 +24,7 @@ class PreferencesDataSource(context: Context) {
         private const val PREFS_NAME = "firewall_prefs"
         private const val KEY_CUSTOM_BLOCK = "custom_block"
         private const val KEY_CUSTOM_ALLOW = "custom_allow"
+        private const val KEY_LOCAL_AI_BLOCKED = "local_ai_blocked_domains"
         private const val KEY_EXCLUDED_APPS = "excluded_apps"
         private const val KEY_BLOCKED_APPS = "blocked_apps"
         private const val KEY_SHOULD_RUN = "should_run"
@@ -105,6 +106,13 @@ class PreferencesDataSource(context: Context) {
 
     fun saveCustomAllowSet(set: Set<String>) {
         prefs.edit().putStringSet(KEY_CUSTOM_ALLOW, set.toSet()).apply()
+    }
+
+    fun getLocalAiBlockedSet(): Set<String> =
+        prefs.getStringSet(KEY_LOCAL_AI_BLOCKED, emptySet())?.toSet() ?: emptySet()
+
+    fun saveLocalAiBlockedSet(set: Set<String>) {
+        prefs.edit().putStringSet(KEY_LOCAL_AI_BLOCKED, set.toSet()).apply()
     }
 
     fun getExcludedPackages(): Set<String> =
