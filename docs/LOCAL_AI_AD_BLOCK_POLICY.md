@@ -13,8 +13,8 @@ Las reglas manuales existentes son la autoridad superior:
 
 ## Implementación y límites actuales
 
-`LocalAiPolicyGate` implementa y prueba el contrato de seguridad: normalización del dominio, precedencia de reglas manuales, umbral de confianza y limitación del bloqueo automático a las categorías ADVERTISING y TRACKER. El gate no modifica reglas ni intercepta tráfico por sí solo.
+`LocalAiPolicyGate` implementa y prueba el contrato de seguridad: normalización del dominio, precedencia de reglas manuales, umbral de confianza y limitación del bloqueo automático a las categorías ADVERTISING y TRACKER. `FirewallRepository.applyLocalAiSuggestion()` conecta el resultado validado con una lista persistente separada de bloqueos AI, y la exporta al motor DNS como regla administrada. El evaluador mantiene prioridad para reglas manuales, excepciones de listas y amenazas importantes. La pantalla Protección muestra estos dominios y permite corregir cada uno con «Permitir siempre».
 
-**Pendiente:** conectar este gate a una inferencia GGUF real y al coordinador local; solo entonces se podrá ejecutar el bloqueo recomendado por el modelo. El runtime GGUF todavía no está integrado, por lo que esta entrega no debe anunciarse como IA activa ni como bloqueo automático ya disponible.
+**Pendiente:** conectar este gate a una inferencia GGUF real y al coordinador local; solo entonces el modelo podrá generar las recomendaciones que activan esta ruta. El runtime GGUF todavía no está integrado, por lo que esta entrega no debe anunciarse como IA activa ni como bloqueo automático ya disponible.
 
 La inferencia se ejecutará fuera del TUN, callbacks Firestack y UI. El motor actual conserva el bloqueo inmediato y el firewall seguirá funcionando si la IA no está instalada, cargada o disponible.
