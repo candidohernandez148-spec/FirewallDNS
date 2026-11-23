@@ -140,6 +140,37 @@ class PolicyEngineTest {
         assertEquals(initialRevision + 1, engine.evaluate(PolicyRequest("example.com"), 1).policyRevision)
     }
 
+
+    @Test fun indexedLookupPreservesPriorityAcrossParentAndExactRules() {
+        val engine = PolicyEngine(listOf(
+            rule("parent-high-priority", "example.com", PolicyAction.BLOCK, priority = 20),
+            rule("child-low-priority", "safe.example.com", PolicyAction.ALLOW, exact = true, priority = 10),
+        ))
+        val result = engine.evaluate(PolicyRequest("safe.example.com"), 1)
+        assertEquals(PolicyAction.BLOCK, result.action)
+        assertEquals("parent-high-priority", result.ruleId)
+    }
+
+    @Test fun indexedLookupPreservesPackageScopeAndExpiry() {
+        val engine = PolicyEngine(listOf(
+            rule("expired-app", "example.com", PolicyAction.BLOCK, appPackage = "com.example.app", expiry = 5),
+            rule("other-app", "example.com", PolicyAction.BLOCK, appPackage = "com.other.app"),
+            rule("global-allow", "example.com", PolicyAction.ALLOW, priority = -1),
+        ))
+        assertEquals("global-allow", engine.evaluate(PolicyRequest("example.com", "com.example.app"), 5).ruleId)
+        assertEquals("other-app", engine.evaluate(PolicyRequest("example.com", "com.other.app"), 1).ruleId)
+        assertEquals("global-allow", engine.evaluate(PolicyRequest("example.com"), 1).ruleId)
+    }
+
+    @Test fun indexedLookupFindsRulesWithLargeUnrelatedRuleSets() {
+        val rules = (0 until 5_000).map { index ->
+            rule("unrelated-$index", "host$index.unrelated.example", PolicyAction.BLOCK)
+        } + rule("target", "ads.example.com", PolicyAction.BLOCK)
+        val engine = PolicyEngine(rules)
+        assertEquals("target", engine.evaluate(PolicyRequest("img.ads.example.com"), 1).ruleId)
+        assertEquals(PolicyAction.ALLOW, engine.evaluate(PolicyRequest("other.example.net"), 1).action)
+    }
+
     private fun rule(
         id: String, domain: String, action: PolicyAction,
         exact: Boolean = false, appPackage: String? = null,
