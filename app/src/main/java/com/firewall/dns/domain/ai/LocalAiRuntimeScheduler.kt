@@ -17,6 +17,8 @@ object LocalAiRuntimeScheduler {
 
     fun schedule(context: Context) {
         val app = context.applicationContext
+        val modelFile = LocalAiRuntime.modelFile(app)
+        if (!modelFile.isFile) LocalAiRuntime.writeState(app, "Esperando Wi-Fi sin consumo de datos móviles")
         val wifiOnly = Constraints.Builder().setRequiredNetworkType(NetworkType.UNMETERED).build()
         val download = OneTimeWorkRequestBuilder<LocalAiModelDownloadWorker>()
             .setConstraints(wifiOnly)
