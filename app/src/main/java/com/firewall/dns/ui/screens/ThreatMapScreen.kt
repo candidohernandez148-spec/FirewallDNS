@@ -546,20 +546,6 @@ private fun ThreeDimensionalMindMap(
             activePulse.snapTo(.88f)
         }
     }
-    val dnsEventProgress = remember { Animatable(1f) }
-    val flowEventProgress = remember { Animatable(1f) }
-    LaunchedEffect(lastDnsDecisionAtEpochMs, vpnRunning, isVisible) {
-        if (isVisible && vpnRunning && lastDnsDecisionAtEpochMs > 0L) {
-            dnsEventProgress.snapTo(0f)
-            dnsEventProgress.animateTo(1f, animationSpec = tween(900, easing = LinearEasing))
-        } else dnsEventProgress.snapTo(1f)
-    }
-    LaunchedEffect(lastFlowEventAtEpochMs, vpnRunning, isVisible) {
-        if (isVisible && vpnRunning && lastFlowEventAtEpochMs > 0L) {
-            flowEventProgress.snapTo(0f)
-            flowEventProgress.animateTo(1f, animationSpec = tween(1200, easing = LinearEasing))
-        } else flowEventProgress.snapTo(1f)
-    }
     var selectedAppUid by remember { mutableStateOf<Int?>(null) }
     val background = MaterialTheme.colorScheme.surface
     val lineColor = MaterialTheme.colorScheme.outlineVariant
@@ -645,6 +631,7 @@ private fun ThreeDimensionalMindMap(
                             else -> 0L
                         }
                         val edgeEventRecent = vpnRunning && recent(edgeEventAt, 5000L)
+                        val isDnsRoute = edge.from == "dns" && edge.to == "decisions"
                         val touchesSelectedNode = edge.from == selectedNode || edge.to == selectedNode
                         val routeActive = edgeEventRecent
                         basePaint.style = Paint.Style.STROKE
