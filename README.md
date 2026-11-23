@@ -75,4 +75,4 @@ app/src/main/java/com/firewall/dns/
 
 ## Topología SOC integrada
 
-El mapa SOC forma parte de FirewallDNS y utiliza eventos y métricas agregadas de la ruta productiva Firestack/gVisor. Las relaciones arquitectónicas se distinguen de los recorridos observados: solo se muestran pulsos cuando existe un evento o cambio de métrica que los respalde. No se instala una aplicación companion ni se incluye una pantalla de diagnóstico independiente.
+El mapa SOC forma parte de FirewallDNS y utiliza eventos y métricas agregadas de la ruta productiva Firestack/gVisor. Las relaciones arquitectónicas se distinguen de los recorridos observados: solo se muestran pulsos cuando existe un evento o cambio de métrica que los respalde. Toda la observabilidad está integrada en el mapa SOC y las pantallas operativas de FirewallDNS; no hay aplicaciones companion.
