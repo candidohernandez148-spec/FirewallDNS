@@ -488,7 +488,7 @@ object FirewallDnsTrafficMetrics {
         fragmentBufferedBytes.set(metrics.bufferedBytes.toLong())
     }
 
-    /** Returns a non-blocking point-in-time aggregate snapshot for UI/diagnostics. */
+    /** Returns a non-blocking point-in-time aggregate snapshot for the SOC and operational UI. */
     fun snapshot(): Snapshot = Snapshot(
         packetsRead = packetsRead.get(),
         packetsWritten = packetsWritten.get(),
