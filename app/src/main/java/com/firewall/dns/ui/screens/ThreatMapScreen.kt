@@ -584,8 +584,8 @@ private fun ThreeDimensionalMindMap(
 
                     val byId = nodes.associateBy { it.id }
                     architectureEdges.forEachIndexed { edgeIndex, edge ->
-                        val from = byId[edge.from] ?: return@forEach
-                        val to = byId[edge.to] ?: return@forEach
+                        val from = byId[edge.from] ?: return@forEachIndexed
+                        val to = byId[edge.to] ?: return@forEachIndexed
                         val begin = projected.getValue(from)
                         val finish = projected.getValue(to)
                         val isDnsRoute = edge.from == "dns" && edge.to == "decisions"
