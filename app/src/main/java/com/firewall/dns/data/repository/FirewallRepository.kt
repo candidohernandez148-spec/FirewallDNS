@@ -493,7 +493,8 @@ object FirewallRepository {
         val baseEval = RuleEvaluator.evaluate(
             domain = domain,
             customAllow = customAllowSet,
-            customBlock = customBlockSet + localAiBlockedSet,
+            customBlock = customBlockSet,
+            aiBlocked = localAiBlockedSet,
             hostExceptions = activeRules.exceptions - activeRules.importantExceptions,
             hostBlock = activeRules.blocked - activeRules.importantBlocked,
             importantExceptions = activeRules.importantExceptions,
