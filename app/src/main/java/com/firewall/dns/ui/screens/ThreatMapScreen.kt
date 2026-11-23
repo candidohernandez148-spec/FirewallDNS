@@ -56,6 +56,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import com.firewall.dns.domain.engine.ThreatKnowledgeGraph
 import com.firewall.dns.domain.model.DnsLogEntry
 import com.firewall.dns.service.FirewallDnsTrafficMetrics
@@ -80,10 +84,12 @@ private val architectureEdges = listOf(
     MindMapEdge("core", "threats"),
     MindMapEdge("threats", "decisions"),
     MindMapEdge("rules", "decisions"),
-    MindMapEdge("apps", "decisions"),
+    MindMapEdge("apps", "tun"),
     MindMapEdge("decisions", "upstream"),
     MindMapEdge("decisions", "tun")
 )
+
+private data class SocApplicationRoute(val uid: Int, val label: String, val dnsEvents: Int, val flows: List<com.firewalldns.engine.monitor.ActiveFlowSnapshot>)
 
 private data class MindMapNode(
     val id: String,
@@ -114,7 +120,23 @@ fun ThreatMapScreen(
     val catalog = remember { ThreatKnowledgeGraph.catalogSnapshot() }
     val observedApps = logs.map { it.appName }
         .filter { it.isNotBlank() && it != "Sistema / DNS" }.distinct()
-    val nodes = remember(logs, customBlock, customAllow, tunMetrics, vpnRunning,
+    val appRoutes = remember(logs, tunMetrics.activeFlows) {
+        val logUids = logs.filter { it.uid >= 0 }.map { it.uid }
+        val flowUids = tunMetrics.activeFlows.mapNotNull { it.identity.appUid }
+        (logUids + flowUids).distinct().sorted().map { uid ->
+            val appLogs = logs.filter { it.uid == uid }
+            val appFlows = tunMetrics.activeFlows.filter { it.identity.appUid == uid }
+            SocApplicationRoute(
+                uid,
+                appLogs.firstOrNull { it.appName.isNotBlank() && it.appName != "Sistema / DNS" }?.appName
+                    ?: appFlows.firstOrNull { !it.identity.appPackage.isNullOrBlank() }?.identity?.appPackage
+                    ?: "Aplicación UID $uid",
+                appLogs.size,
+                appFlows
+            )
+        }
+    }
+    val nodes = remember(logs, customBlock, customAllow, tunMetrics, vpnRunning, appRoutes,
         smartModeEnabled, observationModeEnabled, catalog) {
         listOf(
             MindMapNode("core", "FIREWALLDNS", "Servicio VPN", if (vpnRunning) "ACTIVO" else "DETENIDO",
@@ -150,8 +172,8 @@ fun ThreatMapScreen(
             MindMapNode("upstream", "RESOLVERS", "DNS de red física",
                 tunMetrics.upstreamResolverRefreshes.toString(),
                 0.55f, -0.95f, 0.65f, Color(0xFF68D9A5)),
-            MindMapNode("apps", "APLICACIONES", "Apps identificadas por DNS / UID",
-                observedApps.size.toString(), -0.55f, -0.95f, 0.65f, Color(0xFF58D6B0))
+            MindMapNode("apps", "APLICACIONES", "Aplicaciones identificadas por UID / flujos",
+                appRoutes.size.toString(), -0.55f, -0.95f, 0.65f, Color(0xFF58D6B0))
         )
     }
     BackHandler(enabled = isVisible && section != "map") { section = "map" }
@@ -171,13 +193,14 @@ fun ThreatMapScreen(
                     lastFlowEventAtEpochMs = tunMetrics.lastFlowEventAtEpochMs,
                     metrics = tunMetrics,
                     activeFlowCount = tunMetrics.flowsActive,
+                    appRoutes = appRoutes,
                     vpnRunning = vpnRunning
                 ) { id ->
                     selectedMapNode = id
                 }
             }
             item {
-                SocArchitectureLayers(observedApps = observedApps.size, metrics = tunMetrics)
+                SocArchitectureLayers(observedApps = appRoutes.size, metrics = tunMetrics)
             }
             item { SocKpiGrid(metrics = tunMetrics) }
             item { SocPolicyDiagnostics(metrics = tunMetrics) }
@@ -456,6 +479,7 @@ private fun ThreeDimensionalMindMap(
     lastFlowEventAtEpochMs: Long,
     metrics: FirewallDnsTrafficMetrics.Snapshot,
     activeFlowCount: Long,
+    appRoutes: List<SocApplicationRoute>,
     vpnRunning: Boolean,
     onSelectNode: (String) -> Unit
 ) {
@@ -468,6 +492,10 @@ private fun ThreeDimensionalMindMap(
         label = "soc-3d-camera-rotation"
     )
     val latestRotation by rememberUpdatedState(rotation)
+    val topologyPulse by orbit.animateFloat(0f, 1f,
+        animationSpec = infiniteRepeatable(tween(2200, easing = LinearEasing), RepeatMode.Restart),
+        label = "soc-topology-edge-pulse"
+    )
     val activePulse by orbit.animateFloat(
         initialValue = .88f,
         targetValue = 1f,
@@ -494,6 +522,7 @@ private fun ThreeDimensionalMindMap(
     val selectedRoute = remember(selectedNode, routeTargetNodeId) {
         directedNodeRoute(selectedNode, routeTargetNodeId).orEmpty()
     }
+    var selectedAppUid by remember { mutableStateOf<Int?>(null) }
     val background = MaterialTheme.colorScheme.surface
     val lineColor = MaterialTheme.colorScheme.outlineVariant
     val onSurface = MaterialTheme.colorScheme.onSurface
@@ -518,6 +547,15 @@ private fun ThreeDimensionalMindMap(
             }
             Canvas(
                 Modifier.fillMaxWidth().height(390.dp)
+                    .semantics {
+                        contentDescription = "Mapa SOC tridimensional. Usa las acciones accesibles para seleccionar un nodo."
+                        customActions = nodes.map { node ->
+                            CustomAccessibilityAction("Seleccionar nodo ${node.label}") {
+                                onSelectNode(node.id)
+                                true
+                            }
+                        }
+                    }
                     .pointerInput(Unit) {
                         detectTapGestures { tap ->
                             val hit = nodes.map { node ->
@@ -525,7 +563,7 @@ private fun ThreeDimensionalMindMap(
                                 val dx = point.x - tap.x
                                 val dy = point.y - tap.y
                                 node to (dx * dx + dy * dy)
-                            }.filter { it.second < 46f * 46f }
+                            }.filter { it.second < (48f * density) * (48f * density) }
                                 .minByOrNull { it.second }
                             hit?.first?.let { onSelectNode(it.id) }
                         }
@@ -558,9 +596,9 @@ private fun ThreeDimensionalMindMap(
                     }
 
                     val byId = nodes.associateBy { it.id }
-                    architectureEdges.forEach { edge ->
-                        val from = byId[edge.from] ?: return@forEach
-                        val to = byId[edge.to] ?: return@forEach
+                    architectureEdges.forEachIndexed { edgeIndex, edge ->
+                        val from = byId[edge.from] ?: return@forEachIndexed
+                        val to = byId[edge.to] ?: return@forEachIndexed
                         val begin = projected.getValue(from)
                         val finish = projected.getValue(to)
                         val isDnsRoute = edge.from == "dns" && edge.to == "decisions"
@@ -590,6 +628,17 @@ private fun ThreeDimensionalMindMap(
                             else -> to.tint.copy(alpha = .24f).toArgb()
                         }
                         canvas.drawLine(begin.x, begin.y, finish.x, finish.y, basePaint)
+
+                        // Continuous, subtle topology pulse: visual architecture, not packet traffic.
+                        val topologyProgress = (topologyPulse + edgeIndex * .173f) % 1f
+                        val topologyX = begin.x + (finish.x - begin.x) * topologyProgress
+                        val topologyY = begin.y + (finish.y - begin.y) * topologyProgress
+                        val topologyTint = if (isSelectedRouteEdge) Color(0xFF42D9FF) else Color(0xFF8AA8C8)
+                        basePaint.style = Paint.Style.FILL
+                        basePaint.color = topologyTint.copy(alpha = if (isSelectedRouteEdge) .95f else .62f).toArgb()
+                        if (isSelectedRouteEdge) basePaint.setShadowLayer(7f * density, 0f, 0f, topologyTint.toArgb())
+                        canvas.drawCircle(topologyX, topologyY, (if (isSelectedRouteEdge) 3.2f else 2.1f) * density, basePaint)
+                        basePaint.clearShadowLayer()
 
                         // This short-lived marker corresponds to the timestamped DNS decision event.
                         // It is not a packet and never loops when the engine is idle.
@@ -635,10 +684,18 @@ private fun ThreeDimensionalMindMap(
                             else -> false
                         }
                         basePaint.style = Paint.Style.FILL
-                        basePaint.color = node.tint.copy(alpha = if (nodeActive) .22f else .035f).toArgb()
-                        canvas.drawCircle(point.x, point.y, nodeRadius * if (nodeActive) 2.8f * activePulse else 1.7f, basePaint)
-                        basePaint.color = node.tint.copy(alpha = if (nodeActive) .34f else .10f).toArgb()
-                        canvas.drawCircle(point.x, point.y, nodeRadius * if (nodeActive) 1.65f * activePulse else 1.25f, basePaint)
+                        basePaint.color = node.tint.copy(alpha = if (nodeActive) .22f else .055f).toArgb()
+                        canvas.drawCircle(
+                            point.x, point.y,
+                            nodeRadius * (if (nodeActive) 2.8f else 1.55f) * activePulse,
+                            basePaint
+                        )
+                        basePaint.color = node.tint.copy(alpha = if (nodeActive) .34f else .12f).toArgb()
+                        canvas.drawCircle(
+                            point.x, point.y,
+                            nodeRadius * (if (nodeActive) 1.65f else 1.18f) * activePulse,
+                            basePaint
+                        )
                         basePaint.color = node.tint.copy(alpha = if (nodeActive) 1f else .14f).toArgb()
                         if (nodeActive) basePaint.setShadowLayer(12f, 0f, 4f, node.tint.copy(alpha = .75f).toArgb())
                         canvas.drawCircle(point.x, point.y, nodeRadius * if (isSelected) 1.18f else 1f, basePaint)
@@ -663,10 +720,13 @@ private fun ThreeDimensionalMindMap(
                 selectedNode = selectedNode,
                 targetNode = routeTargetNodeId,
                 route = selectedRoute,
+                appRoutes = appRoutes,
+                selectedAppUid = selectedAppUid,
+                onAppSelected = { selectedAppUid = it },
                 onTargetSelected = { routeTargetNodeId = it }
             )
             Text(
-                "La cámara mantiene una órbita 3D de la arquitectura. La ruta resaltada sigue las conexiones dirigidas del mapa; los pulsos móviles aparecen sólo al recibirse eventos reales y no representan paquetes individuales.",
+                "La cámara mantiene una órbita 3D. Los pulsos tenues recorren todas las conexiones como guía visual de topología; los marcadores de eventos representan actividad observada, no paquetes individuales.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -680,6 +740,9 @@ private fun NodeRouteInspector(
     selectedNode: String,
     targetNode: String,
     route: List<String>,
+    appRoutes: List<SocApplicationRoute>,
+    selectedAppUid: Int?,
+    onAppSelected: (Int) -> Unit,
     onTargetSelected: (String) -> Unit,
 ) {
     val byId = nodes.associateBy { it.id }
@@ -698,6 +761,48 @@ private fun NodeRouteInspector(
             Text("SALIDA", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
             Text(outgoing.joinToString("  ·  ") { it.label }.ifBlank { "Sin conexiones de salida definidas" },
                 style = MaterialTheme.typography.bodySmall)
+            if (selectedNode == "apps") {
+                Text("APLICACIÓN / UID", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                if (appRoutes.isEmpty()) {
+                    Text("No hay aplicaciones con UID identificable en los eventos DNS o flujos activos.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    appRoutes.take(8).chunked(2).forEach { group ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                            group.forEach { app ->
+                                FilterChip(
+                                    selected = selectedAppUid == app.uid || (selectedAppUid == null && appRoutes.firstOrNull()?.uid == app.uid),
+                                    onClick = { onAppSelected(app.uid) },
+                                    label = { Text(app.label.take(15) + " · " + app.uid, style = MaterialTheme.typography.labelSmall) }
+                                )
+                            }
+                        }
+                    }
+                    val selectedApp = appRoutes.firstOrNull { it.uid == selectedAppUid } ?: appRoutes.firstOrNull()
+                    if (selectedApp != null) {
+                        Text(
+                            "${selectedApp.label} · UID ${selectedApp.uid} · DNS ${selectedApp.dnsEvents} · FLUJOS ACTIVOS ${selectedApp.flows.size}",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        if (selectedApp.flows.isEmpty()) {
+                            Text("Sin flujos activos identificados para esta aplicación en este instante.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            selectedApp.flows.take(4).forEach { flow ->
+                                Text(
+                                    "${flow.identity.protocol.name} · ${flow.identity.destinationAddress}:${flow.identity.destinationPort} · TX ${flow.bytesSent} B / RX ${flow.bytesReceived} B",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+                Text("La aplicación se identifica por UID. El recorrido muestra la topología de red; los flujos listados son observaciones reales independientes.",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             Text("SELECCIONA UN DESTINO", style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold)
             nodes.filter { it.id != selectedNode }.chunked(3).forEach { group ->
