@@ -73,8 +73,6 @@ app/src/main/java/com/firewall/dns/
 │   └── theme/         # Paleta clara/oscura, tipografía y formas (Theme)
 └── MainActivity.kt    # Punto de entrada, permisos de red/notificaciones y visor de fallos
 
-## Diagnóstico integrado del motor
+## Topología SOC integrada
 
-El diagnóstico se ejecuta desde la pantalla **Diagnóstico** de FirewallDNS; no requiere instalar una aplicación adicional ni iniciar una segunda VPN. La pantalla consulta métricas en vivo del servicio TUN productivo. Las pruebas manuales de Rust/JNI y DNS/TCP upstream fueron retiradas; la conectividad real se valida con pruebas de tráfico por el TUN y las métricas de Firestack/gVisor.
-
-Desde esa pantalla puedes compartir el informe JSON. Los contadores son acumulativos del proceso/servicio y deben interpretarse junto con el estado de la VPN y el momento de la prueba. Consulta [docs/DIAGNOSTIC_APP.md](docs/DIAGNOSTIC_APP.md) para conocer el alcance y las limitaciones. El antiguo módulo companion queda fuera del flujo y no es necesario instalarlo.
+El mapa SOC forma parte de FirewallDNS y utiliza eventos y métricas agregadas de la ruta productiva Firestack/gVisor. Las relaciones arquitectónicas se distinguen de los recorridos observados: solo se muestran pulsos cuando existe un evento o cambio de métrica que los respalde. No se instala una aplicación companion ni se incluye una pantalla de diagnóstico independiente.
