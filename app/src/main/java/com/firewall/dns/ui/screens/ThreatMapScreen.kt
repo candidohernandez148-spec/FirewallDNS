@@ -207,7 +207,8 @@ fun ThreatMapScreen(
             }
         }
     } else {
-        Column(Modifier.fillMaxSize().pointerInput(section) {
+        Column(Modifier.fillMaxSize().pointerInput(section, isVisible) {
+            if (!isVisible) return@pointerInput
             val backEdgePx = 32.dp.toPx()
             val backThresholdPx = 72.dp.toPx()
             val touchSlop = viewConfiguration.touchSlop
