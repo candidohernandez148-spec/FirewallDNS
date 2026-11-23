@@ -7,6 +7,7 @@ import androidx.work.workDataOf
 import dev.ffmpegkit.llama.Llama
 import dev.ffmpegkit.llama.LlamaConfig
 import com.firewall.dns.data.repository.FirewallRepository
+import com.firewall.dns.domain.ai.LocalAiPolicyGate
 import java.io.File
 import java.io.FileOutputStream
 import java.io.RandomAccessFile
@@ -165,7 +166,10 @@ class LocalAiAnalysisWorker(context: Context, params: WorkerParameters) : Corout
                 if (analysis == null) {
                     LocalAiRuntime.writeState(applicationContext, "Qwen3 ejecutó inferencia · respuesta no válida; DNS sigue protegido")
                 } else {
-                    analysis.recommendations.forEach { FirewallRepository.applyLocalAiSuggestion(it) }
+                    val observedDomains = FirewallRepository.logs.value.mapNotNull { LocalAiPolicyGate.normalizeDomain(it.domain) }.toSet()
+                    analysis.recommendations
+                        .filter { it.domain in observedDomains }
+                        .forEach { FirewallRepository.applyLocalAiSuggestion(it) }
                     LocalAiRuntime.writeState(
                         applicationContext,
                         "Qwen3 operativo · análisis completado",
