@@ -615,7 +615,6 @@ private fun ThreeDimensionalMindMap(
                         val begin = projected.getValue(from)
                         val finish = projected.getValue(to)
                         val edgeEventAt = when (edge.from + "->" + edge.to) {
-                            "apps->tun_in" -> lastFlowEventAtEpochMs
                             "tun_in->core" -> metrics.tunRxChangeObservedAtEpochMs
                             "core->firestack" -> lastFlowEventAtEpochMs
                             "firestack->nic" -> metrics.nicChangeObservedAtEpochMs
@@ -624,7 +623,7 @@ private fun ThreeDimensionalMindMap(
                             "ip->udp" -> metrics.udpChangeObservedAtEpochMs
                             "ip->icmp" -> metrics.icmpChangeObservedAtEpochMs
                             "ip->fwd" -> metrics.forwardChangeObservedAtEpochMs
-                            "tcp->dns", "udp->dns", "dns->decisions" -> lastDnsDecisionAtEpochMs
+                            "dns->decisions" -> lastDnsDecisionAtEpochMs
                             "firestack->tun_out" -> metrics.tunTxChangeObservedAtEpochMs
                             else -> 0L
                         }
