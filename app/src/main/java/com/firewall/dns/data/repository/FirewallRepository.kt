@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import com.firewall.dns.data.local.BlocklistDataSource
 import com.firewall.dns.data.local.BlocklistSnapshot
 import com.firewall.dns.data.local.PreferencesDataSource
+import com.firewall.dns.domain.ai.LocalAiEvidenceBuilder
 import com.firewall.dns.domain.engine.BlocklistSourcePolicy
 import com.firewall.dns.domain.engine.BuiltInThreatDomains
 import com.firewall.dns.domain.engine.AppFirewallManager
@@ -360,6 +361,21 @@ object FirewallRepository {
             _cacheInvalidateEvent.tryEmit(Unit)
             snapshot.summary
         }
+    }
+
+    /**
+     * Produces a bounded, local-only evidence prompt for the optional on-device AI.
+     * Reads one immutable blocklist snapshot and the current persisted activity view.
+     * This method is never called from the TUN or DNS decision path.
+     */
+    fun buildLocalAiSecurityPrompt(): String {
+        val snapshot = activeBlocklistSnapshot
+        return LocalAiEvidenceBuilder.buildPrompt(
+            logs = _logs.value.toList(),
+            blocklist = snapshot,
+            customBlocked = customBlockSet.toSet(),
+            customAllowed = customAllowSet.toSet()
+        )
     }
 
     /** Exporta un snapshot inmutable para la autoridad única FirewallDNS-Engine. */
