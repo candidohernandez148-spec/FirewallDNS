@@ -17,6 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -64,8 +65,16 @@ fun ProtectionHubScreen(
     isVisible: Boolean = true,
 ) {
     var section by remember { mutableIntStateOf(0) }
-    BackHandler(enabled = isVisible && section > 0) { section = (section - 1).coerceAtLeast(0) }
-    Column(Modifier.fillMaxSize().pointerInput(section) {
+    var appDetailOpen by remember { mutableStateOf(false) }
+    fun selectSection(next: Int) {
+        section = next
+        if (next != 1) appDetailOpen = false
+    }
+    BackHandler(enabled = isVisible && section > 0 && !appDetailOpen) {
+        selectSection((section - 1).coerceAtLeast(0))
+    }
+    Column(Modifier.fillMaxSize().pointerInput(section, isVisible, appDetailOpen) {
+        if (!isVisible || appDetailOpen) return@pointerInput
         val backEdgePx = 32.dp.toPx()
         val backThresholdPx = 72.dp.toPx()
         val touchSlop = viewConfiguration.touchSlop
@@ -106,9 +115,9 @@ fun ProtectionHubScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = section == 0, onClick = { section = 0 }, label = { Text("DNS y listas") })
-                FilterChip(selected = section == 1, onClick = { section = 1 }, label = { Text("Aplicaciones") })
-                FilterChip(selected = section == 2, onClick = { section = 2 }, label = { Text("Flujos TUN") })
+                FilterChip(selected = section == 0, onClick = { selectSection(0) }, label = { Text("DNS y listas") })
+                FilterChip(selected = section == 1, onClick = { selectSection(1) }, label = { Text("Aplicaciones") })
+                FilterChip(selected = section == 2, onClick = { selectSection(2) }, label = { Text("Flujos TUN") })
             }
         }
         if (section == 0) {
@@ -143,7 +152,8 @@ fun ProtectionHubScreen(
                 onToggleExcludedApp = onToggleExcludedApp,
                 onOpenBatteryOpt = onOpenBatteryOpt,
                 onOpenVpnSettings = onOpenVpnSettings,
-                isVisible = isVisible
+                isVisible = isVisible,
+                onAppDetailVisibilityChanged = { appDetailOpen = it }
             )
         } else {
             FlowRulesScreen(rules = flowRules, onAdd = onAddFlowRule, onRemove = onRemoveFlowRule)
