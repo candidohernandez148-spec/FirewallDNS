@@ -7,6 +7,9 @@ import com.firewall.dns.data.local.BlocklistDataSource
 import com.firewall.dns.data.local.BlocklistSnapshot
 import com.firewall.dns.data.local.PreferencesDataSource
 import com.firewall.dns.domain.ai.LocalAiEvidenceBuilder
+import com.firewall.dns.domain.ai.LocalAiDomainSuggestion
+import com.firewall.dns.domain.ai.LocalAiPolicyGate
+import com.firewall.dns.domain.ai.LocalAiPolicyOutcome
 import com.firewall.dns.domain.engine.BlocklistSourcePolicy
 import com.firewall.dns.domain.engine.BuiltInThreatDomains
 import com.firewall.dns.domain.engine.AppFirewallManager
@@ -73,6 +76,8 @@ object FirewallRepository {
     val customBlockList: StateFlow<List<String>> = _customBlockList.asStateFlow()
 
     private val _customAllowList = MutableStateFlow<List<String>>(emptyList())
+    private val _localAiBlockedDomains = MutableStateFlow<List<String>>(emptyList())
+    val localAiBlockedDomains: StateFlow<List<String>> = _localAiBlockedDomains.asStateFlow()
     private val _networkFlowRules = MutableStateFlow<List<NetworkFlowRule>>(emptyList())
     val networkFlowRules: StateFlow<List<NetworkFlowRule>> = _networkFlowRules.asStateFlow()
     val customAllowList: StateFlow<List<String>> = _customAllowList.asStateFlow()
@@ -114,6 +119,7 @@ object FirewallRepository {
     )
     private val customBlockSet = ConcurrentHashMap.newKeySet<String>()
     private val customAllowSet = ConcurrentHashMap.newKeySet<String>()
+    private val localAiBlockedSet = ConcurrentHashMap.newKeySet<String>()
     private val activitySaveScheduled = AtomicBoolean(false)
     private val activityVersion = AtomicLong(0L)
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -167,6 +173,9 @@ object FirewallRepository {
             customAllowSet.clear()
             customAllowSet.addAll(prefsDataSource.getCustomAllowSet())
             _customAllowList.value = customAllowSet.sorted()
+            localAiBlockedSet.clear()
+            localAiBlockedSet.addAll(prefsDataSource.getLocalAiBlockedSet())
+            _localAiBlockedDomains.value = localAiBlockedSet.sorted()
             _networkFlowRules.value = prefsDataSource.getNetworkFlowRules().filter { rule ->
                 runCatching { NetworkFlowPolicyEngine(listOf(rule)) }.isSuccess
             }
@@ -373,7 +382,7 @@ object FirewallRepository {
         return LocalAiEvidenceBuilder.buildPrompt(
             logs = _logs.value.toList(),
             blocklist = snapshot,
-            customBlocked = customBlockSet.toSet(),
+            customBlocked = customBlockSet.toSet() + localAiBlockedSet.toSet(),
             customAllowed = customAllowSet.toSet()
         )
     }
@@ -389,6 +398,11 @@ object FirewallRepository {
             customBlockSet.forEach { domain ->
                 add(PolicyRule("user-block:$domain", domain, action = PolicyAction.BLOCK,
                     source = RuleSource.USER, priority = 90_000, reason = "custom_block"))
+            }
+            localAiBlockedSet.forEach { domain ->
+                add(PolicyRule("local-ai-block:$domain", domain, action = PolicyAction.BLOCK,
+                    source = RuleSource.MANAGED, priority = 20_000,
+                    reason = "local_ai_advertising_or_tracker"))
             }
             snapshot.importantExceptions.forEach { domain ->
                 add(PolicyRule("list-important-exception:$domain", domain, action = PolicyAction.ALLOW,
@@ -479,7 +493,7 @@ object FirewallRepository {
         val baseEval = RuleEvaluator.evaluate(
             domain = domain,
             customAllow = customAllowSet,
-            customBlock = customBlockSet,
+            customBlock = customBlockSet + localAiBlockedSet,
             hostExceptions = activeRules.exceptions - activeRules.importantExceptions,
             hostBlock = activeRules.blocked - activeRules.importantBlocked,
             importantExceptions = activeRules.importantExceptions,
@@ -515,6 +529,10 @@ object FirewallRepository {
         val other = if (block) customAllowSet else customBlockSet
         set.add(clean)
         other.remove(clean)
+        // A direct user correction supersedes and removes any AI-managed decision.
+        localAiBlockedSet.remove(clean)
+        prefsDataSource.saveLocalAiBlockedSet(localAiBlockedSet.toSet())
+        _localAiBlockedDomains.value = localAiBlockedSet.sorted()
         prefsDataSource.saveCustomBlockSet(customBlockSet.toSet())
         prefsDataSource.saveCustomAllowSet(customAllowSet.toSet())
         _customBlockList.value = customBlockSet.sorted()
@@ -523,10 +541,41 @@ object FirewallRepository {
         _cacheInvalidateEvent.tryEmit(Unit)
     }
 
+    /**
+     * Applies a validated local-model recommendation to the existing DNS policy.
+     * This entry point is called only by the local AI coordinator, never by TUN callbacks.
+     */
+    fun applyLocalAiSuggestion(suggestion: LocalAiDomainSuggestion): LocalAiPolicyOutcome {
+        val outcome = LocalAiPolicyGate.resolve(
+            suggestion = suggestion,
+            manualAllowed = customAllowSet.toSet(),
+            manualBlocked = customBlockSet.toSet()
+        )
+        if (outcome == LocalAiPolicyOutcome.APPLY_AI_BLOCK) {
+            val domain = LocalAiPolicyGate.normalizeDomain(suggestion.domain)
+                ?: return LocalAiPolicyOutcome.OBSERVE_ONLY
+            if (domain !in customAllowSet && domain !in customBlockSet) {
+                localAiBlockedSet.add(domain)
+                prefsDataSource.saveLocalAiBlockedSet(localAiBlockedSet.toSet())
+                _localAiBlockedDomains.value = localAiBlockedSet.sorted()
+                _cacheInvalidateEvent.tryEmit(Unit)
+            }
+        }
+        return outcome
+    }
+
+    /** User correction: a manual rule replaces any AI-managed decision for this domain. */
+    fun correctLocalAiDecision(domain: String, block: Boolean) {
+        setCustomRule(domain, block)
+    }
+
     fun removeCustomRule(domain: String) {
         val clean = RuleEvaluator.normalizeManualDomain(domain) ?: return
         customBlockSet.remove(clean)
         customAllowSet.remove(clean)
+        localAiBlockedSet.remove(clean)
+        prefsDataSource.saveLocalAiBlockedSet(localAiBlockedSet.toSet())
+        _localAiBlockedDomains.value = localAiBlockedSet.sorted()
         prefsDataSource.saveCustomBlockSet(customBlockSet.toSet())
         prefsDataSource.saveCustomAllowSet(customAllowSet.toSet())
         _customBlockList.value = customBlockSet.sorted()
