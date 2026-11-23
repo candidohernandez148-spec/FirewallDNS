@@ -68,9 +68,12 @@ import kotlinx.coroutines.launch
 
 private data class MindMapEdge(val from: String, val to: String)
 
+// Logical architecture only. Arrows describe component relationships and direction,
+// not a packet-by-packet route or proof that every flow traverses every component.
 private val architectureEdges = listOf(
-    MindMapEdge("core", "tun"),
-    MindMapEdge("tun", "firestack"),
+    MindMapEdge("apps", "tun_in"),
+    MindMapEdge("tun_in", "core"),
+    MindMapEdge("core", "firestack"),
     MindMapEdge("firestack", "nic"),
     MindMapEdge("nic", "ip"),
     MindMapEdge("ip", "tcp"),
@@ -81,11 +84,13 @@ private val architectureEdges = listOf(
     MindMapEdge("udp", "dns"),
     MindMapEdge("dns", "decisions"),
     MindMapEdge("core", "threats"),
+    MindMapEdge("core", "rules"),
     MindMapEdge("threats", "decisions"),
     MindMapEdge("rules", "decisions"),
-    MindMapEdge("apps", "tun"),
     MindMapEdge("decisions", "upstream"),
-    MindMapEdge("decisions", "tun")
+    MindMapEdge("upstream", "firestack"),
+    MindMapEdge("nic", "firestack"),
+    MindMapEdge("firestack", "tun_out")
 )
 
 private data class SocApplicationRoute(val uid: Int, val label: String, val dnsEvents: Int, val flows: List<com.firewalldns.engine.monitor.ActiveFlowSnapshot>)
@@ -145,40 +150,51 @@ fun ThreatMapScreen(
     val nodes = remember(logs, customBlock, customAllow, tunMetrics, vpnRunning, appRoutes,
         smartModeEnabled, observationModeEnabled, catalog) {
         listOf(
-            MindMapNode("core", "FIREWALLDNS", "Servicio VPN", if (vpnRunning) "ACTIVO" else "DETENIDO",
+            MindMapNode("core", "FIREWALLDNS", "Servicio VPN · coordinación del túnel",
+                if (vpnRunning) "ACTIVO" else "DETENIDO",
                 0f, 0f, 0f, Color(0xFF42D9FF)),
-            MindMapNode("tun", "TUN", "Interfaz VPN · entrada / salida", "${tunMetrics.tunRxBytes} / ${tunMetrics.tunTxBytes}",
-                -0.90f, -0.55f, 0.00f, Color(0xFF58D6B0)),
+            MindMapNode("tun_in", "TUN ENTRADA", "Bytes leídos desde Android hacia el servicio VPN",
+                "${tunMetrics.tunRxBytes} RX",
+                -0.95f, -0.48f, 0.00f, Color(0xFF58D6B0)),
+            MindMapNode("tun_out", "TUN SALIDA", "Bytes escritos por el servicio hacia Android",
+                "${tunMetrics.tunTxBytes} TX",
+                0.95f, -0.48f, 0.00f, Color(0xFF58D6B0)),
             MindMapNode("firestack", "FIRESTACK", "Pila de red gVisor",
                 if (!vpnRunning) "DETENIDO" else if (tunMetrics.firestackActive > 0) "ACTIVO" else "SIN CONFIRMAR",
-                -0.92f, -0.20f, -0.38f, Color(0xFF4EA5FF)),
-            MindMapNode("nic", "NIC", "Interfaz interna Firestack", "${tunMetrics.nicRxPackets} / ${tunMetrics.nicTxPackets}",
-                -1.00f, 0.10f, 0.40f, Color(0xFF68D9A5)),
-            MindMapNode("ip", "IP", "Contadores agregados IPv4 + IPv6", "${tunMetrics.ipPacketsReceived} / ${tunMetrics.ipPacketsSent}",
+                -0.45f, -0.20f, -0.38f, Color(0xFF4EA5FF)),
+            MindMapNode("nic", "NIC", "Interfaz virtual interna de Firestack · paquetes RX / TX",
+                "${tunMetrics.nicRxPackets} / ${tunMetrics.nicTxPackets}",
+                -1.00f, 0.12f, 0.40f, Color(0xFF68D9A5)),
+            MindMapNode("ip", "IP", "Contadores agregados IPv4 + IPv6 · RX / TX",
+                "${tunMetrics.ipPacketsReceived} / ${tunMetrics.ipPacketsSent}",
                 -0.70f, 0.70f, 0.20f, Color(0xFF78A8FF)),
-            MindMapNode("tcp", "TCP", "Segmentos RX / TX", "${tunMetrics.tcpSegmentsReceived} / ${tunMetrics.tcpSegmentsSent}",
+            MindMapNode("tcp", "TCP", "Segmentos recibidos / enviados",
+                "${tunMetrics.tcpSegmentsReceived} / ${tunMetrics.tcpSegmentsSent}",
                 -1.00f, 1.00f, -0.50f, Color(0xFF42D9FF)),
-            MindMapNode("udp", "UDP", "Datagramas RX / TX", "${tunMetrics.udpPacketsReceived} / ${tunMetrics.udpPacketsSent}",
+            MindMapNode("udp", "UDP", "Datagramas recibidos / enviados",
+                "${tunMetrics.udpPacketsReceived} / ${tunMetrics.udpPacketsSent}",
                 -0.30f, 1.00f, -0.80f, Color(0xFF58D6B0)),
-            MindMapNode("icmp", "ICMP", "Mensajes RX · IPv4 + IPv6", "${tunMetrics.icmpV4Received + tunMetrics.icmpV6Received} RX",
+            MindMapNode("icmp", "ICMP", "Mensajes recibidos · IPv4 + IPv6",
+                "${tunMetrics.icmpV4Received + tunMetrics.icmpV6Received} RX",
                 0.40f, 1.00f, -0.80f, Color(0xFFFFB454)),
-            MindMapNode("fwd", "FWD", "Reenvío IP", "${tunMetrics.ipForwardDrops} drops",
+            MindMapNode("fwd", "REENVÍO IP", "Descartes de reenvío reportados por gVisor",
+                "${tunMetrics.ipForwardDrops} descartes",
                 1.00f, 0.55f, -0.20f, Color(0xFFB69CFF)),
-            MindMapNode("dns", "DNS", "Consultas evaluadas",
+            MindMapNode("dns", "DNS", "Consultas DNS evaluadas por la política",
                 (tunMetrics.dnsBlocked + tunMetrics.dnsObserved + tunMetrics.dnsAllowed).toString(),
                 0.20f, 0.35f, 0.75f, Color(0xFF78A8FF)),
-            MindMapNode("decisions", "DECISIONES", "Bloquear / observar / permitir",
+            MindMapNode("decisions", "DECISIONES DNS", "Resultado de la política DNS",
                 "${tunMetrics.dnsBlocked} / ${tunMetrics.dnsObserved} / ${tunMetrics.dnsAllowed}",
                 1.00f, -0.05f, 0.65f, Color(0xFFFF667D)),
-            MindMapNode("threats", "AMENAZAS", "Catálogo local de referencia",
+            MindMapNode("threats", "REFERENCIAS", "Catálogo local · no implica detección",
                 catalog.size.toString(), 0.25f, 0.75f, 0.90f, Color(0xFFFFB454)),
-            MindMapNode("rules", "REGLAS", "Reglas personalizadas",
+            MindMapNode("rules", "REGLAS", "Reglas personalizadas de bloqueo / permiso",
                 "${customBlock.size} bloqueo · ${customAllow.size} permiso",
                 -0.45f, 0.45f, 0.90f, Color(0xFFB69CFF)),
-            MindMapNode("upstream", "RESOLVERS", "DNS de red física",
+            MindMapNode("upstream", "RESOLVERS", "Cambios detectados en la lista de DNS upstream",
                 tunMetrics.upstreamResolverRefreshes.toString(),
                 0.55f, -0.95f, 0.65f, Color(0xFF68D9A5)),
-            MindMapNode("apps", "APLICACIONES", "Aplicaciones identificadas por UID / flujos",
+            MindMapNode("apps", "APLICACIONES", "Apps identificadas en DNS / flujos observados",
                 appRoutes.size.toString(), -0.55f, -0.95f, 0.65f, Color(0xFF58D6B0))
         )
     }
@@ -493,7 +509,6 @@ private fun ThreeDimensionalMindMap(
 ) {
     // Architecture animation is suspended while the map page is off-screen.
     val rotation = remember { Animatable(0f) }
-    val topologyPulse = remember { Animatable(0f) }
     val activePulse = remember { Animatable(.88f) }
     val latestRotation by rememberUpdatedState(rotation.value)
     LaunchedEffect(isVisible) {
@@ -507,12 +522,6 @@ private fun ThreeDimensionalMindMap(
                 }
                 launch {
                     while (true) {
-                        topologyPulse.animateTo(1f, tween(2200, easing = LinearEasing))
-                        topologyPulse.snapTo(0f)
-                    }
-                }
-                launch {
-                    while (true) {
                         activePulse.animateTo(1f, tween(1100))
                         activePulse.animateTo(.88f, tween(1100))
                     }
@@ -520,7 +529,6 @@ private fun ThreeDimensionalMindMap(
             }
         } else {
             rotation.stop()
-            topologyPulse.stop()
             activePulse.stop()
             activePulse.snapTo(.88f)
         }
@@ -607,20 +615,19 @@ private fun ThreeDimensionalMindMap(
                     }
 
                     val byId = nodes.associateBy { it.id }
-                    architectureEdges.forEachIndexed { edgeIndex, edge ->
-                        val from = byId[edge.from] ?: return@forEachIndexed
-                        val to = byId[edge.to] ?: return@forEachIndexed
+                    architectureEdges.forEach { edge ->
+                        val from = byId[edge.from] ?: return@forEach
+                        val to = byId[edge.to] ?: return@forEach
                         val begin = projected.getValue(from)
                         val finish = projected.getValue(to)
                         val isDnsRoute = edge.from == "dns" && edge.to == "decisions"
-                        val isFlowRoute = edge.from == "core" && edge.to == "tun"
+                        val isFlowRoute = edge.from == "core" && edge.to == "firestack"
                         val touchesSelectedNode = edge.from == selectedNode || edge.to == selectedNode
                         val flowEventRecent = vpnRunning && lastFlowEventAtEpochMs > 0L &&
                             System.currentTimeMillis() - lastFlowEventAtEpochMs in 0L..5000L
                         val routeActive = vpnRunning && (
                             (isDnsRoute && dnsEventRecent) ||
-                            (isFlowRoute && activeFlowCount > 0L) ||
-                            (edge.from == "tun" && activeFlowCount > 0L)
+                            (isFlowRoute && activeFlowCount > 0L)
                         )
                         basePaint.style = Paint.Style.STROKE
                         basePaint.strokeWidth = when {
@@ -634,14 +641,6 @@ private fun ThreeDimensionalMindMap(
                             else -> to.tint.copy(alpha = .24f).toArgb()
                         }
                         canvas.drawLine(begin.x, begin.y, finish.x, finish.y, basePaint)
-
-                        // Continuous, subtle topology pulse: visual architecture, not packet traffic.
-                        val topologyProgress = (topologyPulse.value + edgeIndex * .173f) % 1f
-                        val topologyX = begin.x + (finish.x - begin.x) * topologyProgress
-                        val topologyY = begin.y + (finish.y - begin.y) * topologyProgress
-                        basePaint.style = Paint.Style.FILL
-                        basePaint.color = Color(0xFF8AA8C8).copy(alpha = .62f).toArgb()
-                        canvas.drawCircle(topologyX, topologyY, 2.1f * density, basePaint)
 
                         // This short-lived marker corresponds to the timestamped DNS decision event.
                         // It is not a packet and never loops when the engine is idle.
@@ -674,7 +673,8 @@ private fun ThreeDimensionalMindMap(
                         val nodeRadius = (if (node.id == "core") 17f else 11f) * (.78f + depth * .38f)
                         val isSelected = node.id == selectedNode
                         val nodeActive = vpnRunning && when (node.id) {
-                            "core", "tun" -> true
+                            "core" -> true
+                            "tun_in", "tun_out" -> false
                             "firestack" -> metrics.firestackActive > 0L
                             "nic" -> activeFlowCount > 0L || recent(metrics.nicChangeObservedAtEpochMs)
                             "ip" -> activeFlowCount > 0L || recent(metrics.ipChangeObservedAtEpochMs)
@@ -726,7 +726,7 @@ private fun ThreeDimensionalMindMap(
                 onAppSelected = { selectedAppUid = it }
             )
             Text(
-                "La cámara mantiene una órbita 3D. Los pulsos tenues recorren todas las conexiones como guía visual de topología; los marcadores de eventos representan actividad observada, no paquetes individuales.",
+                "Las líneas muestran relaciones lógicas entre componentes, no una captura de paquetes. Solo se resaltan eventos recientes del monitor; no se simulan rutas ni tráfico.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -752,11 +752,11 @@ private fun NodeRouteInspector(
                 fontWeight = FontWeight.Bold)
             Text(selected.hint, style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("ENTRADA", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-            Text(incoming.joinToString("  ·  ") { it.label }.ifBlank { "Sin conexiones de entrada definidas" },
+            Text("ENTRADA EN EL ESQUEMA", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+            Text(incoming.joinToString("  ·  ") { it.label }.ifBlank { "Sin nodo anterior: punto de inicio de este esquema." },
                 style = MaterialTheme.typography.bodySmall)
-            Text("SALIDA", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-            Text(outgoing.joinToString("  ·  ") { it.label }.ifBlank { "Sin conexiones de salida definidas" },
+            Text("SALIDA EN EL ESQUEMA", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+            Text(outgoing.joinToString("  ·  ") { it.label }.ifBlank { "Sin nodo posterior: punto final de este esquema." },
                 style = MaterialTheme.typography.bodySmall)
             if (selectedNode == "apps") {
                 Text("APLICACIÓN / UID", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
@@ -801,12 +801,12 @@ private fun NodeRouteInspector(
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text(
-                "La topología completa se muestra mediante las conexiones de entrada y salida de cada nodo. La actividad resaltada depende de eventos observados, no de una ruta seleccionada manualmente.",
+                "Este panel describe el esquema lógico del servicio. Las entradas y salidas no son una lista de conexiones activas ni garantizan que cada flujo recorra todos los módulos.",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                "Las conexiones de entrada y salida describen la topología. El resaltado visual de actividad depende de eventos observados y no confirma por sí solo paquetes individuales.",
+                "Los contadores y flujos observados se muestran por separado. Un catálogo de referencias no significa que una amenaza haya sido detectada o bloqueada.",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -835,7 +835,7 @@ private fun SocArchitectureLayers(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 SocLayerTile("PROTECCIÓN", "DNS · reglas · amenazas",
                     metrics.dnsPolicyDecisions.toString(), Color(0xFFFF667D), Modifier.weight(1f))
-                SocLayerTile("RESOLUCIÓN / SOC", "Flujos · actualizaciones resolvers",
+                SocLayerTile("MONITOREO", "Flujos activos · FlowMonitor",
                     metrics.flowsActive.toString(), Color(0xFF68D9A5), Modifier.weight(1f))
             }
             Text("Los valores muestran métricas disponibles; no representan inventario completo de aplicaciones ni paquetes individuales.",
@@ -1101,39 +1101,85 @@ private fun SocTunnelPath(
 ) {
     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("RECORRIDO DEL TÚNEL", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            Text("Contadores acumulados reportados por el servicio; no representan paquetes simultáneos.",
+            Text("DIRECCIÓN DEL TÚNEL Y PROCESAMIENTO", style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold)
+            Text("Son contadores de capas distintas. No se suman entre sí ni representan una secuencia por la que pase cada paquete.",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            val stages = listOf(
-                Triple("ENTRADA TUN", metrics.tunRxBytes, "Bytes leídos desde el descriptor TUN"),
-                Triple("CLASIFICACIÓN IP", "${metrics.ipPacketsReceived} / ${metrics.ipPacketsSent}", "Paquetes IPv4 + IPv6 RX / TX"),
-                Triple("POLÍTICA DNS", "${metrics.dnsBlocked + metrics.dnsObserved + metrics.dnsAllowed}", "Bloquear · observar · permitir"),
-                Triple("FLUJOS", "${metrics.flowsOpened}", "Conexiones abiertas por FlowMonitor"),
-                Triple("SALIDA TUN", metrics.tunTxBytes, "Bytes escritos hacia el descriptor TUN")
+
+            Text("ENTRADA DESDE ANDROID", style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            SocPathMetric(
+                "TUN ENTRADA · RX",
+                metrics.tunRxBytes,
+                "Bytes leídos desde el descriptor TUN por el servicio VPN."
             )
-            stages.forEachIndexed { index, stage ->
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Surface(shape = RoundedCornerShape(9.dp),
-                        color = if (vpnRunning) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant) {
-                        Text("${index + 1}", Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-                            fontWeight = FontWeight.Bold)
-                    }
-                    Column(Modifier.weight(1f).padding(start = 9.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                        Text(stage.first, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                        Text(stage.third, style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Text(stage.second.toString(), style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold)
-                }
-                if (index != stages.lastIndex) {
-                    androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .5f))
-                }
-            }
-            Text("La etapa DNS contabiliza solo las consultas DNS; el resto del tráfico IP continúa por los flujos gestionados por el motor.",
+
+            Text("PROCESAMIENTO DE RED", style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            SocPathMetric(
+                "FIRESTACK / gVisor",
+                if (!vpnRunning) "DETENIDO" else if (metrics.firestackActive > 0L) "ACTIVO" else "SIN CONFIRMAR",
+                "Estado reportado por el adaptador Firestack."
+            )
+            SocPathMetric(
+                "NIC · PAQUETES RX / TX",
+                "${metrics.nicRxPackets} / ${metrics.nicTxPackets}",
+                "Contadores de la interfaz virtual interna."
+            )
+            SocPathMetric(
+                "IP · PAQUETES RX / TX",
+                "${metrics.ipPacketsReceived} / ${metrics.ipPacketsSent}",
+                "Contadores agregados IPv4 + IPv6 de gVisor."
+            )
+            SocPathMetric(
+                "FLUJOS ACTIVOS",
+                metrics.flowsActive.toString(),
+                "Instantánea de FlowMonitor; no equivale al total de paquetes."
+            )
+
+            Text("RAMA DNS · SOLO CONSULTAS DNS", style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            SocPathMetric(
+                "DECISIONES DNS",
+                "${metrics.dnsBlocked} / ${metrics.dnsObserved} / ${metrics.dnsAllowed}",
+                "Bloqueadas / observadas / permitidas. El tráfico que no es DNS no pasa por esta política."
+            )
+            SocPathMetric(
+                "RESOLVERS",
+                metrics.upstreamResolverRefreshes.toString(),
+                "Cambios detectados en la lista de servidores DNS; no es un contador de consultas."
+            )
+
+            Text("SALIDA HACIA ANDROID", style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            SocPathMetric(
+                "TUN SALIDA · TX",
+                metrics.tunTxBytes,
+                "Bytes escritos por el servicio en el descriptor TUN para devolver paquetes a Android."
+            )
+            Text("Los valores son acumulados desde el inicio de los contadores disponibles. La salida TUN no significa que todo el tráfico haya sido permitido: las decisiones DNS bloqueadas se contabilizan aparte.",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+}
+
+@Composable
+private fun SocPathMetric(
+    label: String,
+    value: String,
+    explanation: String,
+) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+            Text(explanation, style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Text(value, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+    }
+    androidx.compose.material3.HorizontalDivider(
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .5f)
+    )
 }
 
 @Composable
@@ -1146,7 +1192,6 @@ private fun LiveMapTelemetry(
         Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                MapStatPill("TUN", "N/D", Color(0xFF1C806B))
                 MapStatPill("DNS", metrics.dnsPolicyDecisions.toString(), Color(0xFF315FA8))
                 MapStatPill("ACTIVOS", metrics.flowsActive.toString(), Color(0xFF7655A8))
                 MapStatPill("VPN", if (vpnRunning) "ON" else "OFF",
