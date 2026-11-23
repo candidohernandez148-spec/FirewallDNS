@@ -27,6 +27,7 @@ Aplicación Android de **firewall virtual local sin permisos root**, construida 
 * **Filtrado DNS y protección de amenazas:**
     * Captura de DNS UDP/TCP por puerto 53 para aplicar listas, reglas propias y ThreatAnalyzer incluso cuando una aplicación consulta un resolver codificado.
     * DNS bloqueado se responde mediante el transporte `BlockAll` de Firestack; los flujos de red bloqueados utilizan su proxy `Block`.
+    * Inspección de alias CNAME y alias DNS HTTPS/SVCB reportados en respuestas reales por Firestack; aplica las reglas existentes al destino canónico sin consultas adicionales.
     * DoT/DoQ se bloquean en puertos estándar configurados. DoH solo se identifica por correlación con dominios de endpoints conocidos; **no se descifra TLS ni se afirma inspección universal de DoH/DoT/DoQ**.
 * **Control de aplicaciones y conexiones:**
     * UID de Firestack y, cuando no está disponible, intento de atribución mediante `ConnectivityManager.getConnectionOwnerUid` en Android 10+.
