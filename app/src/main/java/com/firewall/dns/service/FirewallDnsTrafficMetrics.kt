@@ -23,6 +23,8 @@ object FirewallDnsTrafficMetrics {
 
         val tunRxBytes: String,
         val tunTxBytes: String,
+        val tunRxChangeObservedAtEpochMs: Long,
+        val tunTxChangeObservedAtEpochMs: Long,
         val nicRxPackets: Long,
         val nicTxPackets: Long,
         val nicRxBytes: String,
@@ -148,6 +150,10 @@ object FirewallDnsTrafficMetrics {
 
     private val tunRxBytes = AtomicReference("—")
     private val tunTxBytes = AtomicReference("—")
+    private val tunRxChangeObservedAtEpochMs = AtomicLong()
+    private val tunTxChangeObservedAtEpochMs = AtomicLong()
+    private val tunRxSignature = AtomicReference("")
+    private val tunTxSignature = AtomicReference("")
     private val nicRxPackets = AtomicLong()
     private val nicTxPackets = AtomicLong()
     private val nicRxBytes = AtomicReference("—")
@@ -435,6 +441,8 @@ object FirewallDnsTrafficMetrics {
         if (changed(udpStatsSignature, "${stats.udpReceived}:${stats.udpSent}:${stats.udpReceiveErrors}:${stats.udpDrops}")) udpChangeObservedAtEpochMs.set(observedAt)
         if (changed(icmpStatsSignature, "${stats.icmpV4Received}:${stats.icmpV4Sent}:${stats.icmpV6Received}:${stats.icmpV6Sent}")) icmpChangeObservedAtEpochMs.set(observedAt)
         if (changed(forwardStatsSignature, "${stats.forwardDrops}:${stats.forwardErrors}")) forwardChangeObservedAtEpochMs.set(observedAt)
+        if (changed(tunRxSignature, stats.tunReadBytes)) tunRxChangeObservedAtEpochMs.set(observedAt)
+        if (changed(tunTxSignature, stats.tunWrittenBytes)) tunTxChangeObservedAtEpochMs.set(observedAt)
         tunRxBytes.set(stats.tunReadBytes)
         tunTxBytes.set(stats.tunWrittenBytes)
         nicRxPackets.set(stats.nicRxPackets)
@@ -487,6 +495,8 @@ object FirewallDnsTrafficMetrics {
 
         tunRxBytes = tunRxBytes.get(),
         tunTxBytes = tunTxBytes.get(),
+        tunRxChangeObservedAtEpochMs = tunRxChangeObservedAtEpochMs.get(),
+        tunTxChangeObservedAtEpochMs = tunTxChangeObservedAtEpochMs.get(),
         nicRxPackets = nicRxPackets.get(),
         nicTxPackets = nicTxPackets.get(),
         nicRxBytes = nicRxBytes.get(),
