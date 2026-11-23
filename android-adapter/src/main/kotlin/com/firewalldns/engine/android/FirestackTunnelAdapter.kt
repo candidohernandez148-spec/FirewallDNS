@@ -619,7 +619,7 @@ private class FirewallDNSFirestackBridge(
         // Re-run this answer through Firestack's existing BlockAll DNS transport.
         // This uses the same production blocking path as a direct DNS policy block.
         return DNSOpts().apply {
-            setUID(forPref?.uid?.takeIf { it.isNotBlank() } ?: dnsSummary.uid.orEmpty())
+            setUID(forPref?.getUID()?.takeIf { it.isNotBlank() } ?: dnsSummary.getUID().orEmpty())
             setTIDCSV(Backend.BlockAll)
         }
     }
@@ -681,7 +681,7 @@ internal fun findBlockedCnameTarget(
     val original = DomainNormalizer.normalize(queriedDomain.orEmpty()) ?: return null
     return parseFirestackDomainMetadata(targetsCsv)
         .asSequence()
-        .mapNotNull(DomainNormalizer::normalize)
+        .mapNotNull { DomainNormalizer.normalize(it) }
         .filter { it != original }
         .distinct()
         .map { domain -> CnameTargetPolicyMatch(domain, evaluateDomain(domain)) }
