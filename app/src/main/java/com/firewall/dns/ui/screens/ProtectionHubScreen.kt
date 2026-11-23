@@ -22,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlin.math.abs
 import com.firewall.dns.domain.model.AppInfoItem
 import com.firewall.dns.domain.model.BlocklistDownloadProgress
 import com.firewall.dns.domain.model.FirewallStats
@@ -70,17 +71,22 @@ fun ProtectionHubScreen(
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
             val startedAtBackEdge = down.position.x <= backEdgePx
-            var totalDrag = 0f
+            var totalDragX = 0f
+            var totalDragY = 0f
             while (true) {
                 val event = awaitPointerEvent(PointerEventPass.Initial)
                 val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                totalDrag = change.position.x - down.position.x
-                if (startedAtBackEdge && section > 0 && totalDrag > touchSlop) {
+                totalDragX = change.position.x - down.position.x
+                totalDragY = change.position.y - down.position.y
+                val horizontalBackSwipe = totalDragX > touchSlop && totalDragX > abs(totalDragY)
+                if (startedAtBackEdge && section > 0 && horizontalBackSwipe) {
                     change.consume()
                 }
                 if (!change.pressed) break
             }
-            if (startedAtBackEdge && section > 0 && totalDrag >= backThresholdPx) {
+            if (startedAtBackEdge && section > 0 &&
+                totalDragX >= backThresholdPx && totalDragX > abs(totalDragY)
+            ) {
                 section = (section - 1).coerceAtLeast(0)
             }
         }
