@@ -19,7 +19,9 @@ import com.celzero.firestack.intra.Intra
 import com.celzero.firestack.intra.Mark
 import com.celzero.firestack.intra.PreMark
 import com.celzero.firestack.intra.Tunnel
+import com.firewalldns.engine.core.DomainNormalizer
 import com.firewalldns.engine.core.PolicyAction
+import com.firewalldns.engine.core.PolicyDecision
 import com.firewalldns.engine.core.NetworkFlowDecision
 import com.firewalldns.engine.core.RuleSource
 import com.firewalldns.engine.monitor.FlowMonitorSnapshot
@@ -591,7 +593,36 @@ private class FirewallDNSFirestackBridge(
         summary: DNSSummary?,
         forPref: DNSOpts?,
         unmodifiedipcsv: String?,
-    ): DNSOpts? = null
+    ): DNSOpts? {
+        val dnsSummary = summary ?: return null
+        // Only tunnel-originated answers can be attributed to an Android request.
+        if (dnsSummary.origin != "tunnel") return null
+
+        // Brave-style CNAME uncloaking: inspect aliases already present in the
+        // upstream answer. No extra DNS lookup is issued and the original
+        // OnQuery policy decision is left untouched.
+        val blockedAlias = findBlockedCnameTarget(
+            queriedDomain = dnsSummary.qName,
+            targetsCsv = dnsSummary.targets,
+        ) { target -> engine.evaluateDomain(target) } ?: return null
+
+        runCatching {
+            onDnsDecision(
+                blockedAlias.domain,
+                dnsSummary.qType.toInt(),
+                null, // DNSSummary UID can identify Android's DNS stub, not the originating app.
+                "cname_target_blocked:${blockedAlias.decision.reason}",
+                PolicyAction.BLOCK,
+            )
+        }
+
+        // Re-run this answer through Firestack's existing BlockAll DNS transport.
+        // This uses the same production blocking path as a direct DNS policy block.
+        return DNSOpts().apply {
+            setUID(forPref?.uid?.takeIf { it.isNotBlank() } ?: dnsSummary.uid.orEmpty())
+            setTIDCSV(Backend.BlockAll)
+        }
+    }
 
     override fun onResponse(summary: DNSSummary?) {
         if (summary != null) runCatching {
@@ -631,6 +662,31 @@ private const val MAX_FLOW_DOMAINS = 16
 private const val MAX_DOMAIN_METADATA_CHARS = 4096
 private const val MAX_ENDPOINT_LENGTH = 128
 private const val MAX_FLOW_ID_LENGTH = 128
+
+internal data class CnameTargetPolicyMatch(
+    val domain: String,
+    val decision: PolicyDecision,
+)
+
+/**
+ * Evaluates only answer aliases that differ from the original question.
+ * The caller supplies the existing FirewallDNS policy; weak OBSERVE signals
+ * never become blocks here.
+ */
+internal fun findBlockedCnameTarget(
+    queriedDomain: String?,
+    targetsCsv: String?,
+    evaluateDomain: (String) -> PolicyDecision,
+): CnameTargetPolicyMatch? {
+    val original = DomainNormalizer.normalize(queriedDomain.orEmpty()) ?: return null
+    return parseFirestackDomainMetadata(targetsCsv)
+        .asSequence()
+        .mapNotNull(DomainNormalizer::normalize)
+        .filter { it != original }
+        .distinct()
+        .map { domain -> CnameTargetPolicyMatch(domain, evaluateDomain(domain)) }
+        .firstOrNull { it.decision.action == PolicyAction.BLOCK }
+}
 
 internal fun parseFirestackDomainMetadata(value: String?): List<String> {
     val raw = value.orEmpty()
