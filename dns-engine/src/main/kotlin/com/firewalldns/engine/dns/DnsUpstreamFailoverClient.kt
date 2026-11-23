@@ -1,8 +1,8 @@
 package com.firewalldns.engine.dns
 
 /**
- * Timing and outcome for one resolver attempt. The callback is diagnostic-only;
- * callback failures are isolated from DNS resolution.
+ * Timing and outcome for one resolver attempt. Observer failures are isolated
+ * from DNS resolution.
  */
 data class DnsUpstreamAttempt(
     val resolverIndex: Int,
@@ -69,8 +69,8 @@ class DnsUpstreamFailoverClient(
     }
 
     /**
-     * Forces TCP to the configured protected resolvers for diagnostics only.
-     * This deliberately does not fall back to UDP or consult the response cache.
+     * Forces TCP to the configured protected resolvers without UDP fallback or
+     * response-cache lookup.
      */
     fun exchangeTcp(
         query: ByteArray,
@@ -84,7 +84,7 @@ class DnsUpstreamFailoverClient(
             val attemptResult = upstreams[index].exchangeTcpOnly(query, cancellation)
             val elapsed = System.nanoTime() - started
             try { onAttempt?.invoke(DnsUpstreamAttempt(index, elapsed, attemptResult)) } catch (_: Throwable) {
-                // Diagnostic observers must never change the transport result.
+                // Observers must never change the transport result.
             }
             when (attemptResult) {
                 is DnsUpstreamResult.Success -> return attemptResult
