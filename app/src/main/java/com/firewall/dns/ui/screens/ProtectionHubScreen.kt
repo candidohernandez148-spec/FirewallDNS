@@ -63,6 +63,7 @@ fun ProtectionHubScreen(
     onOpenBatteryOpt: () -> Unit,
     onOpenVpnSettings: () -> Unit,
     isVisible: Boolean = true,
+    aiBlocked: List<String> = emptyList()
 ) {
     var section by remember { mutableIntStateOf(0) }
     var appDetailOpen by remember { mutableStateOf(false) }
@@ -136,7 +137,8 @@ fun ProtectionHubScreen(
                 onRemoveBlocklistUrl = onRemoveBlocklistUrl,
                 onDownloadBlocklist = onDownloadBlocklist,
                 onAddCustomRule = onAddCustomRule,
-                onRemoveCustomRule = onRemoveCustomRule
+                onRemoveCustomRule = onRemoveCustomRule,
+                aiBlocked = aiBlocked
             )
         } else if (section == 1) {
             AppsSettingsScreen(
