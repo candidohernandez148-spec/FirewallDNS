@@ -18,15 +18,19 @@ If the variables or keystore are missing, release configuration intentionally fa
 
 ## GitHub Actions secrets
 
-The release workflow first restores the legacy Actions cache `firewalldns-signing-v1`, which contains the exact JKS/password/alias used by previous published APKs. It uses restore-only mode and never generates a replacement key. This preserves upgrade compatibility when that cache is available.
+The release workflow never restores a signing keystore or password from an Actions cache. Private signing material must not be stored in Actions caches because pull-request workflows may be able to restore caches from the base branch.
 
-For a new or explicitly managed signing identity, configure repository Actions secrets:
-- `KEYSTORE_BASE64`: base64 encoding of the same JKS.
+Configure these repository Actions secrets using the **same JKS and certificate** used for previously distributed APKs:
+- `KEYSTORE_BASE64`: base64 encoding of the existing JKS.
 - `KEYSTORE_PASSWORD`: JKS store password.
-- `KEY_ALIAS`: alias.
-- `KEY_PASSWORD`: private-key password (optional if equal to store password).
+- `KEY_ALIAS`: existing key alias.
+- `KEY_PASSWORD`: private-key password (optional if equal to the store password).
 
-If neither the legacy cache nor a complete supplied JKS is available, Release fails closed. It never falls back to a debug or randomly generated certificate. CI verifies the APK signatures with `apksigner` and compares the SHA-256 certificate digests before uploading artifacts.
+Release signing runs only on trusted non-pull-request executions of `main`. Pull requests still run unit tests; the separate Debug workflow builds the test APK without release credentials. If the signing secrets are absent, the signed Release artifact is deliberately skipped; no replacement key is generated and no debug certificate is substituted.
+
+**Repository maintenance:** delete the legacy Actions cache named `firewalldns-signing-v1` from Settings → Actions → Caches. The workflow no longer reads it, but deleting it removes the old private material from the cache store. If there is any reason to believe an untrusted workflow already restored or exposed that cache, treat the signing key as compromised and assess certificate rotation carefully before changing it, because existing app installations require compatible signing to accept updates.
+
+CI verifies the Release APK signature with `apksigner` before uploading it. The diagnostic APK must continue to use the same release certificate because its provider access is signature-protected.
 
 ## Provider access
 
