@@ -789,6 +789,7 @@ private fun NodeRouteInspector(
     }
 }
 
+@Composable
 private fun SocArchitectureLayers(
     observedApps: Int,
     metrics: FirewallDnsTrafficMetrics.Snapshot,
