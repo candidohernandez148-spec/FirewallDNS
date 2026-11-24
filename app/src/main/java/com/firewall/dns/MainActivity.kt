@@ -386,9 +386,14 @@ fun FirewallApp(
                 .fillMaxSize()
                 .padding(padding),
             key = { page -> page },
-            beyondViewportPageCount = 1
+            // Do not keep neighboring screens composed while idle: Monitor, Threats,
+            // and Protection can hold sizeable state and lists on low-memory devices.
+            beyondViewportPageCount = 0
         ) { page ->
-            when (page) {
+            // Compose only the visible page and the active scroll target. This keeps
+            // heavy screens such as LogsScreen out of the heap until they are opened,
+            // while still allowing the incoming page to render during a swipe.
+            if (page == pagerState.currentPage || page == pagerState.targetPage) when (page) {
                 0 -> SocDashboardScreen(
                     stats = stats,
                     logs = activityLogs,
