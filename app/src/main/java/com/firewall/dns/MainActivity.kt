@@ -393,7 +393,7 @@ fun FirewallApp(
             // Compose only the visible page and the active scroll target. This keeps
             // heavy screens such as LogsScreen out of the heap until they are opened,
             // while still allowing the incoming page to render during a swipe.
-            if (page == pagerState.currentPage || page == pagerState.targetPage) when (page) {
+            if (page in minOf(pagerState.currentPage, pagerState.targetPage)..maxOf(pagerState.currentPage, pagerState.targetPage)) when (page) {
                 0 -> SocDashboardScreen(
                     stats = stats,
                     logs = activityLogs,
