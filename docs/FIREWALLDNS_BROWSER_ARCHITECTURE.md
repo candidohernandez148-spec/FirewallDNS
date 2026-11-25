@@ -1,137 +1,159 @@
-# FirewallDNS Browser — arquitectura de integración Chromium
+# FirewallDNS Browser — arquitectura de integración Chromium/Brave
 
-Estado: propuesta técnica inicial; todavía no representa funciones implementadas.
+Estado: arquitectura técnica seleccionada; implementación funcional pendiente.
 
 ## Objetivo
 
-Crear FirewallDNS Browser como navegador Android basado en Chromium completo (Blink/V8), con interfaz propia inspirada en patrones de usabilidad de Brave/Chrome. El navegador no iniciará `VpnService`, no creará TUN y no añadirá telemetría propia.
+Crear FirewallDNS Browser como navegador Android independiente, basado en Chromium completo y actualizado, con interfaz propia y protecciones inspiradas en Brave Shields. Debe navegar por la conectividad normal de Android, sin iniciar `VpnService`, sin crear TUN y sin telemetría adicional del navegador.
 
-## Restricciones no negociables
+## Decisión de plataforma
 
-- No modificar ni reemplazar el servicio VPN/TUN que ya utiliza la protección global de FirewallDNS.
-- El navegador debe poder navegar directamente con la red Android, incluso cuando el firewall global esté apagado.
+Se adopta **Brave Core para Android como base de integración y referencia de producto**, no Android WebView ni un AAR Chromium arbitrario.
+
+Repositorios upstream:
+- Brave Browser (producto Android y documentación): https://github.com/brave/brave-browser
+- Brave Core (personalizaciones y scripts sobre Chromium): https://github.com/brave/brave-core
+- Brave adblock-rust (motor de reglas de recursos): https://github.com/brave/adblock-rust
+- Chromium (base upstream): https://chromium.googlesource.com/chromium/src
+
+Razones:
+- Brave Core mantiene la integración de Chromium y sus cambios específicos.
+- El flujo upstream documenta inicialización Android con `pnpm run init --target_os=android --target_arch=arm` y compilación Android con `pnpm run build --target_os=android --target_arch=arm`.
+- Brave publica un motor de bloqueo Rust separado (`adblock-rust`) que puede evaluarse e integrarse respetando MPL-2.0 y sus avisos.
+- No se debe copiar la aplicación Brave completa ni habilitar automáticamente servicios, métricas, wallets, rewards, VPN, sincronización o endpoints de Brave. Se seleccionarán componentes abiertos y necesarios, verificando licencias y dependencias transitivas.
+
+La rama Chromium/Brave debe fijarse a una revisión estable identificable. No usar `master` flotante en una compilación de producción. Las actualizaciones se realizan mediante el mecanismo upstream de sincronización, revisión de parches y actualización de dependencias; no se declara "actualizado" sin registrar la revisión Chromium exacta incluida en el artefacto.
+
+## Restricciones de arquitectura
+
+- No modificar ni reemplazar el servicio VPN/TUN que protege el resto del dispositivo.
+- El navegador debe funcionar con FirewallDNS VPN apagado.
 - No crear un segundo motor DNS, motor de reglas, motor de amenazas ni base de conocimiento.
-- Reutilizar las políticas existentes mediante una API de integración explícita y de bajo coste.
-- No afirmar que un dominio, URL o recurso fue bloqueado si Chromium no confirmó que la solicitud se canceló.
-- No registrar historial de navegación, URL completas, consultas ni eventos de telemetría adicionales para diagnóstico.
-- Mantener Chromium y sus componentes de seguridad actualizados; no distribuir una revisión obsoleta.
-- No habilitar depuración remota, interfaces JavaScript genéricas ni puentes inseguros entre páginas web y código nativo.
+- No crear un segundo servicio VPN, proxy global o TUN.
+- No añadir telemetría, analítica de navegación, P3A, informes de uso ni registro adicional de URLs.
+- No almacenar contraseñas en texto claro ni implementar criptografía propia.
+- No ignorar errores TLS/certificados.
+- No afirmar bloqueos que Chromium no haya cancelado realmente.
+- No incorporar servicios propietarios de Brave/Google que requieran claves, cuentas o endpoints sin decisión explícita y revisión de privacidad.
+- Mantener atribuciones, licencias, avisos y modificaciones exigidas por Chromium, Brave Core, Rust y demás dependencias.
 
-## Arquitectura propuesta
+## Arquitectura objetivo
 
 ```
-FirewallDNS Browser (aplicación / módulo Android)
-  ├── UI: barra, búsqueda, pestañas, favoritos, historial, descargas
-  ├── BrowserProfileManager
-  │     ├── perfil normal
-  │     └── perfil privado efímero
-  ├── Chromium Embedder (Chromium Android / Content API)
+FirewallDNS Browser (APK independiente)
+  ├── Interfaz Android propia
+  │     ├── barra de direcciones / buscador
+  │     ├── pestañas / favoritos / historial
+  │     ├── descargas / multimedia / traducción
+  │     └── panel Shields por sitio
+  ├── Perfil normal y perfil privado efímero
+  ├── Chromium + Brave Core Android
   │     ├── Blink + V8
-  │     ├── aislamiento de procesos / sitios
-  │     ├── navegación, recursos, multimedia
-  │     └── interceptación de solicitudes soportada por Chromium
-  ├── BrowserSecurityAdapter (puente pequeño, sin política duplicada)
-  │     ├── evaluación de host y recurso
-  │     ├── resultado: ALLOW / OBSERVE / BLOCK
-  │     └── cancelación de solicitud confirmada
-  └── FirewallDNS Policy Facade
-        ├── RuleEvaluator
-        ├── SmartDecisionEngine
-        ├── ThreatKnowledgeGraph / ThreatAnalyzer
-        └── snapshot inmutable de reglas y listas
+  │     ├── Content / Network Service
+  │     ├── aislamiento de sitios y sandbox
+  │     └── interceptación nativa de solicitudes
+  ├── ShieldsAdapter
+  │     ├── reglas de recursos / filtros compatibles
+  │     ├── mitigaciones de privacidad
+  │     └── cancelación verificable de solicitudes
+  └── FirewallDNS BrowserPolicyAdapter
+        └── fachada de política compartida
+              ├── RuleEvaluator / reglas activas
+              ├── SmartDecisionEngine
+              ├── ThreatKnowledgeGraph / catálogo
+              └── snapshot inmutable de listas
 ```
 
-El navegador usa el motor de red de Chromium para las conexiones web. El adaptador consulta la política compartida de FirewallDNS y aplica la decisión en el punto de interceptación de solicitudes de Chromium. No se debe reenviar el tráfico del navegador por el TUN existente.
+El navegador utiliza el stack de red Chromium sobre la red Android. La fachada consulta reglas/snapshots de FirewallDNS y toma decisiones sobre hosts/recursos antes de permitir la solicitud. El navegador no reenvía el tráfico por el TUN de FirewallDNS.
 
-## Límite crítico: DNS sin VPN
+## Integración real con el motor FirewallDNS
 
-El servicio DNS actual de FirewallDNS está acoplado a la ruta de red del servicio VPN/TUN. Un navegador sin VPN no puede invocar ese transporte como si fuera un resolvedor DNS autónomo. Para obtener filtrado real sin VPN hay que integrar la política en el proceso de resolución/solicitud de Chromium o crear una fachada de política que evalúe hosts antes de cargar recursos, manteniendo el resolvedor de red de Chromium/Android.
+El repositorio actual tiene `RuleEvaluator`, `SmartDecisionEngine`, `ThreatKnowledgeGraph` y `FirewallRepository`. La autoridad de reglas y listas debe permanecer en FirewallDNS.
 
-La primera entrega no debe declarar «DNS integrado» hasta que se haya demostrado en pruebas que:
-1. la consulta/resolución utilizada por Chromium pasa por el punto de control previsto;
-2. BLOCK impide la conexión/solicitud antes de enviar el recurso;
-3. ALLOW conserva la resolución y carga normales;
-4. OBSERVE no bloquea;
-5. DoH/DoT, redirecciones, subrecursos, IPv4/IPv6 y cambios de red tienen comportamiento documentado;
-6. el modo privado no deja datos persistentes.
+La integración debe exponerse como una fachada pequeña, sin que Chromium dependa de clases UI ni del ciclo de vida del servicio VPN:
+- Publicar snapshots inmutables y versionados de reglas/listas.
+- Canonicalizar hostnames con la lógica existente.
+- Traducir el resultado de política a `ALLOW`, `OBSERVE` o `BLOCK`.
+- `OBSERVE` siempre permite la solicitud; nunca cancelar por heurística de observación.
+- `BLOCK` cancela la solicitud en el punto nativo de control de Chromium.
+- Las reglas manuales conservan exactamente la prioridad ya definida por FirewallDNS.
+- No realizar I/O de disco, consultas Room ni operaciones de red en el hilo de interceptación.
+- Caché local de decisiones por versión de snapshot; invalidar al cambiar listas/reglas.
+- Fallo de la fachada: fail-open para señales heurísticas; no mostrar un bloqueo falso. Las reglas explícitas deben tener comportamiento determinista.
+- No reutilizar `FirewallRepository.evaluateDomain` sin revisar sus efectos y dependencias; crear una API pura de evaluación compartida o extraer una fachada que no inicialice VPN, workers, estadísticas ni persistencia de actividad.
 
-No se debe afirmar inspección de DoH/DoT ni filtrado universal de solicitudes si la integración Chromium no expone esos eventos.
+### Límite DNS sin VPN
 
-## Política de decisiones
+El README actual describe el DNS productivo conectado al transporte de Firestack/gVisor y al TUN. Por ello, el navegador sin VPN **no puede afirmar que usa ese transporte DNS**.
 
-- La autoridad de reglas sigue siendo FirewallDNS. No portar ni copiar reglas al navegador.
-- La fachada entrega snapshots inmutables/versionados para evitar consultas a disco en cada recurso.
-- BLOCK solo se aplica cuando existe evidencia suficiente según la política existente o una regla explícita.
-- OBSERVE permite la solicitud; no se transforma en bloqueo por heurística.
-- ALLOW permite la solicitud.
-- La excepción manual del usuario conserva la prioridad definida por RuleEvaluator.
-- Las decisiones de recursos web no deben alterar decisiones DNS ni reglas del firewall global.
-- Los fallos del adaptador no deben bloquear navegación legítima: comportamiento fail-open para señales heurísticas; las reglas explícitas de bloqueo deben tener un resultado determinista y probado.
+Para esta aplicación:
+- Chromium/Android resuelve conexiones normalmente.
+- FirewallDNS aplica sus reglas de dominio en el punto de control de solicitudes Chromium.
+- Las decisiones DNS existentes pueden compartirse como política, no como socket/servicio DNS acoplado al TUN.
+- DoH/DoT y resolutores privados no se interceptan ni descifran automáticamente. No afirmar inspección universal.
+- Documentar límites de redirecciones, subrecursos, IPv4/IPv6, WebSocket, WebRTC y cambios de red según las APIs nativas efectivamente integradas.
 
-## Privacidad y almacenamiento
+## Funciones del navegador
 
-- Historial configurable y borrado por intervalo, con almacenamiento local.
-- Modo privado: perfil temporal separado; cookies, caché, historial, almacenamiento web y descargas privadas se eliminan al cerrar todas las pestañas privadas. Las descargas guardadas explícitamente por el usuario se tratan como archivos externos y se advierte al salir.
-- Contraseñas: Android Autofill Framework / proveedor seguro del sistema; no implementar criptografía propia ni sincronización de credenciales en esta fase.
-- Autorrelleno: delegar en Android Autofill Framework.
-- Comprobación de contraseñas comprometidas: no enviar contraseñas ni hashes completos a un servicio propio. Requiere diseño de privacidad independiente y consentimiento explícito; se excluye del primer corte.
-- Sin telemetría adicional. Las estadísticas existentes del firewall no se duplican ni se alimentan con URLs del navegador.
-
-## Funciones y fases
-
-### Fase 0 — base de Chromium y seguridad
-- Decidir estrategia de embedder Chromium Android y fijar revisión upstream.
-- Automatizar compilación reproducible por ABI objetivo (inicialmente arm64-v8a).
-- Definir actualización de Chromium y proceso de respuesta a CVE.
-- Crear BrowserSecurityAdapter y pruebas de contrato.
-- Verificar que abrir/cerrar el navegador no inicia VPN/TUN.
-
-### Fase 1 — navegación esencial
+### Navegación esencial
 - Barra de direcciones y buscador configurable.
-- Pestañas múltiples y restauración controlada.
-- Favoritos.
-- Historial configurable y borrado.
-- Descargas con permisos y notificaciones del sistema.
+- Pestañas múltiples, restauración y cierre.
+- Marcadores y favoritos.
+- Historial configurable y borrado por intervalo.
+- Administrador de descargas con progreso y permisos.
+- Traducción de páginas mediante proveedor configurable y consentimiento.
 - Modo escritorio.
-- Reproducción multimedia y pantalla completa.
+- Audio/vídeo, pantalla completa y controles multimedia.
 
-### Fase 2 — protección web
-- Filtrado de solicitudes de recursos mediante integración nativa de Chromium.
-- Bloqueo de anuncios/rastreadores basado en reglas compatibles y listas existentes.
-- Escudos por sitio con recuentos derivados de cancelaciones confirmadas, no telemetría duplicada.
-- HTTPS: advertencias de certificado/TLS gestionadas por Chromium; nunca omitir errores de certificado.
-- Protección contra phishing/malware con fuentes verificadas y política existente.
-- Permisos por origen y cookies de terceros mediante APIs soportadas por Chromium.
+### Shields y protección web
+- Bloqueo de anuncios y rastreadores mediante motor de reglas de recursos compatible (evaluar adblock-rust y listas compatibles).
+- Filtros DNS/host de FirewallDNS compartidos sin duplicar listas.
+- Excepciones por sitio y escudo visible.
+- Contadores del escudo derivados exclusivamente de solicitudes canceladas de verdad; no crear telemetría persistente.
+- Bloqueo de cookies de terceros y controles de almacenamiento por sitio.
+- Mitigaciones anti-fingerprinting compatibles con Chromium; no prometer anonimato ni romper APIs esenciales por defecto.
+- HTTPS, validación de certificados y advertencias TLS nativas; nunca ignorar errores.
+- Control de permisos por origen (cámara, micrófono, ubicación, notificaciones).
+- Protección frente a phishing/malware con listas/fuentes verificadas y política FirewallDNS.
+- Protección de descargas peligrosas y redirecciones abusivas, donde Chromium exponga controles soportados.
+- Protección de WebRTC y aislamiento de red/almacenamiento según capacidades reales de Chromium.
 
-### Fase 3 — privacidad avanzada
-- Perfil privado efímero.
-- Limpieza automática por configuración.
-- Reducción de fingerprinting con mitigaciones compatibles, sin romper APIs esenciales ni prometer anonimato.
-- Traducción mediante proveedor explícito y consentimiento; no enviar páginas privadas sin autorización.
-- Navegación segura y actualizaciones de listas de reputación.
+### Privacidad y credenciales
+- Modo privado con perfil temporal separado; al cerrar todas las pestañas privadas se eliminan cookies, caché, historial y almacenamiento web del perfil.
+- Limpieza automática configurable.
+- Gestor de contraseñas: Android Credential Manager / Autofill Framework o proveedor seguro auditado; no inventar bóveda criptográfica.
+- Autorrelleno delegado al framework Android.
+- Comprobación de contraseñas comprometidas: función desactivada hasta disponer de proveedor y protocolo de privacidad adecuados, consentimiento explícito y sin transmitir contraseñas ni hashes completos.
+- Traducción y servicios externos deben explicar qué datos se envían y no operar sobre sesiones privadas sin consentimiento.
 
-### Fase 4 — credenciales y endurecimiento
-- Android Autofill Framework y Credential Manager.
-- Gestor de contraseñas mediante proveedor seguro del sistema o solución auditada.
-- Comprobación de credenciales comprometidas con protocolo de privacidad y consentimiento.
-- Auditoría de aislamiento de sitios, sandbox, permisos, descargas y archivos.
+## Funciones que no se habilitan automáticamente
 
-## Dependencias y licencias
+La referencia a Brave no autoriza activar servicios que no son necesarios para la navegación protegida. Se excluyen de la configuración inicial las funciones con cuentas, pagos, recompensas, wallets, VPN, sincronización propietaria y analítica/telemetría. Podrán evaluarse por separado si el usuario lo solicita y existe una justificación técnica y de privacidad.
 
-Chromium completo no es una dependencia Android Maven ligera ni un reemplazo directo de WebView. Requiere un embedder compatible, compilación de Chromium/Content API, artefactos nativos grandes, toolchain y mantenimiento de seguridad continuo. Antes de integrar binarios se debe seleccionar una estrategia mantenida, revisar sus licencias y avisos de terceros, y comprobar que permite el control de solicitudes requerido. No añadir un AAR arbitrario ni una versión antigua de Chromium.
+## Compilación y mantenimiento
 
-## Criterios de aceptación globales
+La compilación de Chromium/Brave Android no es una dependencia Gradle pequeña:
+- Requiere Linux x86-64, depot_tools, toolchain Android, Node/pnpm según upstream y una descarga de gran tamaño.
+- La documentación de Chromium indica al menos 100 GB libres y recomienda más de 16 GB de RAM; la compilación puede tardar horas.
+- El destino inicial es Android ARM64 (`arm64-v8a`), coherente con el objetivo actual de FirewallDNS.
+- El pipeline debe registrar revisión Chromium, revisión Brave Core, hash de listas de parches, configuración GN, NDK/SDK y versión del compilador.
+- Actualizar Chromium mediante una revisión estable soportada y sincronizar dependencias/patches. No seguir una rama móvil sin pin.
+- Cada actualización debe incluir los avisos/licencias y la evaluación de CVE aplicables.
+- No distribuir APK hasta tener compilación reproducible, firma propia y proceso de actualización funcional.
 
-- No se invoca `VpnService.prepare`, no se inicia `DnsFirewallService` y no se crea TUN al navegar.
-- La navegación funciona con FirewallDNS VPN apagado.
-- Las decisiones de bloqueo se aplican realmente a solicitudes de Chromium y son verificables con pruebas.
-- OBSERVE nunca cancela una solicitud.
-- Las reglas y listas tienen una sola autoridad.
-- No se duplican bases de datos ni telemetría.
-- El modo privado no conserva datos de sesión tras cerrar su perfil.
-- Chromium tiene una revisión soportada, parcheada y una ruta de actualización definida.
-- Pruebas de regresión en Android 10+ y dispositivo ARM64, incluyendo Wi-Fi/datos móviles, IPv4/IPv6, redirecciones, descargas, multimedia y procesos de pestañas.
+## Fases de entrega
 
-## Estado de esta propuesta
+1. **Base upstream:** seleccionar y fijar revisión estable de Brave Core/Chromium; preparar entorno Linux Android ARM64; validar build nativo.
+2. **Aplicación Android:** crear el producto FirewallDNS Browser, launcher, perfiles y ciclo de vida Chromium sin iniciar VPN/TUN.
+3. **Policy Adapter:** conectar snapshots y decisiones de FirewallDNS a las solicitudes Chromium, sin I/O en callbacks.
+4. **Navegación:** barra, pestañas, favoritos, historial, descargas, escritorio y multimedia.
+5. **Shields:** motor de reglas de recursos, listas, bloqueo confirmado, excepciones y panel por sitio.
+6. **Privacidad/seguridad:** cookies, permisos, HTTPS, anti-fingerprinting, navegación segura y modo privado.
+7. **Credenciales/servicios:** Credential Manager, Autofill, traducción y comprobación de credenciales con consentimiento y proveedor.
+8. **Distribución:** empaquetado ARM64, firma, avisos de terceros, actualizador y mantenimiento Chromium/CVE.
 
-Este documento establece la arquitectura y el orden seguro de trabajo. No afirma que Chromium, el navegador ni las funciones enumeradas ya estén incorporados. La siguiente tarea de ingeniería es validar la estrategia de embedder Chromium y su mantenimiento antes de añadir dependencias o modificar el arranque de FirewallDNS.
+## Estado honesto
+
+Este documento fija la estrategia y el contrato de integración. No significa que Chromium, Brave Core, Shields ni la aplicación estén compilados o incorporados al APK. El repositorio Android actual no contiene todavía un checkout de Chromium/Brave Core ni el entorno Linux de compilación.
+
+No se debe sustituir este trabajo por WebView ni declarar terminada una función hasta que exista implementación nativa y el artefacto correspondiente. La fase de validación extensa solicitada por el usuario no se convierte en una campaña separada de pruebas; se mantienen únicamente las comprobaciones mínimas de compilación, seguridad y funcionamiento necesarias para no entregar una aplicación rota.
